@@ -2870,8 +2870,8 @@ async function matchSoftwareCompanyId(text) {
 }
 
 async function consumeMatchingLineStock({ customerId, lineId, number, user }) {
-  const digits = digitsOnly(number);
-  if (digits.length < 10 || !lineId) return;
+  const last10 = digitsOnly(number).slice(-10);
+  if (last10.length < 10 || !lineId) return;
   try {
     await ensureLineStockTable();
     await query(
@@ -2884,9 +2884,9 @@ async function consumeMatchingLineStock({ customerId, lineId, number, user }) {
           consumed_line_id = $2::uuid
         where consumed_at is null
           and coalesce(is_active, true) = true
-          and regexp_replace(coalesce(line_number, ''), '[^0-9]', '', 'g') = $4
+          and right(regexp_replace(coalesce(line_number, ''), '[^0-9]', '', 'g'), 10) = $4
       `,
-      [customerId, lineId, user?.auth_user_id || user?.id || null, digits],
+      [customerId, lineId, user?.auth_user_id || user?.id || null, last10],
     );
   } catch (_) {}
 }

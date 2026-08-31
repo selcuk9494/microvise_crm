@@ -22,6 +22,7 @@ const {
   ensureLinesOperatorColumn,
   ensureLinesRegistryNumberColumn,
   ensureLineStockTable,
+  reconcileLineStockConsumedFromIssued,
   ensureServiceFaultTypesTable,
   ensureServiceAccessoryTypesTable,
   ensureServiceRecordsColumns,
@@ -2854,6 +2855,9 @@ module.exports = async (req, res) => {
       case 'line_stock': {
         if (!requireAnyPage(req, user, ['urunler', 'is_emirleri'], res)) return;
         await ensureLineStockTable();
+        try {
+          await reconcileLineStockConsumedFromIssued();
+        } catch (_) {}
 
         const search = String(req.query.search || '').trim();
         const status = String(req.query.status || '').trim();

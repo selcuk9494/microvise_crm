@@ -9,6 +9,7 @@ import '../../core/api/api_client.dart';
 import '../../core/format/app_date_time.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_phone_scroll.dart';
 import '../../design_system/status_tone.dart';
 
 double _num(dynamic value) {
@@ -247,6 +248,8 @@ class FinanceScreen extends ConsumerWidget {
     final accountsAsync = ref.watch(financeAccountsProvider);
     final transactionsAsync = ref.watch(financeTransactionsProvider);
 
+    final isPhone = MediaQuery.sizeOf(context).width < 700;
+
     return AppPageLayout(
       title: 'Finans',
       subtitle: 'Banka, kasa, POS ve ödeme hareketleri.',
@@ -273,60 +276,124 @@ class FinanceScreen extends ConsumerWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          accountsAsync.when(
-            loading: () => const LinearProgressIndicator(minHeight: 2),
-            error: (error, _) => _ErrorBox(
-              message: 'Finans hesapları yüklenemedi. Lütfen tekrar deneyin.',
-              onRetry: () => ref.invalidate(financeAccountsProvider),
-            ),
-            data: (accounts) => _FinanceSummary(accounts: accounts),
-          ),
-          const Gap(12),
-          const _AkinsoftFinanceShortcuts(),
-          const Gap(12),
-          accountsAsync.when(
-            loading: () => const SizedBox.shrink(),
-            error: (_, _) => const SizedBox.shrink(),
-            data: (accounts) => _FinanceFilters(accounts: accounts),
-          ),
-          const Gap(12),
-          Expanded(
-            child: Row(
+          AppPhoneScrollColumn.capHeader(
+            context: context,
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  width: 390,
-                  child: accountsAsync.when(
-                    loading: () => const _LoadingCard(),
-                    error: (error, _) => _ErrorBox(
-                      message: 'Hesaplar yüklenemedi. Lütfen tekrar deneyin.',
-                      onRetry: () => ref.invalidate(financeAccountsProvider),
-                    ),
-                    data: (accounts) => _AccountsPanel(
-                      accounts: accounts,
-                      onEdit: (account) =>
-                          _showAccountDialog(context, ref, account: account),
-                    ),
+                accountsAsync.when(
+                  loading: () => const LinearProgressIndicator(minHeight: 2),
+                  error: (error, _) => _ErrorBox(
+                    message:
+                        'Finans hesapları yüklenemedi. Lütfen tekrar deneyin.',
+                    onRetry: () => ref.invalidate(financeAccountsProvider),
                   ),
+                  data: (accounts) => _FinanceSummary(accounts: accounts),
                 ),
                 const Gap(12),
-                Expanded(
-                  child: transactionsAsync.when(
-                    loading: () => const _LoadingCard(),
-                    error: (error, _) => _ErrorBox(
-                      message: 'Hareketler yüklenemedi. Lütfen tekrar deneyin.',
-                      onRetry: () =>
-                          ref.invalidate(financeTransactionsProvider),
-                    ),
-                    data: (transactions) => _TransactionsPanel(
-                      transactions: transactions,
-                      onEdit: (tx) =>
-                          _showTransactionDialog(context, ref, transaction: tx),
-                    ),
-                  ),
+                const _AkinsoftFinanceShortcuts(),
+                const Gap(12),
+                accountsAsync.when(
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, _) => const SizedBox.shrink(),
+                  data: (accounts) => _FinanceFilters(accounts: accounts),
                 ),
               ],
             ),
+          ),
+          const Gap(12),
+          Expanded(
+            child: isPhone
+                ? Column(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: accountsAsync.when(
+                          loading: () => const _LoadingCard(),
+                          error: (error, _) => _ErrorBox(
+                            message:
+                                'Hesaplar yüklenemedi. Lütfen tekrar deneyin.',
+                            onRetry: () =>
+                                ref.invalidate(financeAccountsProvider),
+                          ),
+                          data: (accounts) => _AccountsPanel(
+                            accounts: accounts,
+                            onEdit: (account) => _showAccountDialog(
+                              context,
+                              ref,
+                              account: account,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Gap(12),
+                      Expanded(
+                        flex: 3,
+                        child: transactionsAsync.when(
+                          loading: () => const _LoadingCard(),
+                          error: (error, _) => _ErrorBox(
+                            message:
+                                'Hareketler yüklenemedi. Lütfen tekrar deneyin.',
+                            onRetry: () =>
+                                ref.invalidate(financeTransactionsProvider),
+                          ),
+                          data: (transactions) => _TransactionsPanel(
+                            transactions: transactions,
+                            onEdit: (tx) => _showTransactionDialog(
+                              context,
+                              ref,
+                              transaction: tx,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: 390,
+                        child: accountsAsync.when(
+                          loading: () => const _LoadingCard(),
+                          error: (error, _) => _ErrorBox(
+                            message:
+                                'Hesaplar yüklenemedi. Lütfen tekrar deneyin.',
+                            onRetry: () =>
+                                ref.invalidate(financeAccountsProvider),
+                          ),
+                          data: (accounts) => _AccountsPanel(
+                            accounts: accounts,
+                            onEdit: (account) => _showAccountDialog(
+                              context,
+                              ref,
+                              account: account,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Gap(12),
+                      Expanded(
+                        child: transactionsAsync.when(
+                          loading: () => const _LoadingCard(),
+                          error: (error, _) => _ErrorBox(
+                            message:
+                                'Hareketler yüklenemedi. Lütfen tekrar deneyin.',
+                            onRetry: () =>
+                                ref.invalidate(financeTransactionsProvider),
+                          ),
+                          data: (transactions) => _TransactionsPanel(
+                            transactions: transactions,
+                            onEdit: (tx) => _showTransactionDialog(
+                              context,
+                              ref,
+                              transaction: tx,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),

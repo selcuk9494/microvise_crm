@@ -13,6 +13,7 @@ import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_phone_scroll.dart';
 import '../../core/utils/app_time.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
@@ -27,6 +28,8 @@ class LineStockTab extends ConsumerStatefulWidget {
 
 class _LineStockTabState extends ConsumerState<LineStockTab> {
   late final TextEditingController _searchController;
+  final _selected = <String>{};
+  bool _deleting = false;
 
   excel.CellValue _cell(Object? v) => excel.TextCellValue((v ?? '').toString());
 
@@ -311,10 +314,12 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
     ref.invalidate(lineStockProvider);
     ref.invalidate(lineStockAvailableProvider);
     if (!mounted) return;
+    setState(_selected.clear);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'İçe aktarılan kayıt: $imported${errors.isEmpty ? '' : ' • Hata: ${errors.length}'}',
+          'İçe aktarılan kayıt: $imported${errors.isEmpty ? '' : ' • Hata: ${errors.length}'}'
+          '${imported > 0 ? ' • Müşterideki hatlar Kullanıldı olarak işaretlendi.' : ''}',
         ),
       ),
     );
@@ -518,8 +523,72 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
       '/mutate',
       body: {'op': 'delete', 'table': 'line_stock', 'id': item.id},
     );
+    if (mounted) {
+      setState(() => _selected.remove(item.id));
+    }
     ref.invalidate(lineStockProvider);
     ref.invalidate(lineStockAvailableProvider);
+  }
+
+  Future<void> _deleteSelected() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null || _deleting) return;
+    final ids = _selected.where((id) => id.trim().isNotEmpty).toList();
+    if (ids.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Seçilen hat stok silinsin mi?'),
+        content: Text(
+          '${ids.length} kayıt silinecek. Bu işlem geri alınamaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _deleting = true);
+    try {
+      const chunkSize = 400;
+      for (var i = 0; i < ids.length; i += chunkSize) {
+        final chunk = ids.sublist(
+          i,
+          i + chunkSize > ids.length ? ids.length : i + chunkSize,
+        );
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'deleteWhere',
+            'table': 'line_stock',
+            'filters': [
+              {'col': 'id', 'op': 'in', 'value': chunk},
+            ],
+          },
+        );
+      }
+      if (mounted) setState(_selected.clear);
+      ref.invalidate(lineStockProvider);
+      ref.invalidate(lineStockAvailableProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${ids.length} hat stok kaydı silindi.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Toplu silme başarısız: $e')));
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
   }
 
   @override
@@ -539,223 +608,223 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
         .length;
     final consumedCount = items.where((e) => e.isConsumed).length;
 
-    return Padding(
+    return AppPhoneScrollColumn(
       padding: const EdgeInsets.all(10),
-      child: Column(
-        children: [
-          AppCard(
-            padding: const EdgeInsets.all(12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final narrow = constraints.maxWidth < 980;
-                final searchField = SizedBox(
-                  width: narrow ? double.infinity : 320,
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: ref.read(lineStockSearchProvider.notifier).set,
-                    decoration: const InputDecoration(
-                      hintText: 'Ara (hat, sim, müşteri...)',
-                      prefixIcon: Icon(LucideIcons.search),
-                      isDense: true,
-                    ),
+      header: [
+        AppCard(
+          padding: const EdgeInsets.all(12),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 980;
+              final searchField = SizedBox(
+                width: 260,
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: ref.read(lineStockSearchProvider.notifier).set,
+                  decoration: const InputDecoration(
+                    hintText: 'Ara (hat, sim, müşteri...)',
+                    prefixIcon: Icon(LucideIcons.search),
+                    isDense: true,
                   ),
-                );
+                ),
+              );
 
-                final statusField = SizedBox(
-                  width: narrow ? double.infinity : 220,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: status,
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'available',
-                        child: Text('Hazır'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'consumed',
-                        child: Text('Kullanıldı'),
-                      ),
-                      DropdownMenuItem(value: 'passive', child: Text('Pasif')),
-                      DropdownMenuItem(value: 'all', child: Text('Tümü')),
-                    ],
-                    onChanged: (v) => ref
-                        .read(lineStockStatusProvider.notifier)
-                        .set(v ?? 'all'),
-                    decoration: const InputDecoration(
-                      labelText: 'Durum',
-                      isDense: true,
+              final statusField = SizedBox(
+                width: 220,
+                child: DropdownButtonFormField<String>(
+                  initialValue: status,
+                  items: const [
+                    DropdownMenuItem(value: 'available', child: Text('Hazır')),
+                    DropdownMenuItem(
+                      value: 'consumed',
+                      child: Text('Kullanıldı'),
                     ),
+                    DropdownMenuItem(value: 'passive', child: Text('Pasif')),
+                    DropdownMenuItem(value: 'all', child: Text('Tümü')),
+                  ],
+                  onChanged: (v) => ref
+                      .read(lineStockStatusProvider.notifier)
+                      .set(v ?? 'all'),
+                  decoration: const InputDecoration(
+                    labelText: 'Durum',
+                    isDense: true,
                   ),
-                );
+                ),
+              );
 
-                final operatorField = SizedBox(
-                  width: narrow ? double.infinity : 220,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: operatorName,
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'all',
-                        child: Text('Tüm Operatörler'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'turkcell',
-                        child: Text('TURKCELL'),
-                      ),
-                      DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
-                    ],
-                    onChanged: (v) => ref
-                        .read(lineStockOperatorProvider.notifier)
-                        .set(v ?? 'all'),
-                    decoration: const InputDecoration(
-                      labelText: 'Operatör',
-                      isDense: true,
+              final operatorField = SizedBox(
+                width: 220,
+                child: DropdownButtonFormField<String>(
+                  initialValue: operatorName,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'all',
+                      child: Text('Tüm Operatörler'),
                     ),
+                    DropdownMenuItem(
+                      value: 'turkcell',
+                      child: Text('TURKCELL'),
+                    ),
+                    DropdownMenuItem(value: 'telsim', child: Text('TELSİM')),
+                  ],
+                  onChanged: (v) => ref
+                      .read(lineStockOperatorProvider.notifier)
+                      .set(v ?? 'all'),
+                  decoration: const InputDecoration(
+                    labelText: 'Operatör',
+                    isDense: true,
                   ),
-                );
+                ),
+              );
 
-                Future<void> pickDate({required bool from}) async {
-                  final initial = from ? consumedFrom : consumedTo;
-                  final now = DateTime.now();
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: initial ?? now,
-                    firstDate: DateTime(now.year - 5, 1, 1),
-                    lastDate: DateTime(now.year + 2, 12, 31),
-                  );
-                  if (picked == null) return;
-                  if (from) {
-                    ref
-                        .read(lineStockConsumedFromProvider.notifier)
-                        .set(picked);
-                  } else {
-                    ref.read(lineStockConsumedToProvider.notifier).set(picked);
-                  }
-                  if (ref.read(lineStockStatusProvider) == 'available') {
-                    ref.read(lineStockStatusProvider.notifier).set('consumed');
-                  }
-                  ref.invalidate(lineStockProvider);
+              Future<void> pickDate({required bool from}) async {
+                final initial = from ? consumedFrom : consumedTo;
+                final now = DateTime.now();
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: initial ?? now,
+                  firstDate: DateTime(now.year - 5, 1, 1),
+                  lastDate: DateTime(now.year + 2, 12, 31),
+                );
+                if (picked == null) return;
+                if (from) {
+                  ref.read(lineStockConsumedFromProvider.notifier).set(picked);
+                } else {
+                  ref.read(lineStockConsumedToProvider.notifier).set(picked);
                 }
-
-                String fmtDate(DateTime? d) {
-                  if (d == null) return '—';
-                  return DateFormat('d MMM y', 'tr_TR').format(AppTime.toTr(d));
+                if (ref.read(lineStockStatusProvider) == 'available') {
+                  ref.read(lineStockStatusProvider.notifier).set('consumed');
                 }
+                ref.invalidate(lineStockProvider);
+              }
 
-                final dateFilters = SizedBox(
-                  width: narrow ? double.infinity : 420,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => pickDate(from: true),
-                          icon: const Icon(LucideIcons.calendar, size: 18),
-                          label: Text('Başlangıç: ${fmtDate(consumedFrom)}'),
-                        ),
-                      ),
-                      const Gap(8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => pickDate(from: false),
-                          icon: const Icon(LucideIcons.calendar, size: 18),
-                          label: Text('Bitiş: ${fmtDate(consumedTo)}'),
-                        ),
-                      ),
-                      const Gap(8),
-                      IconButton(
-                        tooltip: 'Tarih Temizle',
-                        onPressed: () {
-                          ref
-                              .read(lineStockConsumedFromProvider.notifier)
-                              .clear();
-                          ref
-                              .read(lineStockConsumedToProvider.notifier)
-                              .clear();
-                          ref.invalidate(lineStockProvider);
-                        },
-                        icon: const Icon(LucideIcons.eraser),
-                      ),
-                    ],
-                  ),
-                );
+              String fmtDate(DateTime? d) {
+                if (d == null) return '—';
+                return DateFormat('d MMM y', 'tr_TR').format(AppTime.toTr(d));
+              }
 
-                final addBtn = FilledButton.icon(
-                  onPressed: isAdmin ? () => _showEditDialog() : null,
-                  icon: const Icon(LucideIcons.plus, size: 18),
-                  label: const Text('Hat Ekle'),
-                );
-
-                final importBtn = OutlinedButton.icon(
-                  onPressed: isAdmin ? _importExcel : null,
-                  icon: const Icon(LucideIcons.upload, size: 18),
-                  label: const Text('İçe Aktar'),
-                );
-
-                final exportBtn = OutlinedButton.icon(
-                  onPressed: items.isEmpty ? null : () => _exportExcel(items),
-                  icon: const Icon(LucideIcons.download, size: 18),
-                  label: const Text('Dışarı Aktar'),
-                );
-
-                final summary = Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+              final dateFilters = SizedBox(
+                width: 320,
+                child: Row(
                   children: [
-                    AppBadge(
-                      label: 'Toplam: $totalCount',
-                      tone: AppBadgeTone.neutral,
-                      dense: true,
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => pickDate(from: true),
+                        icon: const Icon(LucideIcons.calendar, size: 18),
+                        label: Text('Başlangıç: ${fmtDate(consumedFrom)}'),
+                      ),
                     ),
-                    AppBadge(
-                      label: 'Aktif: $activeCount',
-                      tone: AppBadgeTone.primary,
-                      dense: true,
+                    const Gap(8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => pickDate(from: false),
+                        icon: const Icon(LucideIcons.calendar, size: 18),
+                        label: Text('Bitiş: ${fmtDate(consumedTo)}'),
+                      ),
                     ),
-                    AppBadge(
-                      label: 'Hazır: $availableCount',
-                      tone: AppBadgeTone.success,
-                      dense: true,
-                    ),
-                    AppBadge(
-                      label: 'Kullanıldı: $consumedCount',
-                      tone: AppBadgeTone.warning,
-                      dense: true,
+                    const Gap(8),
+                    IconButton(
+                      tooltip: 'Tarih Temizle',
+                      onPressed: () {
+                        ref
+                            .read(lineStockConsumedFromProvider.notifier)
+                            .clear();
+                        ref.read(lineStockConsumedToProvider.notifier).clear();
+                        ref.invalidate(lineStockProvider);
+                      },
+                      icon: const Icon(LucideIcons.eraser),
                     ),
                   ],
-                );
+                ),
+              );
 
-                if (narrow) {
-                  return Column(
-                    children: [
-                      searchField,
-                      const Gap(8),
-                      statusField,
-                      const Gap(8),
-                      dateFilters,
-                      const Gap(8),
-                      operatorField,
-                      const Gap(8),
-                      Row(
-                        children: [
-                          Expanded(child: addBtn),
-                          const Gap(8),
-                          Expanded(child: exportBtn),
-                        ],
-                      ),
-                      const Gap(8),
-                      Row(
-                        children: [
-                          Expanded(child: importBtn),
-                          const Gap(8),
-                          Expanded(child: summary),
-                        ],
-                      ),
-                    ],
-                  );
-                }
+              final addBtn = FilledButton.icon(
+                onPressed: isAdmin ? () => _showEditDialog() : null,
+                icon: const Icon(LucideIcons.plus, size: 18),
+                label: const Text('Hat Ekle'),
+              );
 
+              final importBtn = OutlinedButton.icon(
+                onPressed: isAdmin ? _importExcel : null,
+                icon: const Icon(LucideIcons.upload, size: 18),
+                label: const Text('İçe Aktar'),
+              );
+
+              final exportBtn = OutlinedButton.icon(
+                onPressed: items.isEmpty ? null : () => _exportExcel(items),
+                icon: const Icon(LucideIcons.download, size: 18),
+                label: const Text('Dışarı Aktar'),
+              );
+
+              final selectedCount = _selected.length;
+              final allVisibleSelected =
+                  items.isNotEmpty &&
+                  items.every((e) => _selected.contains(e.id));
+              final selectAllChip = FilterChip(
+                label: Text(
+                  allVisibleSelected
+                      ? 'Seçimi kaldır'
+                      : 'Tümünü seç (${items.length})',
+                ),
+                selected: allVisibleSelected,
+                onSelected: !isAdmin || items.isEmpty
+                    ? null
+                    : (value) {
+                        setState(() {
+                          if (value) {
+                            _selected.addAll(items.map((e) => e.id));
+                          } else {
+                            for (final item in items) {
+                              _selected.remove(item.id);
+                            }
+                          }
+                        });
+                      },
+              );
+              final deleteSelectedBtn = OutlinedButton.icon(
+                onPressed: isAdmin && selectedCount > 0 && !_deleting
+                    ? _deleteSelected
+                    : null,
+                icon: const Icon(LucideIcons.trash2, size: 18),
+                label: Text(
+                  selectedCount > 0
+                      ? 'Seçilenleri Sil ($selectedCount)'
+                      : 'Seçilenleri Sil',
+                ),
+              );
+
+              final summary = Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  AppBadge(
+                    label: 'Toplam: $totalCount',
+                    tone: AppBadgeTone.neutral,
+                    dense: true,
+                  ),
+                  AppBadge(
+                    label: 'Aktif: $activeCount',
+                    tone: AppBadgeTone.primary,
+                    dense: true,
+                  ),
+                  AppBadge(
+                    label: 'Hazır: $availableCount',
+                    tone: AppBadgeTone.success,
+                    dense: true,
+                  ),
+                  AppBadge(
+                    label: 'Kullanıldı: $consumedCount',
+                    tone: AppBadgeTone.warning,
+                    dense: true,
+                  ),
+                ],
+              );
+
+              if (narrow) {
                 return Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+                  spacing: 8,
+                  runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     searchField,
@@ -763,187 +832,224 @@ class _LineStockTabState extends ConsumerState<LineStockTab> {
                     dateFilters,
                     operatorField,
                     addBtn,
-                    importBtn,
                     exportBtn,
+                    importBtn,
+                    if (isAdmin) selectAllChip,
+                    if (isAdmin) deleteSelectedBtn,
                     summary,
                   ],
                 );
-              },
-            ),
+              }
+
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  searchField,
+                  statusField,
+                  dateFilters,
+                  operatorField,
+                  addBtn,
+                  importBtn,
+                  exportBtn,
+                  if (isAdmin) selectAllChip,
+                  if (isAdmin) deleteSelectedBtn,
+                  summary,
+                ],
+              );
+            },
           ),
-          const Gap(8),
-          Expanded(
-            child: itemsAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                return Scrollbar(
-                  thumbVisibility: true,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.only(bottom: 120),
-                    itemCount: items.length,
-                    separatorBuilder: (_, _) => const Gap(8),
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      final op = normalizeOperator(item.operatorName);
-                      final opLabel = op == 'turkcell'
-                          ? 'TURKCELL'
-                          : op == 'telsim'
-                          ? 'TELSİM'
-                          : (item.operatorName.trim().isEmpty
-                                ? '-'
-                                : item.operatorName);
-                      final isAvailable = item.isActive && !item.isConsumed;
-                      final consumedCustomer = (item.consumedCustomerName ?? '')
-                          .trim();
-                      final consumedWorkOrder =
-                          (item.consumedWorkOrderTitle ?? '').trim();
-                      final consumedAtText = item.consumedAt == null
-                          ? ''
-                          : DateFormat(
-                              'd MMM y HH:mm',
-                              'tr_TR',
-                            ).format(AppTime.toTr(item.consumedAt!));
-                      return Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceMuted,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.border),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    [
-                                      item.lineNumber,
-                                      if ((item.simNumber ?? '')
-                                          .trim()
-                                          .isNotEmpty)
-                                        'SIM: ${item.simNumber}',
-                                    ].join(' • '),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          color: AppTheme.text,
-                                        ),
-                                  ),
-                                  if (item.isConsumed &&
-                                      (consumedCustomer.isNotEmpty ||
-                                          consumedWorkOrder.isNotEmpty ||
-                                          consumedAtText.isNotEmpty)) ...[
-                                    const Gap(2),
-                                    Text(
-                                      [
-                                        if (consumedAtText.isNotEmpty)
-                                          'Kullanım: $consumedAtText',
-                                        if (consumedCustomer.isNotEmpty)
-                                          'Müşteri: $consumedCustomer',
-                                        if (consumedWorkOrder.isNotEmpty)
-                                          'İş Emri: $consumedWorkOrder',
-                                      ].join(' • '),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: AppTheme.textMuted),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            const Gap(8),
-                            AppBadge(
-                              label: opLabel,
-                              tone: op == 'turkcell'
-                                  ? AppBadgeTone.primary
-                                  : op == 'telsim'
-                                  ? AppBadgeTone.warning
-                                  : AppBadgeTone.neutral,
-                              dense: true,
-                            ),
-                            const Gap(6),
-                            AppBadge(
-                              label: isAvailable
-                                  ? 'Hazır'
-                                  : (item.isConsumed ? 'Kullanıldı' : 'Pasif'),
-                              tone: isAvailable
-                                  ? AppBadgeTone.success
-                                  : (item.isConsumed
-                                        ? AppBadgeTone.warning
-                                        : AppBadgeTone.neutral),
-                              dense: true,
-                            ),
-                            const Gap(8),
-                            PopupMenuButton<String>(
-                              tooltip: 'İşlem',
-                              enabled: isAdmin,
-                              onSelected: (value) async {
-                                if (value == 'edit') {
-                                  await _showEditDialog(initial: item);
-                                }
-                                if (value == 'available') {
-                                  await _markAvailable(item);
-                                }
-                                if (value == 'passive') {
-                                  await _setActive(item, false);
-                                }
-                                if (value == 'active') {
-                                  await _setActive(item, true);
-                                }
-                                if (value == 'delete') {
-                                  await _delete(item);
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('Düzenle'),
+        ),
+        const Gap(8),
+      ],
+      body: ({required nested}) => itemsAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          return ListView.separated(
+            padding: nested
+                ? EdgeInsets.zero
+                : const EdgeInsets.only(bottom: 120),
+            shrinkWrap: nested,
+            physics: AppPhoneScrollColumn.physicsFor(nested: nested),
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const Gap(8),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final op = normalizeOperator(item.operatorName);
+              final opLabel = op == 'turkcell'
+                  ? 'TURKCELL'
+                  : op == 'telsim'
+                  ? 'TELSİM'
+                  : (item.operatorName.trim().isEmpty
+                        ? '-'
+                        : item.operatorName);
+              final isAvailable = item.isActive && !item.isConsumed;
+              final consumedCustomer = (item.consumedCustomerName ?? '').trim();
+              final consumedWorkOrder = (item.consumedWorkOrderTitle ?? '')
+                  .trim();
+              final consumedAtText = item.consumedAt == null
+                  ? ''
+                  : DateFormat(
+                      'd MMM y HH:mm',
+                      'tr_TR',
+                    ).format(AppTime.toTr(item.consumedAt!));
+              final selected = _selected.contains(item.id);
+              return Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: selected ? AppTheme.primary : AppTheme.border,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    if (isAdmin) ...[
+                      Checkbox(
+                        value: selected,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selected.add(item.id);
+                            } else {
+                              _selected.remove(item.id);
+                            }
+                          });
+                        },
+                      ),
+                      const Gap(4),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            [
+                              item.lineNumber,
+                              if ((item.simNumber ?? '').trim().isNotEmpty)
+                                'SIM: ${item.simNumber}',
+                            ].join(' • '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppTheme.text,
                                 ),
-                                if (item.isConsumed)
-                                  const PopupMenuItem(
-                                    value: 'available',
-                                    child: Text('Hazır Yap'),
-                                  ),
-                                if (item.isActive)
-                                  const PopupMenuItem(
-                                    value: 'passive',
-                                    child: Text('Pasife Al'),
-                                  )
-                                else
-                                  const PopupMenuItem(
-                                    value: 'active',
-                                    child: Text('Aktif Yap'),
-                                  ),
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('Sil'),
-                                ),
-                              ],
-                              child: const SizedBox(
-                                width: 36,
-                                height: 34,
-                                child: Icon(LucideIcons.ellipsis),
-                              ),
+                          ),
+                          if (item.isConsumed &&
+                              (consumedCustomer.isNotEmpty ||
+                                  consumedWorkOrder.isNotEmpty ||
+                                  consumedAtText.isNotEmpty)) ...[
+                            const Gap(2),
+                            Text(
+                              [
+                                if (consumedAtText.isNotEmpty)
+                                  'Kullanım: $consumedAtText',
+                                if (consumedCustomer.isNotEmpty)
+                                  'Müşteri: $consumedCustomer',
+                                if (consumedWorkOrder.isNotEmpty)
+                                  'İş Emri: $consumedWorkOrder',
+                              ].join(' • '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppTheme.textMuted),
                             ),
                           ],
+                        ],
+                      ),
+                    ),
+                    const Gap(8),
+                    AppBadge(
+                      label: opLabel,
+                      tone: op == 'turkcell'
+                          ? AppBadgeTone.primary
+                          : op == 'telsim'
+                          ? AppBadgeTone.warning
+                          : AppBadgeTone.neutral,
+                      dense: true,
+                    ),
+                    const Gap(6),
+                    AppBadge(
+                      label: isAvailable
+                          ? 'Hazır'
+                          : (item.isConsumed ? 'Kullanıldı' : 'Pasif'),
+                      tone: isAvailable
+                          ? AppBadgeTone.success
+                          : (item.isConsumed
+                                ? AppBadgeTone.warning
+                                : AppBadgeTone.neutral),
+                      dense: true,
+                    ),
+                    const Gap(8),
+                    PopupMenuButton<String>(
+                      tooltip: 'İşlem',
+                      enabled: isAdmin,
+                      onSelected: (value) async {
+                        if (value == 'edit') {
+                          await _showEditDialog(initial: item);
+                        }
+                        if (value == 'available') {
+                          await _markAvailable(item);
+                        }
+                        if (value == 'passive') {
+                          await _setActive(item, false);
+                        }
+                        if (value == 'active') {
+                          await _setActive(item, true);
+                        }
+                        if (value == 'delete') {
+                          await _delete(item);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Düzenle'),
                         ),
-                      );
-                    },
-                  ),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => const _Empty(text: 'Hat stok yüklenemedi.'),
-            ),
-          ),
-        ],
+                        if (item.isConsumed)
+                          const PopupMenuItem(
+                            value: 'available',
+                            child: Text('Hazır Yap'),
+                          ),
+                        if (item.isActive)
+                          const PopupMenuItem(
+                            value: 'passive',
+                            child: Text('Pasife Al'),
+                          )
+                        else
+                          const PopupMenuItem(
+                            value: 'active',
+                            child: Text('Aktif Yap'),
+                          ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Sil'),
+                        ),
+                      ],
+                      child: const SizedBox(
+                        width: 36,
+                        height: 34,
+                        child: Icon(LucideIcons.ellipsis),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, _) => const _Empty(text: 'Hat stok yüklenemedi.'),
       ),
     );
   }

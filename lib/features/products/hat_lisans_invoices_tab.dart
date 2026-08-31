@@ -9,6 +9,7 @@ import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
+import '../../core/ui/app_phone_scroll.dart';
 import '../customers/customer_detail_screen.dart';
 import '../e_invoice/e_invoice_whatsapp_share.dart';
 import '../invoices/invoice_model.dart';
@@ -270,8 +271,8 @@ class _CreateHatLisansInvoiceDialogState
       settings['irestoPaymentTitle'],
       _kIrestoPaymentTitle,
     );
-    _currency = (settings['defaultCurrency'] ?? 'TRY').toString().toUpperCase() ==
-            'USD'
+    _currency =
+        (settings['defaultCurrency'] ?? 'TRY').toString().toUpperCase() == 'USD'
         ? 'USD'
         : 'TRY';
     _period = _periodFrom(settings['defaultPeriod']);
@@ -318,7 +319,10 @@ class _CreateHatLisansInvoiceDialogState
     });
   }
 
-  bool _hasSelectedPeriodPrice(TextEditingController tryC, TextEditingController usdC) {
+  bool _hasSelectedPeriodPrice(
+    TextEditingController tryC,
+    TextEditingController usdC,
+  ) {
     return _currency == 'USD'
         ? usdC.text.trim().isNotEmpty
         : tryC.text.trim().isNotEmpty;
@@ -383,10 +387,14 @@ class _CreateHatLisansInvoiceDialogState
             'gmp3PriceMonthUsd': _gmp3MonthUsd.text.trim(),
             'irestoPriceMonthTry': _irestoMonthTry.text.trim(),
             'irestoPriceMonthUsd': _irestoMonthUsd.text.trim(),
-            'lineUnitPriceTry': (monthly ? _lineMonthTry : _lineTry).text.trim(),
-            'lineUnitPriceUsd': (monthly ? _lineMonthUsd : _lineUsd).text.trim(),
-            'gmp3UnitPriceTry': (monthly ? _gmp3MonthTry : _gmp3Try).text.trim(),
-            'gmp3UnitPriceUsd': (monthly ? _gmp3MonthUsd : _gmp3Usd).text.trim(),
+            'lineUnitPriceTry': (monthly ? _lineMonthTry : _lineTry).text
+                .trim(),
+            'lineUnitPriceUsd': (monthly ? _lineMonthUsd : _lineUsd).text
+                .trim(),
+            'gmp3UnitPriceTry': (monthly ? _gmp3MonthTry : _gmp3Try).text
+                .trim(),
+            'gmp3UnitPriceUsd': (monthly ? _gmp3MonthUsd : _gmp3Usd).text
+                .trim(),
             'irestoUnitPriceTry': (monthly ? _irestoMonthTry : _irestoTry).text
                 .trim(),
             'irestoUnitPriceUsd': (monthly ? _irestoMonthUsd : _irestoUsd).text
@@ -452,8 +460,14 @@ class _CreateHatLisansInvoiceDialogState
       });
     });
     final products = productsAsync.asData?.value ?? const <Product>[];
-    final hatCount = widget.targets.fold<int>(0, (sum, e) => sum + e.linesTotal);
-    final gmp3Count = widget.targets.fold<int>(0, (sum, e) => sum + e.gmp3Total);
+    final hatCount = widget.targets.fold<int>(
+      0,
+      (sum, e) => sum + e.linesTotal,
+    );
+    final gmp3Count = widget.targets.fold<int>(
+      0,
+      (sum, e) => sum + e.gmp3Total,
+    );
     final irestoCount = widget.targets.fold<int>(
       0,
       (sum, e) => sum + e.irestoTotal,
@@ -536,7 +550,11 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'line'),
               ),
               const Gap(8),
-              _TaxRateField(id: 'create-line', controller: _lineTax, enabled: !_saving),
+              _TaxRateField(
+                id: 'create-line',
+                controller: _lineTax,
+                enabled: !_saving,
+              ),
               const Gap(8),
               _PeriodPriceRow(
                 idPrefix: 'create-line',
@@ -566,7 +584,11 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'gmp3'),
               ),
               const Gap(8),
-              _TaxRateField(id: 'create-gmp3', controller: _gmp3Tax, enabled: !_saving),
+              _TaxRateField(
+                id: 'create-gmp3',
+                controller: _gmp3Tax,
+                enabled: !_saving,
+              ),
               const Gap(8),
               _PeriodPriceRow(
                 idPrefix: 'create-gmp3',
@@ -596,7 +618,11 @@ class _CreateHatLisansInvoiceDialogState
                     _applyProductPrice(product, kind: 'iresto'),
               ),
               const Gap(8),
-              _TaxRateField(id: 'create-iresto', controller: _irestoTax, enabled: !_saving),
+              _TaxRateField(
+                id: 'create-iresto',
+                controller: _irestoTax,
+                enabled: !_saving,
+              ),
               const Gap(8),
               _PeriodPriceRow(
                 idPrefix: 'create-iresto',
@@ -691,9 +717,7 @@ class _TaxRateField extends StatelessWidget {
       autocorrect: false,
       autofillHints: const [],
       keyboardType: TextInputType.text,
-      inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-      ],
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
       decoration: const InputDecoration(
         labelText: 'KDV %',
         hintText: '20',
@@ -982,8 +1006,7 @@ class _HatLisansBillingPriceCardState
       _kIrestoPaymentTitle,
     );
     _currency =
-        (settings['defaultCurrency'] ?? 'TRY').toString().toUpperCase() ==
-            'USD'
+        (settings['defaultCurrency'] ?? 'TRY').toString().toUpperCase() == 'USD'
         ? 'USD'
         : 'TRY';
     _period = _periodFrom(settings['defaultPeriod']);
@@ -1114,9 +1137,7 @@ class _HatLisansBillingPriceCardState
                   child: Text(_expanded ? 'Gizle' : 'Düzenle'),
                 ),
                 Icon(
-                  _expanded
-                      ? LucideIcons.chevronUp
-                      : LucideIcons.chevronDown,
+                  _expanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
                   size: 18,
                   color: AppTheme.textMuted,
                 ),
@@ -1129,206 +1150,232 @@ class _HatLisansBillingPriceCardState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-          const Gap(8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'yearly', label: Text('Yıllık fiyat')),
-                  ButtonSegment(value: 'monthly', label: Text('Aylık fiyat')),
-                ],
-                selected: {_period},
-                onSelectionChanged: _saving
-                    ? null
-                    : (value) {
-                        FocusManager.instance.primaryFocus?.unfocus();
-                        setState(() => _period = value.first);
-                      },
-              ),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'TRY', label: Text('Fatura TL')),
-                  ButtonSegment(value: 'USD', label: Text('Fatura USD')),
-                ],
-                selected: {_currency},
-                onSelectionChanged: _saving
-                    ? null
-                    : (value) => setState(() => _currency = value.first),
-              ),
-              FilledButton.tonal(
-                onPressed: _saving ? null : _save,
-                child: Text(_saving ? 'Kaydediliyor…' : 'Kaydet'),
-              ),
-            ],
-          ),
-          const Gap(6),
-          Text(
-            'Aylık ve yıllık fiyatlar ayrıdır. Dönemi seçip fiyatı girin; Kaydet ikisini de saklar.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppTheme.textMuted,
-            ),
-          ),
-          const Gap(8),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 900;
-              final hat = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ProductPickField(
-                    label: 'Hat kalemi',
-                    products: products,
-                    selectedId: _lineProductId,
-                    enabled: !_saving,
-                    onSelected: (product) {
-                      setState(() => _lineProductId = product.id);
-                      if (_lineTax.text.trim().isEmpty) {
-                        _lineTax.text = _taxText(product.taxRate);
-                      }
-                      final price = _priceText(product.salePrice);
-                      if (price.isEmpty) return;
-                      if (product.currency.toUpperCase() == 'USD') {
-                        if (_lineUsd.text.trim().isEmpty) _lineUsd.text = price;
-                      } else if (_lineTry.text.trim().isEmpty) {
-                        _lineTry.text = price;
-                      }
-                    },
-                  ),
-                  const Gap(8),
-                  _TaxRateField(id: 'settings-line', controller: _lineTax, enabled: !_saving),
-                  const Gap(8),
-                  _PeriodPriceRow(
-                    idPrefix: 'settings-line',
-                    kindLabel: 'Hat',
-                    period: _period,
-                    currency: _currency,
-                    monthTry: _lineMonthTry,
-                    monthUsd: _lineMonthUsd,
-                    yearTry: _lineTry,
-                    yearUsd: _lineUsd,
-                    enabled: !_saving,
-                  ),
-                  const Gap(8),
-                  _PaymentTitleField(
-                    id: 'settings-line',
-                    controller: _lineTitle,
-                    label: 'Ödeme açıklaması',
-                    enabled: !_saving,
-                  ),
-                ],
-              );
-              final gmp3 = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ProductPickField(
-                    label: 'GMP3 kalemi',
-                    products: products,
-                    selectedId: _gmp3ProductId,
-                    enabled: !_saving,
-                    onSelected: (product) {
-                      setState(() => _gmp3ProductId = product.id);
-                      if (_gmp3Tax.text.trim().isEmpty) {
-                        _gmp3Tax.text = _taxText(product.taxRate);
-                      }
-                      final price = _priceText(product.salePrice);
-                      if (price.isEmpty) return;
-                      if (product.currency.toUpperCase() == 'USD') {
-                        if (_gmp3Usd.text.trim().isEmpty) _gmp3Usd.text = price;
-                      } else if (_gmp3Try.text.trim().isEmpty) {
-                        _gmp3Try.text = price;
-                      }
-                    },
-                  ),
-                  const Gap(8),
-                  _TaxRateField(id: 'settings-gmp3', controller: _gmp3Tax, enabled: !_saving),
-                  const Gap(8),
-                  _PeriodPriceRow(
-                    idPrefix: 'settings-gmp3',
-                    kindLabel: 'GMP3',
-                    period: _period,
-                    currency: _currency,
-                    monthTry: _gmp3MonthTry,
-                    monthUsd: _gmp3MonthUsd,
-                    yearTry: _gmp3Try,
-                    yearUsd: _gmp3Usd,
-                    enabled: !_saving,
-                  ),
-                  const Gap(8),
-                  _PaymentTitleField(
-                    id: 'settings-gmp3',
-                    controller: _gmp3Title,
-                    label: 'Ödeme açıklaması',
-                    enabled: !_saving,
-                  ),
-                ],
-              );
-              final iresto = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ProductPickField(
-                    label: 'iResto (opsiyonel)',
-                    products: products,
-                    selectedId: _irestoProductId,
-                    enabled: !_saving,
-                    onSelected: (product) {
-                      setState(() => _irestoProductId = product.id);
-                      if (_irestoTax.text.trim().isEmpty) {
-                        _irestoTax.text = _taxText(product.taxRate);
-                      }
-                      final price = _priceText(product.salePrice);
-                      if (price.isEmpty) return;
-                      if (product.currency.toUpperCase() == 'USD') {
-                        if (_irestoUsd.text.trim().isEmpty) {
-                          _irestoUsd.text = price;
-                        }
-                      } else if (_irestoTry.text.trim().isEmpty) {
-                        _irestoTry.text = price;
-                      }
-                    },
-                  ),
-                  const Gap(8),
-                  _TaxRateField(id: 'settings-iresto', controller: _irestoTax, enabled: !_saving),
-                  const Gap(8),
-                  _PeriodPriceRow(
-                    idPrefix: 'settings-iresto',
-                    kindLabel: 'iResto',
-                    period: _period,
-                    currency: _currency,
-                    monthTry: _irestoMonthTry,
-                    monthUsd: _irestoMonthUsd,
-                    yearTry: _irestoTry,
-                    yearUsd: _irestoUsd,
-                    enabled: !_saving,
-                  ),
-                  const Gap(8),
-                  _PaymentTitleField(
-                    id: 'settings-iresto',
-                    controller: _irestoTitle,
-                    label: 'Ödeme açıklaması',
-                    enabled: !_saving,
-                  ),
-                ],
-              );
-              if (narrow) {
-                return Column(
-                  children: [hat, const Gap(12), gmp3, const Gap(12), iresto],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: hat),
-                  const Gap(12),
-                  Expanded(child: gmp3),
-                  const Gap(12),
-                  Expanded(child: iresto),
-                ],
-              );
-            },
-          ),
+                const Gap(8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(
+                          value: 'yearly',
+                          label: Text('Yıllık fiyat'),
+                        ),
+                        ButtonSegment(
+                          value: 'monthly',
+                          label: Text('Aylık fiyat'),
+                        ),
+                      ],
+                      selected: {_period},
+                      onSelectionChanged: _saving
+                          ? null
+                          : (value) {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              setState(() => _period = value.first);
+                            },
+                    ),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'TRY', label: Text('Fatura TL')),
+                        ButtonSegment(value: 'USD', label: Text('Fatura USD')),
+                      ],
+                      selected: {_currency},
+                      onSelectionChanged: _saving
+                          ? null
+                          : (value) => setState(() => _currency = value.first),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: _saving ? null : _save,
+                      child: Text(_saving ? 'Kaydediliyor…' : 'Kaydet'),
+                    ),
+                  ],
+                ),
+                const Gap(6),
+                Text(
+                  'Aylık ve yıllık fiyatlar ayrıdır. Dönemi seçip fiyatı girin; Kaydet ikisini de saklar.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+                ),
+                const Gap(8),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 900;
+                    final hat = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProductPickField(
+                          label: 'Hat kalemi',
+                          products: products,
+                          selectedId: _lineProductId,
+                          enabled: !_saving,
+                          onSelected: (product) {
+                            setState(() => _lineProductId = product.id);
+                            if (_lineTax.text.trim().isEmpty) {
+                              _lineTax.text = _taxText(product.taxRate);
+                            }
+                            final price = _priceText(product.salePrice);
+                            if (price.isEmpty) return;
+                            if (product.currency.toUpperCase() == 'USD') {
+                              if (_lineUsd.text.trim().isEmpty)
+                                _lineUsd.text = price;
+                            } else if (_lineTry.text.trim().isEmpty) {
+                              _lineTry.text = price;
+                            }
+                          },
+                        ),
+                        const Gap(8),
+                        _TaxRateField(
+                          id: 'settings-line',
+                          controller: _lineTax,
+                          enabled: !_saving,
+                        ),
+                        const Gap(8),
+                        _PeriodPriceRow(
+                          idPrefix: 'settings-line',
+                          kindLabel: 'Hat',
+                          period: _period,
+                          currency: _currency,
+                          monthTry: _lineMonthTry,
+                          monthUsd: _lineMonthUsd,
+                          yearTry: _lineTry,
+                          yearUsd: _lineUsd,
+                          enabled: !_saving,
+                        ),
+                        const Gap(8),
+                        _PaymentTitleField(
+                          id: 'settings-line',
+                          controller: _lineTitle,
+                          label: 'Ödeme açıklaması',
+                          enabled: !_saving,
+                        ),
+                      ],
+                    );
+                    final gmp3 = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProductPickField(
+                          label: 'GMP3 kalemi',
+                          products: products,
+                          selectedId: _gmp3ProductId,
+                          enabled: !_saving,
+                          onSelected: (product) {
+                            setState(() => _gmp3ProductId = product.id);
+                            if (_gmp3Tax.text.trim().isEmpty) {
+                              _gmp3Tax.text = _taxText(product.taxRate);
+                            }
+                            final price = _priceText(product.salePrice);
+                            if (price.isEmpty) return;
+                            if (product.currency.toUpperCase() == 'USD') {
+                              if (_gmp3Usd.text.trim().isEmpty)
+                                _gmp3Usd.text = price;
+                            } else if (_gmp3Try.text.trim().isEmpty) {
+                              _gmp3Try.text = price;
+                            }
+                          },
+                        ),
+                        const Gap(8),
+                        _TaxRateField(
+                          id: 'settings-gmp3',
+                          controller: _gmp3Tax,
+                          enabled: !_saving,
+                        ),
+                        const Gap(8),
+                        _PeriodPriceRow(
+                          idPrefix: 'settings-gmp3',
+                          kindLabel: 'GMP3',
+                          period: _period,
+                          currency: _currency,
+                          monthTry: _gmp3MonthTry,
+                          monthUsd: _gmp3MonthUsd,
+                          yearTry: _gmp3Try,
+                          yearUsd: _gmp3Usd,
+                          enabled: !_saving,
+                        ),
+                        const Gap(8),
+                        _PaymentTitleField(
+                          id: 'settings-gmp3',
+                          controller: _gmp3Title,
+                          label: 'Ödeme açıklaması',
+                          enabled: !_saving,
+                        ),
+                      ],
+                    );
+                    final iresto = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProductPickField(
+                          label: 'iResto (opsiyonel)',
+                          products: products,
+                          selectedId: _irestoProductId,
+                          enabled: !_saving,
+                          onSelected: (product) {
+                            setState(() => _irestoProductId = product.id);
+                            if (_irestoTax.text.trim().isEmpty) {
+                              _irestoTax.text = _taxText(product.taxRate);
+                            }
+                            final price = _priceText(product.salePrice);
+                            if (price.isEmpty) return;
+                            if (product.currency.toUpperCase() == 'USD') {
+                              if (_irestoUsd.text.trim().isEmpty) {
+                                _irestoUsd.text = price;
+                              }
+                            } else if (_irestoTry.text.trim().isEmpty) {
+                              _irestoTry.text = price;
+                            }
+                          },
+                        ),
+                        const Gap(8),
+                        _TaxRateField(
+                          id: 'settings-iresto',
+                          controller: _irestoTax,
+                          enabled: !_saving,
+                        ),
+                        const Gap(8),
+                        _PeriodPriceRow(
+                          idPrefix: 'settings-iresto',
+                          kindLabel: 'iResto',
+                          period: _period,
+                          currency: _currency,
+                          monthTry: _irestoMonthTry,
+                          monthUsd: _irestoMonthUsd,
+                          yearTry: _irestoTry,
+                          yearUsd: _irestoUsd,
+                          enabled: !_saving,
+                        ),
+                        const Gap(8),
+                        _PaymentTitleField(
+                          id: 'settings-iresto',
+                          controller: _irestoTitle,
+                          label: 'Ödeme açıklaması',
+                          enabled: !_saving,
+                        ),
+                      ],
+                    );
+                    if (narrow) {
+                      return Column(
+                        children: [
+                          hat,
+                          const Gap(12),
+                          gmp3,
+                          const Gap(12),
+                          iresto,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: hat),
+                        const Gap(12),
+                        Expanded(child: gmp3),
+                        const Gap(12),
+                        Expanded(child: iresto),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -1347,93 +1394,100 @@ class HatLisansInvoicesTab extends ConsumerWidget {
     final invoicesAsync = ref.watch(hatLisansInvoicesProvider);
     final items = invoicesAsync.asData?.value ?? const <Invoice>[];
 
-    return Padding(
+    return AppPhoneScrollColumn(
       padding: const EdgeInsets.all(10),
-      child: Column(
-        children: [
-          AppCard(
-            padding: const EdgeInsets.all(12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final filter = SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(
-                      value: 'pending',
-                      label: Text('Ödeme bekleyen'),
-                    ),
-                    ButtonSegment(value: 'paid', label: Text('Ödenenler')),
-                  ],
-                  selected: {payment},
-                  onSelectionChanged: (value) {
-                    ref
-                        .read(hatLisansInvoicePaymentFilterProvider.notifier)
-                        .set(value.first);
-                  },
-                );
-                if (constraints.maxWidth < 720) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      filter,
-                      const Gap(8),
-                      Text(
-                        'Bu sekmedeki faturalar taslaktır. Ödeme sonrası satış '
-                        'faturasına döner; Maliye gönderimiyle kapanır.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textMuted,
-                        ),
-                      ),
-                    ],
-                  );
-                }
-                return Row(
+      header: [
+        AppCard(
+          padding: const EdgeInsets.all(12),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final filter = SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'pending',
+                    label: Text('Ödeme bekleyen'),
+                  ),
+                  ButtonSegment(value: 'paid', label: Text('Ödenenler')),
+                ],
+                selected: {payment},
+                onSelectionChanged: (value) {
+                  ref
+                      .read(hatLisansInvoicePaymentFilterProvider.notifier)
+                      .set(value.first);
+                },
+              );
+              if (constraints.maxWidth < 720) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     filter,
-                    const Gap(12),
-                    Expanded(
-                      child: Text(
-                        'Taslak faturalar E-Fatura listesine satış olarak düşmez. '
-                        'Ödeme + Maliye gönderimi sonrası kapanır.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textMuted,
-                        ),
+                    const Gap(8),
+                    Text(
+                      'Bu sekmedeki faturalar taslaktır. Ödeme sonrası satış '
+                      'faturasına döner; Maliye gönderimiyle kapanır.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
                       ),
-                    ),
-                    AppBadge(
-                      label: '${items.length}',
-                      tone: AppBadgeTone.neutral,
-                      dense: true,
                     ),
                   ],
                 );
-              },
-            ),
+              }
+              return Row(
+                children: [
+                  filter,
+                  const Gap(12),
+                  Expanded(
+                    child: Text(
+                      'Taslak faturalar E-Fatura listesine satış olarak düşmez. '
+                      'Ödeme + Maliye gönderimi sonrası kapanır.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ),
+                  AppBadge(
+                    label: '${items.length}',
+                    tone: AppBadgeTone.neutral,
+                    dense: true,
+                  ),
+                ],
+              );
+            },
           ),
-          const Gap(8),
-          const HatLisansBillingPriceCard(),
-          const Gap(8),
-          Expanded(
-            child: invoicesAsync.when(
-              data: (rows) {
-                if (rows.isEmpty) {
-                  return const Center(
-                    child: Text('Bu listede fatura yok.'),
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.only(bottom: 120),
-                  itemCount: rows.length,
-                  separatorBuilder: (_, _) => const Gap(8),
-                  itemBuilder: (context, index) {
-                    return _HatLisansInvoiceRow(invoice: rows[index]);
-                  },
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(child: Text('Yüklenemedi: $error')),
-            ),
-          ),
-        ],
+        ),
+        const Gap(8),
+        const HatLisansBillingPriceCard(),
+        const Gap(8),
+      ],
+      body: ({required nested}) => invoicesAsync.when(
+        data: (rows) {
+          if (rows.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: Text('Bu listede fatura yok.')),
+            );
+          }
+          return ListView.separated(
+            padding: nested
+                ? EdgeInsets.zero
+                : const EdgeInsets.only(bottom: 120),
+            shrinkWrap: nested,
+            physics: AppPhoneScrollColumn.physicsFor(nested: nested),
+            itemCount: rows.length,
+            separatorBuilder: (_, _) => const Gap(8),
+            itemBuilder: (context, index) {
+              return _HatLisansInvoiceRow(invoice: rows[index]);
+            },
+          );
+        },
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (error, _) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: Text('Yüklenemedi: $error')),
+        ),
       ),
     );
   }
@@ -1515,7 +1569,9 @@ class _EditHatLisansInvoiceDialogState
     if (value == _pricesIncludeVat) return;
     setState(() {
       for (final line in _lines) {
-        final entered = double.tryParse(line.unitPrice.text.replaceAll(',', '.'));
+        final entered = double.tryParse(
+          line.unitPrice.text.replaceAll(',', '.'),
+        );
         if (entered == null || line.taxRate <= 0) continue;
         if (value) {
           line.unitPrice.text = _priceText(entered * (1 + line.taxRate / 100));
@@ -1736,9 +1792,9 @@ class _HatLisansInvoiceRowState extends ConsumerState<_HatLisansInvoiceRow> {
     );
     ref.invalidate(hatLisansInvoicesProvider);
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Ödeme linki maili gönderildi.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Ödeme linki maili gönderildi.')),
+    );
   }
 
   Future<void> _whatsAppLink() async {
@@ -1772,9 +1828,7 @@ class _HatLisansInvoiceRowState extends ConsumerState<_HatLisansInvoiceRow> {
       invoiceLabels: [formatInvoiceNumberForDisplay(invoice.invoiceNumber)],
       customerName: invoice.customerName,
       customer: customer,
-      paymentLines: [
-        for (final item in invoice.items) item.description,
-      ],
+      paymentLines: [for (final item in invoice.items) item.description],
     );
   }
 
@@ -1846,10 +1900,7 @@ class _HatLisansInvoiceRowState extends ConsumerState<_HatLisansInvoiceRow> {
     if (apiClient == null) return;
     await apiClient.postJson(
       '/mutate',
-      body: {
-        'op': 'deleteHatLisansInvoice',
-        'invoiceId': invoice.id,
-      },
+      body: {'op': 'deleteHatLisansInvoice', 'invoiceId': invoice.id},
     );
     ref.invalidate(hatLisansInvoicesProvider);
     ref.invalidate(invoicesProvider);
@@ -1947,21 +1998,21 @@ class _HatLisansInvoiceRowState extends ConsumerState<_HatLisansInvoiceRow> {
                   ),
                 ],
                 if (invoice.isHatLisansPayable) ...[
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _withBusy(_copyLink),
-                  icon: const Icon(LucideIcons.link, size: 16),
-                  label: const Text('Ödeme linki'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _withBusy(_mailLink),
-                  icon: const Icon(LucideIcons.mail, size: 16),
-                  label: const Text('Mail'),
-                ),
-                FilledButton.icon(
-                  onPressed: _busy ? null : () => _withBusy(_whatsAppLink),
-                  icon: const Icon(LucideIcons.messageCircle, size: 16),
-                  label: const Text('WhatsApp'),
-                ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _withBusy(_copyLink),
+                    icon: const Icon(LucideIcons.link, size: 16),
+                    label: const Text('Ödeme linki'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _withBusy(_mailLink),
+                    icon: const Icon(LucideIcons.mail, size: 16),
+                    label: const Text('Mail'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : () => _withBusy(_whatsAppLink),
+                    icon: const Icon(LucideIcons.messageCircle, size: 16),
+                    label: const Text('WhatsApp'),
+                  ),
                 ],
               ],
             ),

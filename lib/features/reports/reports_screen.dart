@@ -41,8 +41,9 @@ class ReportsScreen extends ConsumerWidget {
           label: const Text('Yenile'),
         ),
       ],
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 108),
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
           AppCard(
             padding: const EdgeInsets.all(14),

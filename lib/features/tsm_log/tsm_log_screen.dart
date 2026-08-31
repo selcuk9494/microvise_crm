@@ -16,6 +16,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_phone_scroll.dart';
 import '../../core/ui/empty_state_card.dart';
 import '../../design_system/status_tone.dart';
 import '../customers/web_download_helper.dart'
@@ -59,23 +60,25 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
   List<TsmLogSerial> get _filteredSerials {
     final serials = _result?.uniqueSerials ?? const <TsmLogSerial>[];
     final query = _searchController.text.trim().toLowerCase();
-    return serials.where((item) {
-      final queryOk =
-          query.isEmpty || _searchHaystack(item).contains(query);
-      return queryOk &&
-          tsmLogSerialMatchesFilters(
-            item,
-            resultFilter: _resultFilter,
-            resultMessageFilter: _resultMessageFilter,
-            operationFilter: _operationFilter,
-            orderKindFilter: _orderKindFilter,
-            bankFilter: _bankFilter,
-            dateFrom: _dateFrom,
-            dateTo: _dateTo,
-            fileHasDates: _fileHasDates,
-            bkmNames: _bkmNames,
-          );
-    }).toList(growable: false);
+    return serials
+        .where((item) {
+          final queryOk =
+              query.isEmpty || _searchHaystack(item).contains(query);
+          return queryOk &&
+              tsmLogSerialMatchesFilters(
+                item,
+                resultFilter: _resultFilter,
+                resultMessageFilter: _resultMessageFilter,
+                operationFilter: _operationFilter,
+                orderKindFilter: _orderKindFilter,
+                bankFilter: _bankFilter,
+                dateFrom: _dateFrom,
+                dateTo: _dateTo,
+                fileHasDates: _fileHasDates,
+                bkmNames: _bkmNames,
+              );
+        })
+        .toList(growable: false);
   }
 
   List<String> get _selectedInOrder => _filteredSerials
@@ -168,9 +171,9 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
     final next = (_queryIndex + delta).clamp(0, queue.length - 1);
     if (next == _queryIndex && delta > 0 && _queryIndex == queue.length - 1) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sıra bitti.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Sıra bitti.')));
       return;
     }
     setState(() => _queryIndex = next);
@@ -323,215 +326,218 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
       ],
       body: Column(
         children: [
-          AppCard(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (_) => setState(() {}),
-                        style: Theme.of(context).textTheme.bodyMedium,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          prefixIcon: Icon(LucideIcons.search, size: 18),
-                          hintText: 'Sicil, banka, işyeri ara',
+          AppPhoneScrollColumn.capHeader(
+            context: context,
+            child: AppCard(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (_) => setState(() {}),
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            prefixIcon: Icon(LucideIcons.search, size: 18),
+                            hintText: 'Sicil, banka, işyeri ara',
+                          ),
                         ),
                       ),
-                    ),
-                    const Gap(10),
-                    SizedBox(
-                      width: 220,
-                      child: _DateFilterField(
-                        label: 'Tarih aralığı',
-                        from: _dateFrom,
-                        to: _dateTo,
-                        format: _dateFormat,
-                        onTap: _pickDateRange,
-                        onClear: () => setState(() {
-                          _dateFrom = null;
-                          _dateTo = null;
-                        }),
-                      ),
-                    ),
-                    if (result != null) ...[
                       const Gap(10),
                       SizedBox(
-                        width: 200,
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey(
-                            'bank-${_result?.fileName}-$_bankFilter',
-                          ),
-                          initialValue:
-                              _bankFilter == kTsmBankFilterEmpty ||
-                                  _banks.contains(_bankFilter)
-                              ? _bankFilter
-                              : '',
-                          isDense: true,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Banka',
-                            isDense: true,
-                          ),
-                          items: [
-                            const DropdownMenuItem(
-                              value: '',
-                              child: Text('Tüm bankalar'),
-                            ),
-                            const DropdownMenuItem(
-                              value: kTsmBankFilterEmpty,
-                              child: Text('Boş olanlar'),
-                            ),
-                            for (final bank in _banks)
-                              DropdownMenuItem(
-                                value: bank,
-                                child: Text(
-                                  bank,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                          ],
-                          onChanged: (value) =>
-                              setState(() => _bankFilter = value ?? ''),
+                        width: 220,
+                        child: _DateFilterField(
+                          label: 'Tarih aralığı',
+                          from: _dateFrom,
+                          to: _dateTo,
+                          format: _dateFormat,
+                          onTap: _pickDateRange,
+                          onClear: () => setState(() {
+                            _dateFrom = null;
+                            _dateTo = null;
+                          }),
                         ),
                       ),
-                      const Gap(12),
-                      Flexible(
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            AppBadge(
-                              label: '$uniqueCount sicil',
-                              tone: AppBadgeTone.primary,
-                              dense: true,
+                      if (result != null) ...[
+                        const Gap(10),
+                        SizedBox(
+                          width: 200,
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey(
+                              'bank-${_result?.fileName}-$_bankFilter',
                             ),
-                            AppBadge(
-                              label: '$approvedCount onay',
-                              tone: AppBadgeTone.success,
-                              dense: true,
+                            initialValue:
+                                _bankFilter == kTsmBankFilterEmpty ||
+                                    _banks.contains(_bankFilter)
+                                ? _bankFilter
+                                : '',
+                            isDense: true,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Banka',
+                              isDense: true,
                             ),
-                            AppBadge(
-                              label: '$mismatchCount eşleşmedi',
-                              tone: AppBadgeTone.warning,
-                              dense: true,
-                            ),
-                            if (kurulumCount > 0)
+                            items: [
+                              const DropdownMenuItem(
+                                value: '',
+                                child: Text('Tüm bankalar'),
+                              ),
+                              const DropdownMenuItem(
+                                value: kTsmBankFilterEmpty,
+                                child: Text('Boş olanlar'),
+                              ),
+                              for (final bank in _banks)
+                                DropdownMenuItem(
+                                  value: bank,
+                                  child: Text(
+                                    bank,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (value) =>
+                                setState(() => _bankFilter = value ?? ''),
+                          ),
+                        ),
+                        const Gap(12),
+                        Flexible(
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
                               AppBadge(
-                                label: '$kurulumCount kurulum',
+                                label: '$uniqueCount sicil',
+                                tone: AppBadgeTone.primary,
+                                dense: true,
+                              ),
+                              AppBadge(
+                                label: '$approvedCount onay',
                                 tone: AppBadgeTone.success,
                                 dense: true,
                               ),
-                            if (geriAlimCount > 0)
                               AppBadge(
-                                label: '$geriAlimCount geri alım',
+                                label: '$mismatchCount eşleşmedi',
                                 tone: AppBadgeTone.warning,
                                 dense: true,
                               ),
-                          ],
+                              if (kurulumCount > 0)
+                                AppBadge(
+                                  label: '$kurulumCount kurulum',
+                                  tone: AppBadgeTone.success,
+                                  dense: true,
+                                ),
+                              if (geriAlimCount > 0)
+                                AppBadge(
+                                  label: '$geriAlimCount geri alım',
+                                  tone: AppBadgeTone.warning,
+                                  dense: true,
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
-                ),
-                const Gap(12),
-                Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: AppTheme.border.withValues(alpha: 0.9),
-                ),
-                const Gap(10),
-                _FilterGroup(
-                  label: 'İşlem',
-                  children: [
-                    _FilterChip(
-                      label: 'Tümü',
-                      selected: _operationFilter == 'TUMU',
-                      onTap: () => setState(() {
-                        _operationFilter = 'TUMU';
-                        if (!_resultMessageOptions.contains(
-                          _resultMessageFilter,
-                        )) {
-                          _resultMessageFilter = '';
-                        }
-                      }),
-                    ),
-                    _FilterChip(
-                      label: 'TERMINAL_SORGU',
-                      selected: _operationFilter == 'TERMINAL_SORGU',
-                      onTap: () =>
-                          setState(() => _toggleOperation('TERMINAL_SORGU')),
-                    ),
-                    _FilterChip(
-                      label: 'ISEMRI_ACMA',
-                      selected: _operationFilter == 'ISEMRI_ACMA',
-                      onTap: () =>
-                          setState(() => _toggleOperation('ISEMRI_ACMA')),
-                    ),
-                  ],
-                ),
-                const Gap(8),
-                _FilterGroup(
-                  label: 'İş Emri',
-                  children: [
-                    _FilterChip(
-                      label: 'Tümü',
-                      selected: _orderKindFilter == 'TUMU',
-                      onTap: () =>
-                          setState(() => _orderKindFilter = 'TUMU'),
-                    ),
-                    _FilterChip(
-                      label: 'Kurulum',
-                      selected: _orderKindFilter == 'KURULUM',
-                      onTap: () => setState(() => _toggleOrderKind('KURULUM')),
-                    ),
-                    _FilterChip(
-                      label: 'Geri Alım',
-                      selected: _orderKindFilter == 'GERI_ALIM',
-                      onTap: () =>
-                          setState(() => _toggleOrderKind('GERI_ALIM')),
-                    ),
-                    _FilterChip(
-                      label: 'Ekleme',
-                      selected: _orderKindFilter == 'EKLEME',
-                      onTap: () => setState(() => _toggleOrderKind('EKLEME')),
-                    ),
-                    _FilterChip(
-                      label: 'Boş',
-                      selected: _orderKindFilter == kTsmOrderKindFilterEmpty,
-                      onTap: () => setState(
-                        () => _toggleOrderKind(kTsmOrderKindFilterEmpty),
-                      ),
-                    ),
-                  ],
-                ),
-                if (result != null) ...[
-                  const Gap(8),
+                  ),
+                  const Gap(12),
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: AppTheme.border.withValues(alpha: 0.9),
+                  ),
+                  const Gap(10),
                   _FilterGroup(
-                    label: 'Sonuç',
+                    label: 'İşlem',
                     children: [
                       _FilterChip(
                         label: 'Tümü',
-                        selected: _resultMessageFilter.isEmpty,
-                        onTap: () =>
-                            setState(() => _resultMessageFilter = ''),
+                        selected: _operationFilter == 'TUMU',
+                        onTap: () => setState(() {
+                          _operationFilter = 'TUMU';
+                          if (!_resultMessageOptions.contains(
+                            _resultMessageFilter,
+                          )) {
+                            _resultMessageFilter = '';
+                          }
+                        }),
                       ),
-                      for (final message in _resultMessageOptions)
-                        _FilterChip(
-                          label: message,
-                          selected: _resultMessageFilter == message,
-                          maxWidth: 260,
-                          onTap: () =>
-                              setState(() => _selectResultMessage(message)),
-                        ),
+                      _FilterChip(
+                        label: 'TERMINAL_SORGU',
+                        selected: _operationFilter == 'TERMINAL_SORGU',
+                        onTap: () =>
+                            setState(() => _toggleOperation('TERMINAL_SORGU')),
+                      ),
+                      _FilterChip(
+                        label: 'ISEMRI_ACMA',
+                        selected: _operationFilter == 'ISEMRI_ACMA',
+                        onTap: () =>
+                            setState(() => _toggleOperation('ISEMRI_ACMA')),
+                      ),
                     ],
                   ),
+                  const Gap(8),
+                  _FilterGroup(
+                    label: 'İş Emri',
+                    children: [
+                      _FilterChip(
+                        label: 'Tümü',
+                        selected: _orderKindFilter == 'TUMU',
+                        onTap: () => setState(() => _orderKindFilter = 'TUMU'),
+                      ),
+                      _FilterChip(
+                        label: 'Kurulum',
+                        selected: _orderKindFilter == 'KURULUM',
+                        onTap: () =>
+                            setState(() => _toggleOrderKind('KURULUM')),
+                      ),
+                      _FilterChip(
+                        label: 'Geri Alım',
+                        selected: _orderKindFilter == 'GERI_ALIM',
+                        onTap: () =>
+                            setState(() => _toggleOrderKind('GERI_ALIM')),
+                      ),
+                      _FilterChip(
+                        label: 'Ekleme',
+                        selected: _orderKindFilter == 'EKLEME',
+                        onTap: () => setState(() => _toggleOrderKind('EKLEME')),
+                      ),
+                      _FilterChip(
+                        label: 'Boş',
+                        selected: _orderKindFilter == kTsmOrderKindFilterEmpty,
+                        onTap: () => setState(
+                          () => _toggleOrderKind(kTsmOrderKindFilterEmpty),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (result != null) ...[
+                    const Gap(8),
+                    _FilterGroup(
+                      label: 'Sonuç',
+                      children: [
+                        _FilterChip(
+                          label: 'Tümü',
+                          selected: _resultMessageFilter.isEmpty,
+                          onTap: () =>
+                              setState(() => _resultMessageFilter = ''),
+                        ),
+                        for (final message in _resultMessageOptions)
+                          _FilterChip(
+                            label: message,
+                            selected: _resultMessageFilter == message,
+                            maxWidth: 260,
+                            onTap: () =>
+                                setState(() => _selectResultMessage(message)),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           const Gap(10),
@@ -565,9 +571,9 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
             _selectedSerials.isEmpty
                 ? 'Sicil seçin'
                 : '${queue.length} sicil seçili',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
           ),
           const Gap(10),
           TextButton(
@@ -586,9 +592,9 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
             const Gap(8),
             Text(
               '${_queryIndex + 1} / ${queue.length}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
             ),
             const Gap(8),
             OutlinedButton(
@@ -603,13 +609,9 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
             const Gap(10),
           ],
           FilledButton.tonalIcon(
-            onPressed: _filteredSerials.isEmpty
-                ? null
-                : _startSequentialQuery,
+            onPressed: _filteredSerials.isEmpty ? null : _startSequentialQuery,
             icon: const Icon(LucideIcons.search, size: 16),
-            label: Text(
-              _queryMode ? 'Sırayı baştan al' : 'Sıralı sorgula',
-            ),
+            label: Text(_queryMode ? 'Sırayı baştan al' : 'Sıralı sorgula'),
           ),
         ],
       ),
@@ -639,7 +641,8 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
         EmptyStateCard(
           icon: LucideIcons.fileSpreadsheet,
           title: 'TSM log Excel yükleyin',
-          message: 'TERMINAL_SORGU ve ISEMRI_ACMA sicillerini çıkarmak için Excel yükleyin.',
+          message:
+              'TERMINAL_SORGU ve ISEMRI_ACMA sicillerini çıkarmak için Excel yükleyin.',
           action: FilledButton.icon(
             onPressed: _pickExcel,
             icon: const Icon(LucideIcons.upload, size: 16),
@@ -667,7 +670,8 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
         EmptyStateCard(
           icon: LucideIcons.qrCode,
           title: 'Sicil numarası bulunamadı',
-          message: _dateRangeEmptyMessage ??
+          message:
+              _dateRangeEmptyMessage ??
               (result.fileName.isEmpty
                   ? 'Filtrelere uyan bir sicil kaydı yok.'
                   : '${result.fileName} içinde filtrelere uyan sicil numarası yok.'),
@@ -771,7 +775,8 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
                           itemBuilder: (context, index) {
                             final item = serials[index];
                             final order = item.workOrder;
-                            final currentQuery = _queryMode &&
+                            final currentQuery =
+                                _queryMode &&
                                 _selectedInOrder.isNotEmpty &&
                                 _selectedInOrder[_queryIndex.clamp(
                                       0,
@@ -835,8 +840,7 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
                                         _bkmNames,
                                       ),
                                       acquirerId: order?.acquirerId ?? '',
-                                      onEdit:
-                                          (order?.acquirerId ?? '').isEmpty
+                                      onEdit: (order?.acquirerId ?? '').isEmpty
                                           ? null
                                           : () => _editBkmFor(
                                               order!.acquirerId,
@@ -886,11 +890,14 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
                                     width: _TsmLogCols.result,
                                     child: _TsmBadgeLine(
                                       badges: [
-                                        for (final message
-                                            in _resultBadgesFor(item))
+                                        for (final message in _resultBadgesFor(
+                                          item,
+                                        ))
                                           _TsmTag(
                                             label: message.$1,
-                                            color: dsStatusToneColor(message.$2),
+                                            color: dsStatusToneColor(
+                                              message.$2,
+                                            ),
                                           ),
                                       ],
                                     ),
@@ -902,9 +909,7 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
-                                          ?.copyWith(
-                                            color: AppTheme.textMuted,
-                                          ),
+                                          ?.copyWith(color: AppTheme.textMuted),
                                     ),
                                   ),
                                 ],
@@ -1015,9 +1020,9 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
       }
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Excel okunamadı: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Excel okunamadı: $error')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1069,7 +1074,8 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
       ref,
       initial: existing,
       presetBkmId: existing == null ? id : null,
-      presetName: existing == null && name.isNotEmpty && !name.startsWith('BKM ')
+      presetName:
+          existing == null && name.isNotEmpty && !name.startsWith('BKM ')
           ? name
           : null,
     );
@@ -1084,10 +1090,7 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
           if (operation != null && outcome.operation != operation) {
             return false;
           }
-          if (!tsmOutcomeMatchesResultMessage(
-            outcome,
-            _resultMessageFilter,
-          )) {
+          if (!tsmOutcomeMatchesResultMessage(outcome, _resultMessageFilter)) {
             return false;
           }
           return parseTsmLogResultKind(outcome.resultMessage) == kind;
@@ -1136,8 +1139,7 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
                 ),
           };
     for (final outcome in outcomes) {
-      if (selectedOperation != null &&
-          outcome.operation != selectedOperation) {
+      if (selectedOperation != null && outcome.operation != selectedOperation) {
         continue;
       }
       if (!tsmOutcomeMatchesResultMessage(outcome, _resultMessageFilter)) {
@@ -1206,8 +1208,9 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
             TsmLogOutcome(operation: operation, resultMessage: message),
       };
     }
-    final kinds = ((map['resultKinds'] as List?) ?? const [])
-        .map((value) => value.toString());
+    final kinds = ((map['resultKinds'] as List?) ?? const []).map(
+      (value) => value.toString(),
+    );
     return {
       for (final operation in operations)
         for (final kind in kinds)
@@ -1235,41 +1238,42 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
     Map<String, dynamic> json,
     String fileName,
   ) {
-    final unique = ((json['uniqueSerials'] as List?) ??
-            ((json['data'] is Map
-                    ? (json['data'] as Map)['uniqueSerials']
-                    : null)
-                as List?) ??
-            const [])
-        .whereType<Map>()
-        .map((item) {
-          final map = Map<String, dynamic>.from(item);
-          return TsmLogSerial(
-            serialNumber: (map['serialNumber'] ?? '').toString(),
-            operations: {
-              for (final value in (map['operations'] as List?) ?? const [])
-                if (value.toString() == 'ISEMRI_ACMA')
-                  TsmLogOperation.isemriAcma
-                else
-                  TsmLogOperation.terminalSorgu,
-            },
-            resultKinds: {
-              for (final value in (map['resultKinds'] as List?) ?? const [])
-                if (value.toString() == 'serialMismatch')
-                  TsmLogResultKind.serialMismatch
-                else if (value.toString() == 'other')
-                  TsmLogResultKind.other
-                else
-                  TsmLogResultKind.approved,
-            },
-            outcomes: _outcomesFromJson(map),
-            count: (map['count'] as num?)?.toInt() ?? 1,
-            workOrder: _workOrderFromJson(map['workOrder']),
-            occurredAt: _occurredAtFromJson(map['occurredAt']),
-          );
-        })
-        .where((item) => item.serialNumber.isNotEmpty)
-        .toList(growable: false);
+    final unique =
+        ((json['uniqueSerials'] as List?) ??
+                ((json['data'] is Map
+                        ? (json['data'] as Map)['uniqueSerials']
+                        : null)
+                    as List?) ??
+                const [])
+            .whereType<Map>()
+            .map((item) {
+              final map = Map<String, dynamic>.from(item);
+              return TsmLogSerial(
+                serialNumber: (map['serialNumber'] ?? '').toString(),
+                operations: {
+                  for (final value in (map['operations'] as List?) ?? const [])
+                    if (value.toString() == 'ISEMRI_ACMA')
+                      TsmLogOperation.isemriAcma
+                    else
+                      TsmLogOperation.terminalSorgu,
+                },
+                resultKinds: {
+                  for (final value in (map['resultKinds'] as List?) ?? const [])
+                    if (value.toString() == 'serialMismatch')
+                      TsmLogResultKind.serialMismatch
+                    else if (value.toString() == 'other')
+                      TsmLogResultKind.other
+                    else
+                      TsmLogResultKind.approved,
+                },
+                outcomes: _outcomesFromJson(map),
+                count: (map['count'] as num?)?.toInt() ?? 1,
+                workOrder: _workOrderFromJson(map['workOrder']),
+                occurredAt: _occurredAtFromJson(map['occurredAt']),
+              );
+            })
+            .where((item) => item.serialNumber.isNotEmpty)
+            .toList(growable: false);
     final catalog = ((json['resultMessageOptions'] as List?) ?? const [])
         .map((value) => value.toString().trim())
         .where((value) => value.isNotEmpty);
@@ -1351,9 +1355,7 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
         excel.TextCellValue(order?.district ?? ''),
         excel.TextCellValue(order?.phone ?? ''),
         excel.TextCellValue(order?.description ?? ''),
-        excel.TextCellValue(
-          item.operations.map(_operationLabel).join(', '),
-        ),
+        excel.TextCellValue(item.operations.map(_operationLabel).join(', ')),
         excel.TextCellValue(
           item.resultMessages.isEmpty
               ? item.resultKinds.map(_resultLabel).join(', ')
@@ -1374,7 +1376,9 @@ class _TsmLogScreenState extends ConsumerState<TsmLogScreen> {
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${serials.length} sicil Excel olarak aktarıldı.')),
+      SnackBar(
+        content: Text('${serials.length} sicil Excel olarak aktarıldı.'),
+      ),
     );
   }
 }
@@ -1400,9 +1404,7 @@ TsmWorkOrderDetails? _workOrderFromJson(dynamic raw) {
   };
   final details = TsmWorkOrderDetails(
     bankName: (map['bankName'] ?? '').toString().trim(),
-    acquirerId: normalizeBkmAcquirerId(
-      (map['acquirerId'] ?? '').toString(),
-    ),
+    acquirerId: normalizeBkmAcquirerId((map['acquirerId'] ?? '').toString()),
     terminalId: (map['terminalId'] ?? '').toString().trim(),
     merchantName: (map['merchantName'] ?? '').toString().trim(),
     merchantNo: (map['merchantNo'] ?? '').toString().trim(),
@@ -1447,11 +1449,7 @@ class _TsmLogCols {
 }
 
 class _TsmCell extends StatelessWidget {
-  const _TsmCell({
-    this.width,
-    this.flex,
-    required this.child,
-  });
+  const _TsmCell({this.width, this.flex, required this.child});
 
   final double? width;
   final int? flex;
@@ -1557,11 +1555,7 @@ class _PlainCell extends StatelessWidget {
 }
 
 class _BankCell extends StatelessWidget {
-  const _BankCell({
-    required this.name,
-    required this.acquirerId,
-    this.onEdit,
-  });
+  const _BankCell({required this.name, required this.acquirerId, this.onEdit});
 
   final String name;
   final String acquirerId;
@@ -1602,11 +1596,7 @@ class _BankCell extends StatelessWidget {
           ),
         ),
         if (onEdit != null)
-          Icon(
-            LucideIcons.pencil,
-            size: 12,
-            color: AppTheme.textMuted,
-          ),
+          Icon(LucideIcons.pencil, size: 12, color: AppTheme.textMuted),
       ],
     );
     if (onEdit == null) return body;
@@ -1680,9 +1670,9 @@ class _AddressCell extends StatelessWidget {
             address,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppTheme.text,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.text),
           ),
         if (phone.isNotEmpty)
           Text(
@@ -1796,13 +1786,7 @@ class _FilterGroup extends StatelessWidget {
             ),
           ),
         ),
-        Expanded(
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: children,
-          ),
-        ),
+        Expanded(child: Wrap(spacing: 6, runSpacing: 6, children: children)),
       ],
     );
   }
@@ -1839,7 +1823,7 @@ class _FilterChip extends StatelessWidget {
           ),
         ),
         clipBehavior: Clip.antiAlias,
-          child: InkWell(
+        child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
           child: Padding(
@@ -2031,17 +2015,21 @@ class _TsmRangeCalendarDialogState extends State<_TsmRangeCalendarDialog> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   'Aynı takvimde önce başlangıç, sonra bitiş gününü seçin.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
                 ),
               ),
               const Gap(12),
               Row(
                 children: [
-                  Expanded(child: _RangeChip(label: 'Başlangıç', value: startText)),
+                  Expanded(
+                    child: _RangeChip(label: 'Başlangıç', value: startText),
+                  ),
                   const Gap(8),
-                  Expanded(child: _RangeChip(label: 'Bitiş', value: endText)),
+                  Expanded(
+                    child: _RangeChip(label: 'Bitiş', value: endText),
+                  ),
                 ],
               ),
               const Gap(12),
@@ -2117,8 +2105,7 @@ class _TsmRangeCalendarDialogState extends State<_TsmRangeCalendarDialog> {
                   const Gap(8),
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () =>
-                          Navigator.of(context).pop((null, null)),
+                      onPressed: () => Navigator.of(context).pop((null, null)),
                       child: const Text('Tüm tarihler'),
                     ),
                   ),
@@ -2127,10 +2114,9 @@ class _TsmRangeCalendarDialogState extends State<_TsmRangeCalendarDialog> {
                     child: FilledButton(
                       onPressed: _start == null
                           ? null
-                          : () => Navigator.of(context).pop((
-                              _start,
-                              _end ?? _start,
-                            )),
+                          : () => Navigator.of(
+                              context,
+                            ).pop((_start, _end ?? _start)),
                       child: const Text('Uygula'),
                     ),
                   ),
@@ -2156,10 +2142,8 @@ class _TsmRangeCalendarDialogState extends State<_TsmRangeCalendarDialog> {
     final enabled =
         !day.isBefore(DateUtils.dateOnly(widget.firstDate)) &&
         !day.isAfter(DateUtils.dateOnly(widget.lastDate));
-    final selectedStart =
-        _start != null && DateUtils.isSameDay(day, _start!);
-    final selectedEnd =
-        _end != null && DateUtils.isSameDay(day, _end!);
+    final selectedStart = _start != null && DateUtils.isSameDay(day, _start!);
+    final selectedEnd = _end != null && DateUtils.isSameDay(day, _end!);
     final inRange = _inRange(day);
     return Padding(
       padding: const EdgeInsets.all(2),
@@ -2222,9 +2206,9 @@ class _RangeChip extends StatelessWidget {
           ),
           Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
         ],
       ),

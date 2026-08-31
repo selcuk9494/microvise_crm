@@ -1461,6 +1461,60 @@ async function ensureLineStockTable() {
   return true;
 }
 
+async function reconcileLineStockConsumedFromIssued() {
+  await ensureLineStockTable();
+  if (!(await tableExists('lines'))) return 0;
+  const result = await query(
+    `
+      update public.line_stock ls
+      set
+        consumed_at = coalesce(ls.consumed_at, x.used_at, now()),
+        consumed_customer_id = coalesce(ls.consumed_customer_id, x.customer_id),
+        consumed_line_id = coalesce(ls.consumed_line_id, x.line_id)
+      from (
+        select distinct on (ls2.id)
+          ls2.id as stock_id,
+          l.id as line_id,
+          l.customer_id,
+          coalesce(l.starts_at::timestamptz, l.created_at, now()) as used_at
+        from public.line_stock ls2
+        inner join public.lines l
+          on (
+            (
+              length(regexp_replace(coalesce(ls2.line_number, ''), '[^0-9]', '', 'g')) >= 10
+              and length(regexp_replace(coalesce(l.number, ''), '[^0-9]', '', 'g')) >= 10
+              and right(regexp_replace(coalesce(ls2.line_number, ''), '[^0-9]', '', 'g'), 10)
+                = right(regexp_replace(coalesce(l.number, ''), '[^0-9]', '', 'g'), 10)
+            )
+            or (
+              length(regexp_replace(coalesce(ls2.sim_number, ''), '[^0-9]', '', 'g')) >= 15
+              and length(regexp_replace(coalesce(l.sim_number, ''), '[^0-9]', '', 'g')) >= 15
+              and regexp_replace(coalesce(ls2.sim_number, ''), '[^0-9]', '', 'g')
+                = regexp_replace(coalesce(l.sim_number, ''), '[^0-9]', '', 'g')
+            )
+          )
+        where ls2.consumed_at is null
+        order by
+          ls2.id,
+          case
+            when
+              length(regexp_replace(coalesce(ls2.line_number, ''), '[^0-9]', '', 'g')) >= 10
+              and length(regexp_replace(coalesce(l.number, ''), '[^0-9]', '', 'g')) >= 10
+              and right(regexp_replace(coalesce(ls2.line_number, ''), '[^0-9]', '', 'g'), 10)
+                = right(regexp_replace(coalesce(l.number, ''), '[^0-9]', '', 'g'), 10)
+              then 0
+            else 1
+          end,
+          l.is_active desc nulls last,
+          l.created_at desc nulls last
+      ) x
+      where ls.id = x.stock_id
+        and ls.consumed_at is null
+    `,
+  );
+  return result.rowCount || 0;
+}
+
 async function ensureServiceFaultTypesTable() {
   if (ensured.service_fault_types) return true;
 
@@ -2371,6 +2425,7 @@ module.exports = {
   ensureLinesRegistryNumberColumn,
   ensureIssuedSourceInvoiceColumns,
   ensureLineStockTable,
+  reconcileLineStockConsumedFromIssued,
   ensureServiceFaultTypesTable,
   ensureServiceAccessoryTypesTable,
   ensureServiceRecordsColumns,

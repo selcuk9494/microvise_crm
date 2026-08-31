@@ -44,10 +44,7 @@ class QuotesTabState extends ConsumerState<QuotesTab> {
     return quotes
         .where(
           (quote) => matchesSearchQuery(
-            [
-              quote.quoteNumber,
-              quote.customerName ?? '',
-            ].join(' '),
+            [quote.quoteNumber, quote.customerName ?? ''].join(' '),
             q,
           ),
         )
@@ -106,223 +103,220 @@ class QuotesTabState extends ConsumerState<QuotesTab> {
     required bool loadingFresh,
     required bool initialLoading,
   }) {
-        final items = _filterQuotes(rawQuotes);
-        final draft = items.where((q) => q.status == 'draft').length;
-        final sent = items.where((q) => q.status == 'sent').length;
-        final accepted = items
-            .where((q) => q.status == 'accepted' || q.status == 'converted')
-            .length;
-        final tryTotal = items
-            .where((q) => q.currency.toUpperCase() == 'TRY')
-            .fold<double>(0, (sum, q) => sum + q.grandTotal);
-        final usdTotal = items
-            .where((q) => q.currency.toUpperCase() == 'USD')
-            .fold<double>(0, (sum, q) => sum + q.grandTotal);
-        final visibleItems = items.take(_visibleLimit).toList();
-        final hasHidden = visibleItems.length < items.length;
+    final items = _filterQuotes(rawQuotes);
+    final draft = items.where((q) => q.status == 'draft').length;
+    final sent = items.where((q) => q.status == 'sent').length;
+    final accepted = items
+        .where((q) => q.status == 'accepted' || q.status == 'converted')
+        .length;
+    final tryTotal = items
+        .where((q) => q.currency.toUpperCase() == 'TRY')
+        .fold<double>(0, (sum, q) => sum + q.grandTotal);
+    final usdTotal = items
+        .where((q) => q.currency.toUpperCase() == 'USD')
+        .fold<double>(0, (sum, q) => sum + q.grandTotal);
+    final visibleItems = items.take(_visibleLimit).toList();
+    final hasHidden = visibleItems.length < items.length;
 
-        return ListView(
-          padding: const EdgeInsets.only(bottom: 100),
-          children: [
-            if (loadingFresh || initialLoading)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: LinearProgressIndicator(minHeight: 2),
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 100),
+      children: [
+        if (loadingFresh || initialLoading)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+        _QuoteMetricsRow(
+          metrics: [
+            _QuoteMetric(
+              'Toplam',
+              items.length.toString(),
+              LucideIcons.fileText,
+              AppTheme.metricBlue,
+            ),
+            _QuoteMetric(
+              'Taslak',
+              draft.toString(),
+              LucideIcons.pencil,
+              AppTheme.textMuted,
+            ),
+            _QuoteMetric(
+              'Gönderildi',
+              sent.toString(),
+              LucideIcons.send,
+              AppTheme.primary,
+            ),
+            _QuoteMetric(
+              'Onaylı',
+              accepted.toString(),
+              LucideIcons.circleCheck,
+              AppTheme.success,
+            ),
+            _QuoteMetric(
+              'TL Toplam',
+              QuoteMoney.formatAmount(tryTotal, 'TRY'),
+              LucideIcons.banknote,
+              AppTheme.primaryDark,
+            ),
+            if (usdTotal > 0)
+              _QuoteMetric(
+                'USD Toplam',
+                QuoteMoney.formatAmount(usdTotal, 'USD'),
+                LucideIcons.dollarSign,
+                AppTheme.metricBlue,
               ),
-            _QuoteMetricsRow(
-              metrics: [
-                _QuoteMetric(
-                  'Toplam',
-                  items.length.toString(),
-                  LucideIcons.fileText,
-                  AppTheme.metricBlue,
-                ),
-                _QuoteMetric(
-                  'Taslak',
-                  draft.toString(),
-                  LucideIcons.pencil,
-                  AppTheme.textMuted,
-                ),
-                _QuoteMetric(
-                  'Gönderildi',
-                  sent.toString(),
-                  LucideIcons.send,
-                  AppTheme.primary,
-                ),
-                _QuoteMetric(
-                  'Onaylı',
-                  accepted.toString(),
-                  LucideIcons.circleCheck,
-                  AppTheme.success,
-                ),
-                _QuoteMetric(
-                  'TL Toplam',
-                  QuoteMoney.formatAmount(tryTotal, 'TRY'),
-                  LucideIcons.banknote,
-                  AppTheme.primaryDark,
-                ),
-                if (usdTotal > 0)
-                  _QuoteMetric(
-                    'USD Toplam',
-                    QuoteMoney.formatAmount(usdTotal, 'USD'),
-                    LucideIcons.dollarSign,
-                    AppTheme.metricBlue,
+          ],
+        ),
+        const Gap(8),
+        _QuoteFiltersCard(
+          filter: _filter,
+          onSearchChanged: (value) => setState(() => _searchQuery = value),
+          onChanged: (next) => setState(() {
+            _filter = next;
+            _visibleLimit = _renderStep;
+          }),
+          onRefresh: () => ref.invalidate(quotesProvider(_filter)),
+          onNewQuote: startNewQuote,
+        ),
+        const Gap(8),
+        if (items.isEmpty && !initialLoading)
+          AppCard(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Henüz teklif yok. Yeni Teklif ile başlayın.'),
                   ),
-              ],
+                  FilledButton.icon(
+                    onPressed: startNewQuote,
+                    icon: const Icon(LucideIcons.plus, size: 18),
+                    label: const Text('Yeni Teklif'),
+                  ),
+                ],
+              ),
             ),
-            const Gap(8),
-            _QuoteFiltersCard(
-              filter: _filter,
-              onSearchChanged: (value) => setState(() => _searchQuery = value),
-              onChanged: (next) => setState(() {
-                _filter = next;
-                _visibleLimit = _renderStep;
-              }),
-              onRefresh: () => ref.invalidate(quotesProvider(_filter)),
-              onNewQuote: startNewQuote,
-            ),
-            const Gap(8),
-            if (items.isEmpty && !initialLoading)
-              AppCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
+          )
+        else
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
                   child: Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Henüz teklif yok. Yeni Teklif ile başlayın.',
+                          initialLoading
+                              ? 'Teklifler yükleniyor…'
+                              : hasHidden
+                              ? '${visibleItems.length} / ${items.length} teklif gösteriliyor'
+                              : '${items.length} teklif listeleniyor',
+                          style: Theme.of(context).textTheme.titleSmall,
                         ),
                       ),
-                      FilledButton.icon(
-                        onPressed: startNewQuote,
-                        icon: const Icon(LucideIcons.plus, size: 18),
-                        label: const Text('Yeni Teklif'),
-                      ),
+                      if (initialLoading)
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                     ],
                   ),
                 ),
-              )
-            else
-              AppCard(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              initialLoading
-                                  ? 'Teklifler yükleniyor…'
-                                  : hasHidden
-                                  ? '${visibleItems.length} / ${items.length} teklif gösteriliyor'
-                                  : '${items.length} teklif listeleniyor',
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
+                if (MediaQuery.sizeOf(context).width >= 900)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppDenseList.rowH,
+                      0,
+                      AppDenseList.rowH,
+                      4,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Cari / Teklif No',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: AppTheme.textSoft),
                           ),
-                          if (initialLoading)
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                        ],
+                        ),
+                        SizedBox(
+                          width: _QuoteTableCols.date,
+                          child: Text(
+                            'Tarih',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: AppTheme.textSoft),
+                          ),
+                        ),
+                        SizedBox(
+                          width: _QuoteTableCols.validUntil,
+                          child: Text(
+                            'Geçerlilik',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: AppTheme.textSoft),
+                          ),
+                        ),
+                        SizedBox(
+                          width: _QuoteTableCols.status,
+                          child: Text(
+                            'Durum',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: AppTheme.textSoft),
+                          ),
+                        ),
+                        SizedBox(
+                          width: _QuoteTableCols.currency,
+                          child: Text(
+                            'Döviz',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: AppTheme.textSoft),
+                          ),
+                        ),
+                        SizedBox(
+                          width: _QuoteTableCols.amount,
+                          child: Text(
+                            'Tutar',
+                            textAlign: TextAlign.end,
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: AppTheme.textSoft),
+                          ),
+                        ),
+                        SizedBox(width: _QuoteTableCols.actions),
+                      ],
+                    ),
+                  ),
+                for (var i = 0; i < visibleItems.length; i++)
+                  _QuoteRow(
+                    key: ValueKey(visibleItems[i].id),
+                    quote: visibleItems[i],
+                    index: i,
+                    filter: _filter,
+                    onEdit: () => _openEditor(quote: visibleItems[i]),
+                    onChanged: () {
+                      ref.invalidate(quotesProvider(_filter));
+                    },
+                  ),
+                if (hasHidden)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
+                    child: Center(
+                      child: OutlinedButton.icon(
+                        onPressed: () =>
+                            setState(() => _visibleLimit += _renderStep),
+                        icon: const Icon(AppPhosphorIcons.caretDown),
+                        label: Text(
+                          'Daha fazla göster (${visibleItems.length} / ${items.length})',
+                        ),
                       ),
                     ),
-                    if (MediaQuery.sizeOf(context).width >= 900)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppDenseList.rowH,
-                          0,
-                          AppDenseList.rowH,
-                          4,
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Cari / Teklif No',
-                                style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(color: AppTheme.textSoft),
-                              ),
-                            ),
-                            SizedBox(
-                              width: _QuoteTableCols.date,
-                              child: Text(
-                                'Tarih',
-                                style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(color: AppTheme.textSoft),
-                              ),
-                            ),
-                            SizedBox(
-                              width: _QuoteTableCols.validUntil,
-                              child: Text(
-                                'Geçerlilik',
-                                style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(color: AppTheme.textSoft),
-                              ),
-                            ),
-                            SizedBox(
-                              width: _QuoteTableCols.status,
-                              child: Text(
-                                'Durum',
-                                style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(color: AppTheme.textSoft),
-                              ),
-                            ),
-                            SizedBox(
-                              width: _QuoteTableCols.currency,
-                              child: Text(
-                                'Döviz',
-                                style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(color: AppTheme.textSoft),
-                              ),
-                            ),
-                            SizedBox(
-                              width: _QuoteTableCols.amount,
-                              child: Text(
-                                'Tutar',
-                                textAlign: TextAlign.end,
-                                style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(color: AppTheme.textSoft),
-                              ),
-                            ),
-                            SizedBox(width: _QuoteTableCols.actions),
-                          ],
-                        ),
-                      ),
-                    for (var i = 0; i < visibleItems.length; i++)
-                      _QuoteRow(
-                        key: ValueKey(visibleItems[i].id),
-                        quote: visibleItems[i],
-                        index: i,
-                        filter: _filter,
-                        onEdit: () => _openEditor(quote: visibleItems[i]),
-                        onChanged: () {
-                          ref.invalidate(quotesProvider(_filter));
-                        },
-                      ),
-                    if (hasHidden)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
-                        child: Center(
-                          child: OutlinedButton.icon(
-                            onPressed: () => setState(
-                              () => _visibleLimit += _renderStep,
-                            ),
-                            icon: const Icon(AppPhosphorIcons.caretDown),
-                            label: Text(
-                              'Daha fazla göster (${visibleItems.length} / ${items.length})',
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-          ],
-        );
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -430,14 +424,14 @@ class _QuoteFiltersCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 1050;
+    final compact = MediaQuery.sizeOf(context).width < 700;
 
     return AppCard(
       child: LayoutBuilder(
         builder: (context, constraints) {
           final fields = <Widget>[
             SizedBox(
-              width: compact ? double.infinity : 280,
+              width: compact ? 260 : 280,
               child: TextField(
                 decoration: const InputDecoration(
                   prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
@@ -447,7 +441,7 @@ class _QuoteFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: compact ? double.infinity : 160,
+              width: 160,
               child: DropdownButtonFormField<String>(
                 key: ValueKey('active-${filter.activeFilter}'),
                 initialValue: filter.activeFilter,
@@ -474,7 +468,7 @@ class _QuoteFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: compact ? double.infinity : 190,
+              width: 190,
               child: DropdownButtonFormField<String?>(
                 key: ValueKey('status-${filter.status ?? ''}'),
                 initialValue: filter.status,
@@ -492,8 +486,14 @@ class _QuoteFiltersCard extends StatelessWidget {
                     value: 'converted',
                     child: Text('Faturaya dönüştü'),
                   ),
-                  DropdownMenuItem(value: 'rejected', child: Text('Reddedildi')),
-                  DropdownMenuItem(value: 'expired', child: Text('Süresi doldu')),
+                  DropdownMenuItem(
+                    value: 'rejected',
+                    child: Text('Reddedildi'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'expired',
+                    child: Text('Süresi doldu'),
+                  ),
                 ],
                 onChanged: (value) => onChanged(
                   QuoteFilter(
@@ -527,9 +527,9 @@ class _QuoteFiltersCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Teklif kayıtları satış faturaları ile aynı listede filtrelenir.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textSoft,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppTheme.textSoft),
                     ),
                   ),
                   FilledButton.icon(
@@ -582,7 +582,9 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
   Future<void> _exportPdf() async {
     setState(() => _busy = true);
     try {
-      final detail = await ref.read(quoteDetailProvider(widget.quote.id).future);
+      final detail = await ref.read(
+        quoteDetailProvider(widget.quote.id).future,
+      );
       if (detail == null) throw Exception('Teklif bulunamadı.');
       final settings = await ref.read(quoteDocumentSettingsProvider.future);
       final bytes = await buildQuotePdfBytes(quote: detail, settings: settings);
@@ -592,14 +594,14 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
         mimeType: 'application/pdf',
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Teklif PDF hazırlandı.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Teklif PDF hazırlandı.')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF oluşturulamadı: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('PDF oluşturulamadı: $error')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -631,10 +633,10 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
     if (apiClient == null) return;
     setState(() => _busy = true);
     try {
-      final response = await apiClient.postJson('/mutate', body: {
-        'op': 'convertQuoteToInvoice',
-        'quoteId': widget.quote.id,
-      });
+      final response = await apiClient.postJson(
+        '/mutate',
+        body: {'op': 'convertQuoteToInvoice', 'quoteId': widget.quote.id},
+      );
       widget.onChanged();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -647,9 +649,9 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
       context.go('/e-fatura/satis');
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Onay başarısız: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Onay başarısız: $error')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -660,20 +662,23 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
     if (apiClient == null) return;
     setState(() => _busy = true);
     try {
-      await apiClient.postJson('/mutate', body: {
-        'op': 'updateWhere',
-        'table': 'quotes',
-        'filters': [
-          {'col': 'id', 'op': 'eq', 'value': widget.quote.id},
-        ],
-        'values': {'is_active': active},
-      });
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'quotes',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.quote.id},
+          ],
+          'values': {'is_active': active},
+        },
+      );
       widget.onChanged();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Durum güncellenemedi.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Durum güncellenemedi.')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -704,26 +709,32 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
     if (apiClient == null) return;
     setState(() => _busy = true);
     try {
-      await apiClient.postJson('/mutate', body: {
-        'op': 'deleteWhere',
-        'table': 'quote_items',
-        'filters': [
-          {'col': 'quote_id', 'op': 'eq', 'value': widget.quote.id},
-        ],
-      });
-      await apiClient.postJson('/mutate', body: {
-        'op': 'deleteWhere',
-        'table': 'quotes',
-        'filters': [
-          {'col': 'id', 'op': 'eq', 'value': widget.quote.id},
-        ],
-      });
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'deleteWhere',
+          'table': 'quote_items',
+          'filters': [
+            {'col': 'quote_id', 'op': 'eq', 'value': widget.quote.id},
+          ],
+        },
+      );
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'deleteWhere',
+          'table': 'quotes',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': widget.quote.id},
+          ],
+        },
+      );
       widget.onChanged();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Silme başarısız.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Silme başarısız.')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -733,7 +744,10 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
   @override
   Widget build(BuildContext context) {
     final quote = widget.quote;
-    final amountText = QuoteMoney.formatAmount(quote.grandTotal, quote.currency);
+    final amountText = QuoteMoney.formatAmount(
+      quote.grandTotal,
+      quote.currency,
+    );
     final dateFmt = DateFormat('dd.MM.yyyy', 'tr_TR');
     final validLabel = quote.validUntil == null
         ? '—'
@@ -750,9 +764,7 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
         subtitle: quote.quoteNumber,
         badge: AppBadge(
           dense: true,
-          label: quote.isActive
-              ? Quote.statusLabel(quote.status)
-              : 'Pasif',
+          label: quote.isActive ? Quote.statusLabel(quote.status) : 'Pasif',
           tone: quote.isActive
               ? _statusTone(quote.status)
               : AppBadgeTone.neutral,
@@ -762,10 +774,7 @@ class _QuoteRowState extends ConsumerState<_QuoteRow> {
             icon: LucideIcons.calendar,
             text: dateFmt.format(quote.quoteDate),
           ),
-          AppDenseInfoChip(
-            icon: LucideIcons.timer,
-            text: validLabel,
-          ),
+          AppDenseInfoChip(icon: LucideIcons.timer, text: validLabel),
           AppDenseInfoChip(
             icon: LucideIcons.banknote,
             text: amountText,
@@ -1007,7 +1016,9 @@ class _QuoteIconAction extends StatelessWidget {
           backgroundColor: enabled
               ? AppTheme.softTint(color, alpha: 0.12)
               : AppTheme.surfaceMuted,
-          foregroundColor: enabled ? AppTheme.softFg(color) : AppTheme.textMuted,
+          foregroundColor: enabled
+              ? AppTheme.softFg(color)
+              : AppTheme.textMuted,
         ),
         onPressed: onPressed,
         icon: Icon(icon, size: AppDenseList.actionIcon),

@@ -13,6 +13,7 @@ import '../../core/supabase/supabase_providers.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_page_layout.dart';
+import '../../core/ui/app_phone_scroll.dart';
 import '../billing/billing_screen.dart';
 import '../customers/web_download_helper.dart'
     if (dart.library.io) '../customers/io_download_helper.dart';
@@ -738,14 +739,10 @@ class ProductsScreen extends ConsumerWidget {
     final stats = licensesStatsAsync.asData?.value;
     final gmp3Total =
         stats?.gmp3Total ??
-        licenses
-            .where((e) => IssuedLicenseType.isGmp3(e.licenseType))
-            .length;
+        licenses.where((e) => IssuedLicenseType.isGmp3(e.licenseType)).length;
     final irestoTotal =
         stats?.irestoTotal ??
-        licenses
-            .where((e) => IssuedLicenseType.isIresto(e.licenseType))
-            .length;
+        licenses.where((e) => IssuedLicenseType.isIresto(e.licenseType)).length;
 
     String displayNameOrUnknown(String? value) {
       final v = (value ?? '').trim();
@@ -953,7 +950,8 @@ class ProductsScreen extends ConsumerWidget {
                           width: isNarrow ? double.infinity : 320,
                           child: TextField(
                             decoration: const InputDecoration(
-                              hintText: 'Ara (müşteri, hat, SIM, sicil, firma...)',
+                              hintText:
+                                  'Ara (müşteri, hat, SIM, sicil, firma...)',
                               prefixIcon: Icon(LucideIcons.search),
                               isDense: true,
                             ),
@@ -1169,125 +1167,70 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
 
     String dateLabel(DateTime? d) => d == null ? 'Seç' : df.format(d);
 
-    return Padding(
+    return AppPhoneScrollColumn(
       padding: const EdgeInsets.all(10),
-      child: Column(
-        children: [
-          AppCard(
-            padding: const EdgeInsets.all(12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final narrow = constraints.maxWidth < 980;
-                final operatorField = SizedBox(
-                  width: narrow ? double.infinity : 220,
-                  child: DropdownButtonFormField<LineOperatorFilter>(
-                    initialValue: operatorFilter,
-                    items: const [
-                      DropdownMenuItem(
-                        value: LineOperatorFilter.all,
-                        child: Text('Tüm Operatörler'),
-                      ),
-                      DropdownMenuItem(
-                        value: LineOperatorFilter.turkcell,
-                        child: Text('TURKCELL'),
-                      ),
-                      DropdownMenuItem(
-                        value: LineOperatorFilter.telsim,
-                        child: Text('TELSİM'),
-                      ),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      ref.read(lineOperatorFilterProvider.notifier).set(v);
-                    },
-                    decoration: const InputDecoration(labelText: 'Operatör'),
-                  ),
-                );
-
-                final customerField = SizedBox(
-                  width: narrow ? double.infinity : 320,
-                  child: TextField(
-                    controller: _customerController,
-                    onChanged: ref
-                        .read(lineCustomerFilterProvider.notifier)
-                        .set,
-                    decoration: const InputDecoration(
-                      labelText: 'Müşteri',
-                      hintText: 'Müşteri adına göre',
-                      prefixIcon: Icon(LucideIcons.store),
+      header: [
+        AppCard(
+          padding: const EdgeInsets.all(12),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 980;
+              final operatorField = SizedBox(
+                width: 220,
+                child: DropdownButtonFormField<LineOperatorFilter>(
+                  initialValue: operatorFilter,
+                  items: const [
+                    DropdownMenuItem(
+                      value: LineOperatorFilter.all,
+                      child: Text('Tüm Operatörler'),
                     ),
-                  ),
-                );
-
-                final fromBtn = SizedBox(
-                  width: narrow ? double.infinity : 200,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: endsFrom ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked == null) return;
-                      ref
-                          .read(lineEndsFromProvider.notifier)
-                          .set(DateTime(picked.year, picked.month, picked.day));
-                    },
-                    icon: const Icon(LucideIcons.calendarDays, size: 18),
-                    label: Text('Bitiş ≥ ${dateLabel(endsFrom)}'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(0, 32),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    DropdownMenuItem(
+                      value: LineOperatorFilter.turkcell,
+                      child: Text('TURKCELL'),
                     ),
-                  ),
-                );
-                final toBtn = SizedBox(
-                  width: narrow ? double.infinity : 200,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: endsTo ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked == null) return;
-                      ref
-                          .read(lineEndsToProvider.notifier)
-                          .set(DateTime(picked.year, picked.month, picked.day));
-                    },
-                    icon: const Icon(LucideIcons.calendar, size: 18),
-                    label: Text('Bitiş ≤ ${dateLabel(endsTo)}'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(0, 32),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    DropdownMenuItem(
+                      value: LineOperatorFilter.telsim,
+                      child: Text('TELSİM'),
                     ),
-                  ),
-                );
-
-                final clearBtn = OutlinedButton.icon(
-                  onPressed: () {
-                    _customerController.text = '';
-                    ref.read(lineCustomerFilterProvider.notifier).set('');
-                    ref.read(lineEndsFromProvider.notifier).set(null);
-                    ref.read(lineEndsToProvider.notifier).set(null);
-                    ref
-                        .read(lineOperatorFilterProvider.notifier)
-                        .set(LineOperatorFilter.all);
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    ref.read(lineOperatorFilterProvider.notifier).set(v);
                   },
-                  icon: const Icon(LucideIcons.eraser, size: 18),
-                  label: const Text('Temizle'),
+                  decoration: const InputDecoration(labelText: 'Operatör'),
+                ),
+              );
+
+              final customerField = SizedBox(
+                width: 260,
+                child: TextField(
+                  controller: _customerController,
+                  onChanged: ref.read(lineCustomerFilterProvider.notifier).set,
+                  decoration: const InputDecoration(
+                    labelText: 'Müşteri',
+                    hintText: 'Müşteri adına göre',
+                    prefixIcon: Icon(LucideIcons.store),
+                  ),
+                ),
+              );
+
+              final fromBtn = SizedBox(
+                width: 180,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: endsFrom ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked == null) return;
+                    ref
+                        .read(lineEndsFromProvider.notifier)
+                        .set(DateTime(picked.year, picked.month, picked.day));
+                  },
+                  icon: const Icon(LucideIcons.calendarDays, size: 18),
+                  label: Text('Bitiş ≥ ${dateLabel(endsFrom)}'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
                     padding: const EdgeInsets.symmetric(
@@ -1297,9 +1240,50 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                );
+                ),
+              );
+              final toBtn = SizedBox(
+                width: 180,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: endsTo ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked == null) return;
+                    ref
+                        .read(lineEndsToProvider.notifier)
+                        .set(DateTime(picked.year, picked.month, picked.day));
+                  },
+                  icon: const Icon(LucideIcons.calendar, size: 18),
+                  label: Text('Bitiş ≤ ${dateLabel(endsTo)}'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 32),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              );
 
-                final compactBtnStyle = OutlinedButton.styleFrom(
+              final clearBtn = OutlinedButton.icon(
+                onPressed: () {
+                  _customerController.text = '';
+                  ref.read(lineCustomerFilterProvider.notifier).set('');
+                  ref.read(lineEndsFromProvider.notifier).set(null);
+                  ref.read(lineEndsToProvider.notifier).set(null);
+                  ref
+                      .read(lineOperatorFilterProvider.notifier)
+                      .set(LineOperatorFilter.all);
+                },
+                icon: const Icon(LucideIcons.eraser, size: 18),
+                label: const Text('Temizle'),
+                style: OutlinedButton.styleFrom(
                   minimumSize: const Size(0, 32),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -1307,156 +1291,159 @@ class _LinesTabState extends ConsumerState<_LinesTab> {
                   ),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                );
+                ),
+              );
 
-                final exportBtn = OutlinedButton.icon(
-                  onPressed: widget.exportAll,
-                  icon: const Icon(LucideIcons.download, size: 18),
-                  label: const Text('Dışarı Aktar'),
-                  style: compactBtnStyle,
-                );
+              final compactBtnStyle = OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              );
 
-                final importBtn = OutlinedButton.icon(
-                  onPressed: widget.importAll,
-                  icon: const Icon(LucideIcons.upload, size: 18),
-                  label: const Text('İçe Aktar'),
-                  style: compactBtnStyle,
-                );
+              final exportBtn = OutlinedButton.icon(
+                onPressed: widget.exportAll,
+                icon: const Icon(LucideIcons.download, size: 18),
+                label: const Text('Dışarı Aktar'),
+                style: compactBtnStyle,
+              );
 
-                if (narrow) {
-                  return Column(
-                    children: [
-                      operatorField,
-                      const Gap(8),
-                      customerField,
-                      const Gap(8),
-                      fromBtn,
-                      const Gap(8),
-                      toBtn,
-                      const Gap(8),
-                      Row(
-                        children: [
-                          Expanded(child: clearBtn),
-                          const Gap(8),
-                          Expanded(child: importBtn),
-                        ],
-                      ),
-                      const Gap(8),
-                      SizedBox(width: double.infinity, child: exportBtn),
-                    ],
-                  );
-                }
+              final importBtn = OutlinedButton.icon(
+                onPressed: widget.importAll,
+                icon: const Icon(LucideIcons.upload, size: 18),
+                label: const Text('İçe Aktar'),
+                style: compactBtnStyle,
+              );
 
-                return SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      operatorField,
-                      const Gap(8),
-                      customerField,
-                      const Gap(8),
-                      fromBtn,
-                      const Gap(8),
-                      toBtn,
-                      const Gap(8),
-                      clearBtn,
-                      const Gap(8),
-                      importBtn,
-                      const Gap(8),
-                      exportBtn,
-                    ],
-                  ),
+              if (narrow) {
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    operatorField,
+                    customerField,
+                    fromBtn,
+                    toBtn,
+                    clearBtn,
+                    importBtn,
+                    exportBtn,
+                  ],
                 );
-              },
-            ),
+              }
+
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    operatorField,
+                    const Gap(8),
+                    customerField,
+                    const Gap(8),
+                    fromBtn,
+                    const Gap(8),
+                    toBtn,
+                    const Gap(8),
+                    clearBtn,
+                    const Gap(8),
+                    importBtn,
+                    const Gap(8),
+                    exportBtn,
+                  ],
+                ),
+              );
+            },
           ),
-          const Gap(8),
-          Expanded(
-            child: linesAsync.when(
-              data: (items) {
-                if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
-                if (operatorFilter == LineOperatorFilter.all) {
-                  final turkcell = items
-                      .where(
-                        (e) =>
-                            (e.operator ?? '').trim().toLowerCase() ==
-                            'turkcell',
-                      )
-                      .toList(growable: false);
-                  final telsim = items
-                      .where(
-                        (e) =>
-                            (e.operator ?? '').trim().toLowerCase() == 'telsim',
-                      )
-                      .toList(growable: false);
-                  final other = items
-                      .where((e) {
-                        final op = (e.operator ?? '').trim().toLowerCase();
-                        return op != 'turkcell' && op != 'telsim';
-                      })
-                      .toList(growable: false);
+        ),
+        const Gap(8),
+      ],
+      body: ({required nested}) => linesAsync.when(
+        data: (items) {
+          if (items.isEmpty) return const _Empty(text: 'Kayıt yok.');
+          if (operatorFilter == LineOperatorFilter.all) {
+            final turkcell = items
+                .where(
+                  (e) => (e.operator ?? '').trim().toLowerCase() == 'turkcell',
+                )
+                .toList(growable: false);
+            final telsim = items
+                .where(
+                  (e) => (e.operator ?? '').trim().toLowerCase() == 'telsim',
+                )
+                .toList(growable: false);
+            final other = items
+                .where((e) {
+                  final op = (e.operator ?? '').trim().toLowerCase();
+                  return op != 'turkcell' && op != 'telsim';
+                })
+                .toList(growable: false);
 
-                  return Scrollbar(
-                    thumbVisibility: true,
-                    child: ListView(
-                      padding: const EdgeInsets.only(bottom: 120),
-                      children: [
-                        if (turkcell.isNotEmpty) ...[
-                          const _SectionHeader(
-                            title: 'TURKCELL',
-                            tone: AppBadgeTone.primary,
-                          ),
-                          const Gap(10),
-                          for (final item in turkcell) ...[
-                            _LineRow(item: item, isAdmin: widget.isAdmin),
-                            const Gap(10),
-                          ],
-                          const Gap(6),
-                        ],
-                        if (telsim.isNotEmpty) ...[
-                          const _SectionHeader(
-                            title: 'TELSİM',
-                            tone: AppBadgeTone.warning,
-                          ),
-                          const Gap(10),
-                          for (final item in telsim) ...[
-                            _LineRow(item: item, isAdmin: widget.isAdmin),
-                            const Gap(10),
-                          ],
-                          const Gap(6),
-                        ],
-                        if (other.isNotEmpty) ...[
-                          const _SectionHeader(
-                            title: 'Diğer',
-                            tone: AppBadgeTone.neutral,
-                          ),
-                          const Gap(10),
-                          for (final item in other) ...[
-                            _LineRow(item: item, isAdmin: widget.isAdmin),
-                            const Gap(10),
-                          ],
-                        ],
-                      ],
-                    ),
-                  );
-                }
-
-                return Scrollbar(
-                  thumbVisibility: true,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.only(bottom: 120),
-                    itemCount: items.length,
-                    separatorBuilder: (_, _) => const Gap(10),
-                    itemBuilder: (context, index) =>
-                        _LineRow(item: items[index], isAdmin: widget.isAdmin),
+            return ListView(
+              padding: nested
+                  ? EdgeInsets.zero
+                  : const EdgeInsets.only(bottom: 120),
+              shrinkWrap: nested,
+              physics: AppPhoneScrollColumn.physicsFor(nested: nested),
+              children: [
+                if (turkcell.isNotEmpty) ...[
+                  const _SectionHeader(
+                    title: 'TURKCELL',
+                    tone: AppBadgeTone.primary,
                   ),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => const _Empty(text: 'Hatlar yüklenemedi.'),
-            ),
-          ),
-        ],
+                  const Gap(10),
+                  for (final item in turkcell) ...[
+                    _LineRow(item: item, isAdmin: widget.isAdmin),
+                    const Gap(10),
+                  ],
+                  const Gap(6),
+                ],
+                if (telsim.isNotEmpty) ...[
+                  const _SectionHeader(
+                    title: 'TELSİM',
+                    tone: AppBadgeTone.warning,
+                  ),
+                  const Gap(10),
+                  for (final item in telsim) ...[
+                    _LineRow(item: item, isAdmin: widget.isAdmin),
+                    const Gap(10),
+                  ],
+                  const Gap(6),
+                ],
+                if (other.isNotEmpty) ...[
+                  const _SectionHeader(
+                    title: 'Diğer',
+                    tone: AppBadgeTone.neutral,
+                  ),
+                  const Gap(10),
+                  for (final item in other) ...[
+                    _LineRow(item: item, isAdmin: widget.isAdmin),
+                    const Gap(10),
+                  ],
+                ],
+              ],
+            );
+          }
+
+          return ListView.separated(
+            padding: nested
+                ? EdgeInsets.zero
+                : const EdgeInsets.only(bottom: 120),
+            shrinkWrap: nested,
+            physics: AppPhoneScrollColumn.physicsFor(nested: nested),
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const Gap(10),
+            itemBuilder: (context, index) =>
+                _LineRow(item: items[index], isAdmin: widget.isAdmin),
+          );
+        },
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, _) => const _Empty(text: 'Hatlar yüklenemedi.'),
       ),
     );
   }
@@ -1505,128 +1492,77 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
 
     String dateLabel(DateTime? d) => d == null ? 'Seç' : df.format(d);
 
-    return Padding(
+    return AppPhoneScrollColumn(
       padding: const EdgeInsets.all(10),
-      child: Column(
-        children: [
-          AppCard(
-            padding: const EdgeInsets.all(12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final narrow = constraints.maxWidth < 980;
-                final customerField = SizedBox(
-                  width: narrow ? double.infinity : 320,
-                  child: TextField(
-                    controller: _customerController,
-                    onChanged: ref
-                        .read(licenseCustomerFilterProvider.notifier)
-                        .set,
-                    decoration: const InputDecoration(
-                      labelText: 'Müşteri',
-                      hintText: 'Müşteri adına göre',
-                      prefixIcon: Icon(LucideIcons.store),
-                    ),
+      header: [
+        AppCard(
+          padding: const EdgeInsets.all(12),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 980;
+              final customerField = SizedBox(
+                width: 260,
+                child: TextField(
+                  controller: _customerController,
+                  onChanged: ref
+                      .read(licenseCustomerFilterProvider.notifier)
+                      .set,
+                  decoration: const InputDecoration(
+                    labelText: 'Müşteri',
+                    hintText: 'Müşteri adına göre',
+                    prefixIcon: Icon(LucideIcons.store),
                   ),
-                );
+                ),
+              );
 
-                final companies =
-                    companiesAsync.asData?.value
-                        .where((e) => e.isActive)
-                        .toList(growable: false) ??
-                    const <SoftwareCompanyDefinition>[];
-                final companyField = SizedBox(
-                  width: narrow ? double.infinity : 320,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: companyFilter,
-                    items: [
-                      const DropdownMenuItem(
-                        value: 'all',
-                        child: Text('Tüm Firmalar'),
-                      ),
-                      for (final c in companies)
-                        DropdownMenuItem(value: c.id, child: Text(c.name)),
-                      const DropdownMenuItem(
-                        value: 'unknown',
-                        child: Text('Belirsiz'),
-                      ),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      ref.read(licenseCompanyFilterProvider.notifier).set(v);
-                    },
-                    decoration: const InputDecoration(
-                      labelText: 'Yazılım Firması',
+              final companies =
+                  companiesAsync.asData?.value
+                      .where((e) => e.isActive)
+                      .toList(growable: false) ??
+                  const <SoftwareCompanyDefinition>[];
+              final companyField = SizedBox(
+                width: 260,
+                child: DropdownButtonFormField<String>(
+                  initialValue: companyFilter,
+                  items: [
+                    const DropdownMenuItem(
+                      value: 'all',
+                      child: Text('Tüm Firmalar'),
                     ),
-                  ),
-                );
-
-                final fromBtn = SizedBox(
-                  width: narrow ? double.infinity : 200,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: endsFrom ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked == null) return;
-                      ref
-                          .read(licenseEndsFromProvider.notifier)
-                          .set(DateTime(picked.year, picked.month, picked.day));
-                    },
-                    icon: const Icon(LucideIcons.calendarDays, size: 18),
-                    label: Text('Bitiş ≥ ${dateLabel(endsFrom)}'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(0, 32),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    for (final c in companies)
+                      DropdownMenuItem(value: c.id, child: Text(c.name)),
+                    const DropdownMenuItem(
+                      value: 'unknown',
+                      child: Text('Belirsiz'),
                     ),
-                  ),
-                );
-                final toBtn = SizedBox(
-                  width: narrow ? double.infinity : 200,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: endsTo ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked == null) return;
-                      ref
-                          .read(licenseEndsToProvider.notifier)
-                          .set(DateTime(picked.year, picked.month, picked.day));
-                    },
-                    icon: const Icon(LucideIcons.calendar, size: 18),
-                    label: Text('Bitiş ≤ ${dateLabel(endsTo)}'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(0, 32),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                );
-
-                final clearBtn = OutlinedButton.icon(
-                  onPressed: () {
-                    _customerController.text = '';
-                    ref.read(licenseCustomerFilterProvider.notifier).set('');
-                    ref.read(licenseEndsFromProvider.notifier).set(null);
-                    ref.read(licenseEndsToProvider.notifier).set(null);
-                    ref.read(licenseCompanyFilterProvider.notifier).set('all');
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    ref.read(licenseCompanyFilterProvider.notifier).set(v);
                   },
-                  icon: const Icon(LucideIcons.eraser, size: 18),
-                  label: const Text('Temizle'),
+                  decoration: const InputDecoration(
+                    labelText: 'Yazılım Firması',
+                  ),
+                ),
+              );
+
+              final fromBtn = SizedBox(
+                width: 180,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: endsFrom ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked == null) return;
+                    ref
+                        .read(licenseEndsFromProvider.notifier)
+                        .set(DateTime(picked.year, picked.month, picked.day));
+                  },
+                  icon: const Icon(LucideIcons.calendarDays, size: 18),
+                  label: Text('Bitiş ≥ ${dateLabel(endsFrom)}'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 32),
                     padding: const EdgeInsets.symmetric(
@@ -1636,9 +1572,48 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                );
+                ),
+              );
+              final toBtn = SizedBox(
+                width: 180,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: endsTo ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked == null) return;
+                    ref
+                        .read(licenseEndsToProvider.notifier)
+                        .set(DateTime(picked.year, picked.month, picked.day));
+                  },
+                  icon: const Icon(LucideIcons.calendar, size: 18),
+                  label: Text('Bitiş ≤ ${dateLabel(endsTo)}'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 32),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              );
 
-                final compactBtnStyle = OutlinedButton.styleFrom(
+              final clearBtn = OutlinedButton.icon(
+                onPressed: () {
+                  _customerController.text = '';
+                  ref.read(licenseCustomerFilterProvider.notifier).set('');
+                  ref.read(licenseEndsFromProvider.notifier).set(null);
+                  ref.read(licenseEndsToProvider.notifier).set(null);
+                  ref.read(licenseCompanyFilterProvider.notifier).set('all');
+                },
+                icon: const Icon(LucideIcons.eraser, size: 18),
+                label: const Text('Temizle'),
+                style: OutlinedButton.styleFrom(
                   minimumSize: const Size(0, 32),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -1646,119 +1621,121 @@ class _LicensesTabState extends ConsumerState<_LicensesTab> {
                   ),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                );
+                ),
+              );
 
-                final exportBtn = OutlinedButton.icon(
-                  onPressed: widget.exportAll,
-                  icon: const Icon(LucideIcons.download, size: 18),
-                  label: const Text('Dışarı Aktar'),
-                  style: compactBtnStyle,
-                );
+              final compactBtnStyle = OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              );
 
-                final importBtn = OutlinedButton.icon(
-                  onPressed: widget.importAll,
-                  icon: const Icon(LucideIcons.upload, size: 18),
-                  label: const Text('İçe Aktar'),
-                  style: compactBtnStyle,
-                );
+              final exportBtn = OutlinedButton.icon(
+                onPressed: widget.exportAll,
+                icon: const Icon(LucideIcons.download, size: 18),
+                label: const Text('Dışarı Aktar'),
+                style: compactBtnStyle,
+              );
 
-                if (narrow) {
-                  return Column(
-                    children: [
-                      customerField,
-                      const Gap(8),
-                      companyField,
-                      const Gap(8),
-                      fromBtn,
-                      const Gap(8),
-                      toBtn,
-                      const Gap(8),
-                      Row(
-                        children: [
-                          Expanded(child: clearBtn),
-                          const Gap(8),
-                          Expanded(child: importBtn),
-                        ],
-                      ),
-                      const Gap(8),
-                      SizedBox(width: double.infinity, child: exportBtn),
-                    ],
-                  );
-                }
+              final importBtn = OutlinedButton.icon(
+                onPressed: widget.importAll,
+                icon: const Icon(LucideIcons.upload, size: 18),
+                label: const Text('İçe Aktar'),
+                style: compactBtnStyle,
+              );
 
-                return SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      customerField,
-                      const Gap(8),
-                      companyField,
-                      const Gap(8),
-                      fromBtn,
-                      const Gap(8),
-                      toBtn,
-                      const Gap(8),
-                      clearBtn,
-                      const Gap(8),
-                      importBtn,
-                      const Gap(8),
-                      exportBtn,
-                    ],
-                  ),
+              if (narrow) {
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    customerField,
+                    companyField,
+                    fromBtn,
+                    toBtn,
+                    clearBtn,
+                    importBtn,
+                    exportBtn,
+                  ],
                 );
-              },
-            ),
+              }
+
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    customerField,
+                    const Gap(8),
+                    companyField,
+                    const Gap(8),
+                    fromBtn,
+                    const Gap(8),
+                    toBtn,
+                    const Gap(8),
+                    clearBtn,
+                    const Gap(8),
+                    importBtn,
+                    const Gap(8),
+                    exportBtn,
+                  ],
+                ),
+              );
+            },
           ),
-          const Gap(8),
-          Expanded(
-            child: licensesAsync.when(
-              data: (items) {
-                final gmp3 = items
-                    .where((e) => IssuedLicenseType.isGmp3(e.licenseType))
-                    .toList(growable: false);
-                final iresto = items
-                    .where((e) => IssuedLicenseType.isIresto(e.licenseType))
-                    .toList(growable: false);
-                if (gmp3.isEmpty && iresto.isEmpty) {
-                  return const _Empty(text: 'Kayıt yok.');
-                }
-                return Scrollbar(
-                  thumbVisibility: true,
-                  child: ListView(
-                    padding: const EdgeInsets.only(bottom: 120),
-                    children: [
-                      if (gmp3.isNotEmpty) ...[
-                        const _SectionHeader(
-                          title: 'GMP3',
-                          tone: AppBadgeTone.success,
-                        ),
-                        const Gap(10),
-                        for (final item in gmp3) ...[
-                          _LicenseRow(item: item, isAdmin: widget.isAdmin),
-                          const Gap(10),
-                        ],
-                        const Gap(6),
-                      ],
-                      if (iresto.isNotEmpty) ...[
-                        const _SectionHeader(
-                          title: 'iResto',
-                          tone: AppBadgeTone.primary,
-                        ),
-                        const Gap(10),
-                        for (final item in iresto) ...[
-                          _LicenseRow(item: item, isAdmin: widget.isAdmin),
-                          const Gap(10),
-                        ],
-                      ],
-                    ],
-                  ),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => const _Empty(text: 'Lisanslar yüklenemedi.'),
-            ),
-          ),
-        ],
+        ),
+        const Gap(8),
+      ],
+      body: ({required nested}) => licensesAsync.when(
+        data: (items) {
+          final gmp3 = items
+              .where((e) => IssuedLicenseType.isGmp3(e.licenseType))
+              .toList(growable: false);
+          final iresto = items
+              .where((e) => IssuedLicenseType.isIresto(e.licenseType))
+              .toList(growable: false);
+          if (gmp3.isEmpty && iresto.isEmpty) {
+            return const _Empty(text: 'Kayıt yok.');
+          }
+          return ListView(
+            padding: nested
+                ? EdgeInsets.zero
+                : const EdgeInsets.only(bottom: 120),
+            shrinkWrap: nested,
+            physics: AppPhoneScrollColumn.physicsFor(nested: nested),
+            children: [
+              if (gmp3.isNotEmpty) ...[
+                const _SectionHeader(title: 'GMP3', tone: AppBadgeTone.success),
+                const Gap(10),
+                for (final item in gmp3) ...[
+                  _LicenseRow(item: item, isAdmin: widget.isAdmin),
+                  const Gap(10),
+                ],
+                const Gap(6),
+              ],
+              if (iresto.isNotEmpty) ...[
+                const _SectionHeader(
+                  title: 'iResto',
+                  tone: AppBadgeTone.primary,
+                ),
+                const Gap(10),
+                for (final item in iresto) ...[
+                  _LicenseRow(item: item, isAdmin: widget.isAdmin),
+                  const Gap(10),
+                ],
+              ],
+            ],
+          );
+        },
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, _) => const _Empty(text: 'Lisanslar yüklenemedi.'),
       ),
     );
   }
@@ -1805,7 +1782,8 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
         case 'pending':
           return row.invoiceStatus == 'pending';
         case 'paid':
-          return row.invoiceStatus == 'paid' || row.invoiceStatus == 'collected';
+          return row.invoiceStatus == 'paid' ||
+              row.invoiceStatus == 'collected';
         default:
           return row.invoiceStatus == 'none' || row.invoiceStatus == 'pending';
       }
@@ -1817,7 +1795,9 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
     required bool collected,
   }) async {
     final targets = rows
-        .where((row) => collected ? row.canMarkCollected : row.canUnmarkCollected)
+        .where(
+          (row) => collected ? row.canMarkCollected : row.canUnmarkCollected,
+        )
         .toList();
     if (targets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1961,7 +1941,9 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
         .where((e) => e.invoiceStatus == 'pending')
         .length;
     final paidCount = allItems
-        .where((e) => e.invoiceStatus == 'paid' || e.invoiceStatus == 'collected')
+        .where(
+          (e) => e.invoiceStatus == 'paid' || e.invoiceStatus == 'collected',
+        )
         .length;
     final workCount = noneCount + pendingCount;
     final selectedMarkable = selectedRows
@@ -1978,346 +1960,325 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
 
-    return Padding(
+    return AppPhoneScrollColumn(
       padding: const EdgeInsets.all(8),
-      child: Column(
-        children: [
-          AppCard(
-            padding: const EdgeInsets.all(8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final narrow = constraints.maxWidth < 980;
-                    final searchField = SizedBox(
-                      width: narrow ? double.infinity : 280,
-                      child: TextField(
-                        controller: _customerController,
-                        onChanged: ref
-                            .read(totalsCustomerSearchProvider.notifier)
-                            .set,
-                        decoration: const InputDecoration(
-                          labelText: 'Müşteri Ara',
-                          hintText: 'Müşteri adına göre',
-                          prefixIcon: Icon(LucideIcons.search, size: 18),
-                          isDense: true,
-                        ),
+      header: [
+        AppCard(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final narrow = constraints.maxWidth < 980;
+                  final searchField = SizedBox(
+                    width: 260,
+                    child: TextField(
+                      controller: _customerController,
+                      onChanged: ref
+                          .read(totalsCustomerSearchProvider.notifier)
+                          .set,
+                      decoration: const InputDecoration(
+                        labelText: 'Müşteri Ara',
+                        hintText: 'Müşteri adına göre',
+                        prefixIcon: Icon(LucideIcons.search, size: 18),
+                        isDense: true,
                       ),
-                    );
-                    final clearBtn = OutlinedButton.icon(
-                      onPressed: () {
-                        _customerController.text = '';
-                        ref.read(totalsCustomerSearchProvider.notifier).set('');
-                      },
-                      icon: const Icon(LucideIcons.eraser, size: 16),
-                      label: const Text('Temizle'),
-                      style: compactBtn(),
-                    );
-                    final exportBtn = OutlinedButton.icon(
-                      onPressed: items.isEmpty
-                          ? null
-                          : () => _export(context, items),
-                      icon: const Icon(LucideIcons.download, size: 16),
-                      label: const Text('Dışarı Aktar'),
-                      style: compactBtn(),
-                    );
-                    final invoiceBtn = FilledButton.icon(
-                      onPressed: selectedRows.isEmpty
-                          ? null
-                          : () => _createInvoices(selectedRows),
-                      icon: const Icon(LucideIcons.fileText, size: 16),
-                      label: Text(
-                        selectedRows.isEmpty
-                            ? 'Fatura Oluştur'
-                            : 'Fatura Oluştur (${selectedRows.length})',
+                    ),
+                  );
+                  final clearBtn = OutlinedButton.icon(
+                    onPressed: () {
+                      _customerController.text = '';
+                      ref.read(totalsCustomerSearchProvider.notifier).set('');
+                    },
+                    icon: const Icon(LucideIcons.eraser, size: 16),
+                    label: const Text('Temizle'),
+                    style: compactBtn(),
+                  );
+                  final exportBtn = OutlinedButton.icon(
+                    onPressed: items.isEmpty
+                        ? null
+                        : () => _export(context, items),
+                    icon: const Icon(LucideIcons.download, size: 16),
+                    label: const Text('Dışarı Aktar'),
+                    style: compactBtn(),
+                  );
+                  final invoiceBtn = FilledButton.icon(
+                    onPressed: selectedRows.isEmpty
+                        ? null
+                        : () => _createInvoices(selectedRows),
+                    icon: const Icon(LucideIcons.fileText, size: 16),
+                    label: Text(
+                      selectedRows.isEmpty
+                          ? 'Fatura Oluştur'
+                          : 'Fatura Oluştur (${selectedRows.length})',
+                    ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 32),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
                       ),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 32),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    );
-                    final markBtn = OutlinedButton.icon(
-                      onPressed: selectedMarkable.isEmpty
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  );
+                  final markBtn = OutlinedButton.icon(
+                    onPressed: selectedMarkable.isEmpty
+                        ? (selectedUnmarkable.isEmpty
+                              ? null
+                              : () => _markCollected(
+                                  selectedUnmarkable,
+                                  collected: false,
+                                ))
+                        : () =>
+                              _markCollected(selectedMarkable, collected: true),
+                    icon: Icon(
+                      selectedMarkable.isEmpty
+                          ? LucideIcons.undo2
+                          : LucideIcons.circleCheck,
+                      size: 16,
+                    ),
+                    label: Text(
+                      selectedMarkable.isEmpty
                           ? (selectedUnmarkable.isEmpty
-                                ? null
-                                : () => _markCollected(
-                                    selectedUnmarkable,
-                                    collected: false,
-                                  ))
-                          : () => _markCollected(
-                              selectedMarkable,
-                              collected: true,
-                            ),
-                      icon: Icon(
-                        selectedMarkable.isEmpty
-                            ? LucideIcons.undo2
-                            : LucideIcons.circleCheck,
-                        size: 16,
-                      ),
-                      label: Text(
-                        selectedMarkable.isEmpty
-                            ? (selectedUnmarkable.isEmpty
-                                  ? 'Tahsil edildi'
-                                  : 'Listeye al (${selectedUnmarkable.length})')
-                            : 'Tahsil edildi (${selectedMarkable.length})',
-                      ),
-                      style: compactBtn(),
-                    );
-                    if (narrow) {
-                      return Column(
-                        children: [
-                          searchField,
-                          const Gap(6),
-                          Row(
-                            children: [
-                              Expanded(child: clearBtn),
-                              const Gap(8),
-                              Expanded(child: exportBtn),
-                            ],
-                          ),
-                          const Gap(6),
-                          Row(
-                            children: [
-                              Expanded(child: markBtn),
-                              const Gap(8),
-                              Expanded(child: invoiceBtn),
-                            ],
-                          ),
-                        ],
-                      );
-                    }
-                    return Row(
+                                ? 'Tahsil edildi'
+                                : 'Listeye al (${selectedUnmarkable.length})')
+                          : 'Tahsil edildi (${selectedMarkable.length})',
+                    ),
+                    style: compactBtn(),
+                  );
+                  if (narrow) {
+                    return Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         searchField,
-                        const Gap(8),
                         clearBtn,
-                        const Gap(8),
                         exportBtn,
-                        const Gap(8),
                         markBtn,
-                        const Gap(8),
                         invoiceBtn,
-                        if (search.trim().isNotEmpty) const Gap(8),
-                        if (search.trim().isNotEmpty)
-                          AppBadge(
-                            label: 'Sonuç: ${items.length}',
-                            tone: AppBadgeTone.neutral,
-                            dense: true,
-                          ),
                       ],
                     );
-                  },
-                ),
-                const Gap(8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    FilterChip(
-                      label: Text('Tümü ($workCount)'),
-                      selected: filter == 'all',
-                      onSelected: (_) => ref
-                          .read(totalsInvoiceFilterProvider.notifier)
-                          .set('all'),
+                  }
+                  return Row(
+                    children: [
+                      searchField,
+                      const Gap(8),
+                      clearBtn,
+                      const Gap(8),
+                      exportBtn,
+                      const Gap(8),
+                      markBtn,
+                      const Gap(8),
+                      invoiceBtn,
+                      if (search.trim().isNotEmpty) const Gap(8),
+                      if (search.trim().isNotEmpty)
+                        AppBadge(
+                          label: 'Sonuç: ${items.length}',
+                          tone: AppBadgeTone.neutral,
+                          dense: true,
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const Gap(8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  FilterChip(
+                    label: Text('Tümü ($workCount)'),
+                    selected: filter == 'all',
+                    onSelected: (_) => ref
+                        .read(totalsInvoiceFilterProvider.notifier)
+                        .set('all'),
+                  ),
+                  FilterChip(
+                    label: Text('Fatura yok ($noneCount)'),
+                    selected: filter == 'none',
+                    onSelected: (_) => ref
+                        .read(totalsInvoiceFilterProvider.notifier)
+                        .set('none'),
+                  ),
+                  FilterChip(
+                    label: Text('Ödeme bekliyor ($pendingCount)'),
+                    selected: filter == 'pending',
+                    onSelected: (_) => ref
+                        .read(totalsInvoiceFilterProvider.notifier)
+                        .set('pending'),
+                  ),
+                  FilterChip(
+                    label: Text('Tahsil edildi ($paidCount)'),
+                    selected: filter == 'paid',
+                    onSelected: (_) => ref
+                        .read(totalsInvoiceFilterProvider.notifier)
+                        .set('paid'),
+                  ),
+                  FilterChip(
+                    label: Text(
+                      allVisibleSelected
+                          ? 'Seçimi kaldır'
+                          : 'Tümünü seç (${items.length})',
                     ),
-                    FilterChip(
-                      label: Text('Fatura yok ($noneCount)'),
-                      selected: filter == 'none',
-                      onSelected: (_) => ref
-                          .read(totalsInvoiceFilterProvider.notifier)
-                          .set('none'),
-                    ),
-                    FilterChip(
-                      label: Text('Ödeme bekliyor ($pendingCount)'),
-                      selected: filter == 'pending',
-                      onSelected: (_) => ref
-                          .read(totalsInvoiceFilterProvider.notifier)
-                          .set('pending'),
-                    ),
-                    FilterChip(
-                      label: Text('Tahsil edildi ($paidCount)'),
-                      selected: filter == 'paid',
-                      onSelected: (_) => ref
-                          .read(totalsInvoiceFilterProvider.notifier)
-                          .set('paid'),
-                    ),
-                    FilterChip(
-                      label: Text(
-                        allVisibleSelected
-                            ? 'Seçimi kaldır'
-                            : 'Tümünü seç (${items.length})',
-                      ),
-                      selected: allVisibleSelected,
-                      onSelected: items.isEmpty
-                          ? null
-                          : (value) {
-                              setState(() {
-                                if (value) {
-                                  _selected.addAll(
-                                    items.map((e) => e.customerId),
-                                  );
-                                } else {
-                                  for (final row in items) {
-                                    _selected.remove(row.customerId);
-                                  }
+                    selected: allVisibleSelected,
+                    onSelected: items.isEmpty
+                        ? null
+                        : (value) {
+                            setState(() {
+                              if (value) {
+                                _selected.addAll(
+                                  items.map((e) => e.customerId),
+                                );
+                              } else {
+                                for (final row in items) {
+                                  _selected.remove(row.customerId);
                                 }
-                              });
-                            },
+                              }
+                            });
+                          },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const Gap(6),
+        const HatLisansBillingPriceCard(),
+        const Gap(6),
+      ],
+      body: ({required nested}) => totalsAsync.when(
+        data: (rows) {
+          final visible = _filtered(rows, filter);
+          if (visible.isEmpty) {
+            return const _Empty(text: 'Kayıt yok.');
+          }
+          return ListView.separated(
+            padding: nested
+                ? EdgeInsets.zero
+                : const EdgeInsets.only(bottom: 120),
+            shrinkWrap: nested,
+            physics: AppPhoneScrollColumn.physicsFor(nested: nested),
+            itemCount: visible.length,
+            separatorBuilder: (_, _) => const Gap(6),
+            itemBuilder: (context, index) {
+              final r = visible[index];
+              final checked = _selected.contains(r.customerId);
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: checked,
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            _selected.add(r.customerId);
+                          } else {
+                            _selected.remove(r.customerId);
+                          }
+                        });
+                      },
                     ),
+                    Expanded(
+                      child: Text(
+                        r.customerName.trim().isEmpty ? '—' : r.customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.text,
+                        ),
+                      ),
+                    ),
+                    const Gap(8),
+                    AppBadge(
+                      label: r.invoiceStatusLabel,
+                      tone: r.invoiceStatusTone,
+                      dense: true,
+                    ),
+                    const Gap(6),
+                    AppBadge(
+                      label: 'Hat: ${r.linesTotal}',
+                      tone: AppBadgeTone.primary,
+                      dense: true,
+                    ),
+                    const Gap(6),
+                    AppBadge(
+                      label: 'T: ${r.linesTurkcell}',
+                      tone: AppBadgeTone.primary,
+                      dense: true,
+                    ),
+                    const Gap(6),
+                    AppBadge(
+                      label: 'V: ${r.linesTelsim}',
+                      tone: AppBadgeTone.warning,
+                      dense: true,
+                    ),
+                    const Gap(6),
+                    AppBadge(
+                      label: 'GMP3: ${r.gmp3Total}',
+                      tone: AppBadgeTone.success,
+                      dense: true,
+                    ),
+                    const Gap(6),
+                    AppBadge(
+                      label: 'iResto: ${r.irestoTotal}',
+                      tone: AppBadgeTone.primary,
+                      dense: true,
+                    ),
+                    const Gap(8),
+                    if (r.canUnmarkCollected)
+                      OutlinedButton(
+                        onPressed: () => _markCollected([r], collected: false),
+                        style: compactBtn(),
+                        child: const Text('Listeye al'),
+                      )
+                    else ...[
+                      if (r.canMarkCollected) ...[
+                        OutlinedButton(
+                          onPressed: () => _markCollected([r], collected: true),
+                          style: compactBtn(),
+                          child: const Text('Tahsil edildi'),
+                        ),
+                        const Gap(8),
+                      ],
+                      if (r.invoiceStatus != 'collected')
+                        FilledButton.tonal(
+                          onPressed: () => _createInvoices([r]),
+                          style: FilledButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            minimumSize: const Size(0, 32),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                          ),
+                          child: const Text('Fatura Oluştur'),
+                        ),
+                    ],
                   ],
                 ),
-              ],
-            ),
-          ),
-          const Gap(6),
-          const HatLisansBillingPriceCard(),
-          const Gap(6),
-          Expanded(
-            child: totalsAsync.when(
-              data: (rows) {
-                final visible = _filtered(rows, filter);
-                if (visible.isEmpty) {
-                  return const _Empty(text: 'Kayıt yok.');
-                }
-                return Scrollbar(
-                  thumbVisibility: true,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.only(bottom: 120),
-                    itemCount: visible.length,
-                    separatorBuilder: (_, _) => const Gap(6),
-                    itemBuilder: (context, index) {
-                      final r = visible[index];
-                      final checked = _selected.contains(r.customerId);
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceMuted,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.border),
-                        ),
-                        child: Row(
-                          children: [
-                            Checkbox(
-                              value: checked,
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              onChanged: (value) {
-                                setState(() {
-                                  if (value == true) {
-                                    _selected.add(r.customerId);
-                                  } else {
-                                    _selected.remove(r.customerId);
-                                  }
-                                });
-                              },
-                            ),
-                            Expanded(
-                              child: Text(
-                                r.customerName.trim().isEmpty
-                                    ? '—'
-                                    : r.customerName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      color: AppTheme.text,
-                                    ),
-                              ),
-                            ),
-                            const Gap(8),
-                            AppBadge(
-                              label: r.invoiceStatusLabel,
-                              tone: r.invoiceStatusTone,
-                              dense: true,
-                            ),
-                            const Gap(6),
-                            AppBadge(
-                              label: 'Hat: ${r.linesTotal}',
-                              tone: AppBadgeTone.primary,
-                              dense: true,
-                            ),
-                            const Gap(6),
-                            AppBadge(
-                              label: 'T: ${r.linesTurkcell}',
-                              tone: AppBadgeTone.primary,
-                              dense: true,
-                            ),
-                            const Gap(6),
-                            AppBadge(
-                              label: 'V: ${r.linesTelsim}',
-                              tone: AppBadgeTone.warning,
-                              dense: true,
-                            ),
-                            const Gap(6),
-                            AppBadge(
-                              label: 'GMP3: ${r.gmp3Total}',
-                              tone: AppBadgeTone.success,
-                              dense: true,
-                            ),
-                            const Gap(6),
-                            AppBadge(
-                              label: 'iResto: ${r.irestoTotal}',
-                              tone: AppBadgeTone.primary,
-                              dense: true,
-                            ),
-                            const Gap(8),
-                            if (r.canUnmarkCollected)
-                              OutlinedButton(
-                                onPressed: () =>
-                                    _markCollected([r], collected: false),
-                                style: compactBtn(),
-                                child: const Text('Listeye al'),
-                              )
-                            else ...[
-                              if (r.canMarkCollected) ...[
-                                OutlinedButton(
-                                  onPressed: () =>
-                                      _markCollected([r], collected: true),
-                                  style: compactBtn(),
-                                  child: const Text('Tahsil edildi'),
-                                ),
-                                const Gap(8),
-                              ],
-                              if (r.invoiceStatus != 'collected')
-                                FilledButton.tonal(
-                                  onPressed: () => _createInvoices([r]),
-                                  style: FilledButton.styleFrom(
-                                    visualDensity: VisualDensity.compact,
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    minimumSize: const Size(0, 32),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 8,
-                                    ),
-                                  ),
-                                  child: const Text('Fatura Oluştur'),
-                                ),
-                            ],
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => const _Empty(text: 'Toplamlar yüklenemedi.'),
-            ),
-          ),
-        ],
+              );
+            },
+          );
+        },
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, _) => const _Empty(text: 'Toplamlar yüklenemedi.'),
       ),
     );
   }
@@ -2673,7 +2634,9 @@ Future<void> _showEditLineDialog(
   final labelController = TextEditingController(text: line.label ?? '');
   final numberController = TextEditingController(text: line.number ?? '');
   final simController = TextEditingController(text: line.simNumber ?? '');
-  final sicilController = TextEditingController(text: line.registryNumber ?? '');
+  final sicilController = TextEditingController(
+    text: line.registryNumber ?? '',
+  );
   String operator = (line.operator ?? '').trim().isEmpty
       ? 'turkcell'
       : (line.operator ?? '').trim().toLowerCase();
