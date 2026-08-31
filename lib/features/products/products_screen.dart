@@ -372,6 +372,8 @@ class CustomerTotalsRow {
 
   bool get canMarkCollected => invoiceStatus == 'none';
   bool get canUnmarkCollected => invoiceStatus == 'collected';
+  bool get isHatOnly =>
+      linesTotal > 0 && gmp3Total == 0 && irestoTotal == 0;
 
   factory CustomerTotalsRow.fromJson(Map<String, dynamic> json) {
     return CustomerTotalsRow(
@@ -1784,6 +1786,8 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
         case 'paid':
           return row.invoiceStatus == 'paid' ||
               row.invoiceStatus == 'collected';
+        case 'hat_only':
+          return row.isHatOnly;
         default:
           return row.invoiceStatus == 'none' || row.invoiceStatus == 'pending';
       }
@@ -1945,6 +1949,7 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
           (e) => e.invoiceStatus == 'paid' || e.invoiceStatus == 'collected',
         )
         .length;
+    final hatOnlyCount = allItems.where((e) => e.isHatOnly).length;
     final workCount = noneCount + pendingCount;
     final selectedMarkable = selectedRows
         .where((row) => row.canMarkCollected)
@@ -2117,6 +2122,13 @@ class _TotalsTabState extends ConsumerState<_TotalsTab> {
                     onSelected: (_) => ref
                         .read(totalsInvoiceFilterProvider.notifier)
                         .set('paid'),
+                  ),
+                  FilterChip(
+                    label: Text('Sadece hat ($hatOnlyCount)'),
+                    selected: filter == 'hat_only',
+                    onSelected: (_) => ref
+                        .read(totalsInvoiceFilterProvider.notifier)
+                        .set('hat_only'),
                   ),
                   FilterChip(
                     label: Text(
