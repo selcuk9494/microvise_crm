@@ -6,6 +6,11 @@ const { URL } = require('url');
 
 const rootDir = path.resolve(__dirname, '..');
 const webDir = path.join(rootDir, 'build', 'web');
+const {
+  akinsoftCariHrEvrakVariants,
+  mapCariHrRowToInvoiceNumber,
+  resolveAkinsoftInvoicePayment,
+} = require(path.join(rootDir, 'api', '_lib', 'akinsoft_invoice_status.js'));
 const akinsoftJobs = new Map();
 
 function loadEnvFile(filePath, { override = false } = {}) {
@@ -1096,36 +1101,6 @@ function resolveAkinsoftVatPercent(row, fallback = 20) {
 }
 
 const PAYMENT_CLOSE_TOLERANCE = 0.02;
-// WOLVOX: FATURA.FATURA_NO = varchar(30), CARIHR.EVRAK_NO = varchar(20).
-// E-fatura no 20 karakteri aşınca tahsilat EVRAK_NO kırpılır; birebir eşleşme kaçırılır.
-const AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN = 20;
-
-function akinsoftCariHrEvrakVariants(invoiceNumber) {
-  const no = textOrNull(invoiceNumber);
-  if (!no) return [];
-  const variants = [no];
-  if (no.length > AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN) {
-    variants.push(no.slice(0, AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN));
-  }
-  return variants;
-}
-
-/** CARIHR.EVRAK_NO → pull edilen FATURA_NO (kırpık eşleşme dahil). */
-function resolveAkinsoftCariHrInvoiceNumber(evrakNo, invoiceNumbers) {
-  const key = textOrNull(evrakNo);
-  if (!key) return null;
-  const list = Array.isArray(invoiceNumbers) ? invoiceNumbers : [];
-  if (list.includes(key)) return key;
-  const prefixMatches = list.filter(
-    (no) =>
-      typeof no === 'string' &&
-      no.length > key.length &&
-      no.startsWith(key),
-  );
-  if (prefixMatches.length === 1) return prefixMatches[0];
-  // Tek aday yoksa güvenli taraf: kırpık anahtarı kullanma.
-  return prefixMatches.length === 0 ? key : null;
-}
 
 function normalizeCurrency(value) {
   const text = textOrNull(value);
@@ -1707,87 +1682,49 @@ function pick(row, names, fallback = null) {
 function parseAkinsoftBool(value) {
   const text = String(value ?? '').trim().toLocaleLowerCase('tr-TR');
   if (!text) return null;
-  if (['1', 'true', 'evet', 'e', 'kapali', 'kapalı', 'odendi', 'ödendi'].includes(text)) {
+  if (
+    [
+      '1',
+      'true',
+      'evet',
+      'e',
+      'kapali',
+      'kapalı',
+      'odendi',
+      'ödendi',
+      'closed',
+      'kapatildi',
+      'kapatıldı',
+    ].includes(text)
+  ) {
     return true;
   }
-  if (['0', 'false', 'hayir', 'hayır', 'h', 'acik', 'açık', 'odenmedi', 'ödenmedi'].includes(text)) {
+  if (
+    [
+      '0',
+      'false',
+      'hayir',
+      'hayır',
+      'h',
+      'acik',
+      'açık',
+      'odenmedi',
+      'ödenmedi',
+      'open',
+    ].includes(text)
+  ) {
     return false;
   }
   return null;
 }
 
-function resolveAkinsoftInvoicePayment(row, currency, grandTotal) {
-  const remainingRaw = pick(
-    row,
-    currency === 'TRY'
-      ? [
-          'KPB_BAKIYE',
-          'KPB_KALAN',
-          'KPB_ACIK_TUTAR',
-          'BAKIYE',
-          'KALAN',
-          'ACIK_TUTAR',
-          'DVZ_BAKIYE',
-        ]
-      : [
-          'DVZ_BAKIYE',
-          'DVZ_KALAN',
-          'DVZ_ACIK_TUTAR',
-          'DOVIZ_BAKIYE',
-          'KPB_BAKIYE',
-          'BAKIYE',
-        ],
-  );
-  const remainingAmount = numberOrZero(remainingRaw);
-  const paidRaw = pick(
-    row,
-    currency === 'TRY'
-      ? [
-          'KPB_TAHSILAT_TOPLAMI',
-          'TAHSILAT_TOPLAMI',
-          'TAHSIL_EDILEN',
-          'ODEME_TOPLAMI',
-          'DVZ_TAHSILAT_TOPLAMI',
-        ]
-      : [
-          'DVZ_TAHSILAT_TOPLAMI',
-          'DOVIZ_TAHSILAT_TOPLAMI',
-          'KPB_TAHSILAT_TOPLAMI',
-          'TAHSILAT_TOPLAMI',
-        ],
-  );
-  const paidAmount = numberOrZero(paidRaw);
-  const closedFlag = parseAkinsoftBool(
-    pick(row, [
-      'KAPALI',
-      'KAPALI_FATURA',
-      'KAPANDI',
-      'ODENDI',
-      'ODEME_DURUMU',
-      'DURUMU',
-      'STATU',
-      'STATUS',
-    ]),
-  );
-  if (closedFlag === true) {
-    return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
-  }
-  if (remainingRaw != null) {
-    if (remainingAmount <= PAYMENT_CLOSE_TOLERANCE && grandTotal > 0) {
-      return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
-    }
-    if (remainingAmount > 0 && grandTotal > 0) {
-      const paid = Math.max(0, grandTotal - remainingAmount);
-      return { paidAmount: paid, status: paid > 0 ? 'partial' : 'open', reliable: true, source: 'invoice' };
-    }
-  }
-  if (paidRaw != null && paidAmount > 0 && paidAmount < grandTotal) {
-    return { paidAmount, status: 'partial', reliable: true, source: 'invoice' };
-  }
-  if (paidRaw != null && paidAmount >= grandTotal - PAYMENT_CLOSE_TOLERANCE && grandTotal > 0) {
-    return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'invoice' };
-  }
-  return { paidAmount: 0, status: 'open', reliable: false, source: 'invoice' };
+function resolveLocalAkinsoftInvoicePayment(row, currency, grandTotal) {
+  return resolveAkinsoftInvoicePayment(row, currency, grandTotal, {
+    pick,
+    numberOrZero,
+    parseAkinsoftBool,
+    tolerance: PAYMENT_CLOSE_TOLERANCE,
+  });
 }
 
 function resolveAkinsoftCariPayment(movements, currency, grandTotal) {
@@ -1934,7 +1871,7 @@ function resolveAkinsoftItemAmounts(row, currency) {
 }
 
 function selectAkinsoftPayment(row, movements, currency, grandTotal) {
-  const invoicePayment = resolveAkinsoftInvoicePayment(row, currency, grandTotal);
+  const invoicePayment = resolveLocalAkinsoftInvoicePayment(row, currency, grandTotal);
   const movementPayment = resolveAkinsoftCariPayment(
     movements,
     currency,
@@ -2971,25 +2908,81 @@ async function pullAkinsoftDataset(body) {
           return { rows: [], reliable: Boolean(hasCariHr) };
         }
         try {
-          // Uzun e-fatura no'ları CARIHR.EVRAK_NO (varchar 20) içinde kırpık
-          // tutulur; tam FATURA_NO ile IN eşleşmesi kaçırır → durum open kalır.
+          const cariHrColumns = await akinsoftTableColumnSet(pool, 'CARIHR');
+          const extraSelect = [];
+          if (cariHrColumns.has('ENTEGRASYON')) extraSelect.push('ENTEGRASYON');
+          if (cariHrColumns.has('BLFTKODU')) extraSelect.push('BLFTKODU');
+          const selectSql = `select EVRAK_NO, KPB_BTUT, KPB_ATUT, DVZ_BTUT, DVZ_ATUT${
+            extraSelect.length ? `, ${extraSelect.join(', ')}` : ''
+          }
+              from dbo.CARIHR`;
           const lookupNumbers = [
             ...new Set(invoiceNumbers.flatMap(akinsoftCariHrEvrakVariants)),
           ];
-          const request = pool.request();
-          request.timeout = 25000;
-          lookupNumbers.forEach((no, index) =>
-            request.input(`no${index}`, sql.NVarChar, no),
-          );
-          const paramList = lookupNumbers.map((_, index) => `@no${index}`).join(',');
-          const rows = (
-            await request.query(`
-              select EVRAK_NO, KPB_BTUT, KPB_ATUT, DVZ_BTUT, DVZ_ATUT
-              from dbo.CARIHR
-              where EVRAK_NO in (${paramList})
+          const rows = [];
+          const seen = new Set();
+          const pushRows = (recordset) => {
+            for (const row of recordset || []) {
+              const key = [
+                row.EVRAK_NO,
+                row.KPB_BTUT,
+                row.KPB_ATUT,
+                row.DVZ_BTUT,
+                row.DVZ_ATUT,
+                row.ENTEGRASYON,
+                row.BLFTKODU,
+              ].join('|');
+              if (seen.has(key)) continue;
+              seen.add(key);
+              rows.push(row);
+            }
+          };
+          const chunkSize = 400;
+          for (let offset = 0; offset < lookupNumbers.length; offset += chunkSize) {
+            const chunk = lookupNumbers.slice(offset, offset + chunkSize);
+            const request = pool.request();
+            request.timeout = 25000;
+            chunk.forEach((no, index) =>
+              request.input(`no${index}`, sql.NVarChar, no),
+            );
+            const numberParams = chunk.map((_, index) => `@no${index}`).join(',');
+            const result = await request.query(`
+              ${selectSql}
+              where EVRAK_NO in (${numberParams})
                 and coalesce(SILINDI, 0) = 0
-            `)
-          ).recordset;
+            `);
+            pushRows(result.recordset);
+          }
+          if (ids.length && (cariHrColumns.has('ENTEGRASYON') || cariHrColumns.has('BLFTKODU'))) {
+            for (let offset = 0; offset < ids.length; offset += chunkSize) {
+              const idChunk = ids.slice(offset, offset + chunkSize);
+              const request = pool.request();
+              request.timeout = 25000;
+              const conditions = [];
+              if (cariHrColumns.has('ENTEGRASYON')) {
+                idChunk.forEach((id, index) =>
+                  request.input(`fto${index}`, sql.NVarChar, `FTO_${id}`),
+                );
+                conditions.push(
+                  `ENTEGRASYON in (${idChunk.map((_, index) => `@fto${index}`).join(',')})`,
+                );
+              }
+              if (cariHrColumns.has('BLFTKODU')) {
+                idChunk.forEach((id, index) =>
+                  request.input(`ft${index}`, sql.Int, id),
+                );
+                conditions.push(
+                  `BLFTKODU in (${idChunk.map((_, index) => `@ft${index}`).join(',')})`,
+                );
+              }
+              const result = await request.query(`
+              ${selectSql}
+              where (${conditions.join('\n                or ')})
+                and coalesce(SILINDI, 0) = 0
+            `);
+              pushRows(result.recordset);
+            }
+          }
           return { rows, reliable: true };
         } catch (error) {
           warnings.push(
@@ -3139,11 +3132,18 @@ async function pullAkinsoftDataset(body) {
         kdvByInvoice.set(key, list);
       }
 
+      const invoiceNoBySourceId = new Map(
+        headers.map((row) => [
+          String(row.BLKODU),
+          textOrNull(row.FATURA_NO) || `AKN-${row.BLKODU}`,
+        ]),
+      );
       const cariHrByInvoiceNo = new Map();
       for (const row of cariHrRows) {
-        const mappedNo = resolveAkinsoftCariHrInvoiceNumber(
-          row.EVRAK_NO,
+        const mappedNo = mapCariHrRowToInvoiceNumber(
+          row,
           invoiceNumbers,
+          invoiceNoBySourceId,
         );
         if (!mappedNo) continue;
         const list = cariHrByInvoiceNo.get(mappedNo) || [];
