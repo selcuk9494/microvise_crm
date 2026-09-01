@@ -1546,6 +1546,49 @@ class _EInvoiceQuotesShellState extends ConsumerState<_EInvoiceQuotesShell> {
   }
 }
 
+class _SummaryFilterBadge extends StatelessWidget {
+  const _SummaryFilterBadge({
+    required this.label,
+    required this.tooltip,
+    required this.selected,
+    required this.tone,
+    required this.onTap,
+  });
+
+  final String label;
+  final String tooltip;
+  final bool selected;
+  final AppBadgeTone tone;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 300),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+                border: selected
+                    ? Border.all(color: AppTheme.softBorder(AppTheme.primary))
+                    : Border.all(color: Colors.transparent),
+              ),
+              child: AppBadge(label: label, tone: tone, dense: true),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EnvPill extends StatelessWidget {
   const _EnvPill({required this.settings});
 
@@ -1592,6 +1635,14 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   bool _bulkProcessing = false;
   bool _pullingAkinsoft = false;
   bool _syncingIncoming = false;
+
+  void _applyFilter(InvoiceFilter filter) {
+    setState(() {
+      _filter = filter;
+      _visibleInvoiceLimit = _invoiceRenderStep;
+      _selectedInvoiceIds.clear();
+    });
+  }
 
   Widget _invoicePage({required Widget body, List<Widget> extras = const []}) {
     return AppPageLayout(
@@ -1832,9 +1883,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final hasHiddenItems = visibleItems.length < items.length;
     final sales = items.where((e) => e.invoiceType == 'sales').length;
     final purchases = items.where((e) => e.invoiceType == 'purchase').length;
-    final open = items
-        .where((e) => e.status == 'open' || e.status == 'partial')
-        .length;
+    final open = items.where((e) => e.status == 'open').length;
+    final partial = items.where((e) => e.status == 'partial').length;
     final tryTotal = items
         .where((e) => e.currency.toUpperCase() == 'TRY')
         .fold<double>(0, (sum, item) => sum + item.grandTotal);
@@ -1855,10 +1905,29 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         tone: AppBadgeTone.neutral,
         dense: true,
       ),
-      AppBadge(
+      _SummaryFilterBadge(
         label: 'Açık: $open',
-        tone: open > 0 ? AppBadgeTone.warning : AppBadgeTone.primary,
-        dense: true,
+        tooltip: 'Sadece açık faturalar',
+        selected: _filter.status == 'open',
+        tone: _filter.status == 'open' || open > 0
+            ? AppBadgeTone.warning
+            : AppBadgeTone.primary,
+        onTap: () {
+          if (_filter.status == 'open') return;
+          _applyFilter(_filter.copyWith(status: 'open'));
+        },
+      ),
+      _SummaryFilterBadge(
+        label: _filter.status == 'partial' ? 'Kısmi: $partial' : 'Kısmi',
+        tooltip: 'Sadece kısmi ödenmiş faturalar',
+        selected: _filter.status == 'partial',
+        tone: _filter.status == 'partial' || partial > 0
+            ? AppBadgeTone.warning
+            : AppBadgeTone.neutral,
+        onTap: () {
+          if (_filter.status == 'partial') return;
+          _applyFilter(_filter.copyWith(status: 'partial'));
+        },
       ),
       AppBadge(
         label: 'TL: ${widget.moneyTry.format(tryTotal)}',
@@ -1890,13 +1959,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       _InvoiceFiltersCard(
         filter: _filter,
         customersAsync: customersAsync,
-        onChanged: (filter) {
-          setState(() {
-            _filter = filter;
-            _visibleInvoiceLimit = _invoiceRenderStep;
-            _selectedInvoiceIds.clear();
-          });
-        },
+        onChanged: _applyFilter,
         onRefresh: () => ref.invalidate(invoicesProvider(_filter)),
         onPullErp: _bulkDeleting || _bulkProcessing ? null : _pullAkinsoftData,
         pullingErp: _pullingAkinsoft,
@@ -4403,7 +4466,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 148,
+              width: 158,
               child: DropdownButtonFormField<String>(
                 key: ValueKey('status-${filter.status ?? ''}'),
                 initialValue: filter.status ?? '',
@@ -4426,7 +4489,10 @@ class _InvoiceFiltersCard extends StatelessWidget {
                   ),
                   DropdownMenuItem(
                     value: 'partial',
-                    child: Text('Kısmi', overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      'Sadece Kısmi',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   DropdownMenuItem(
                     value: 'paid',
