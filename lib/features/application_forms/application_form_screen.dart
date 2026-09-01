@@ -2277,7 +2277,6 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final splitName = _splitCustomerName(record.customerName);
       final phone = _pickCustomerPhone(customer);
       final taxOffice = (record.taxOfficeCityName ?? '').trim();
-      final taxOfficeCell = _excelTsmTaxOfficeCell(taxOffice);
       final vkn = (customer?['vkn'] ?? '').toString().trim();
       final tcknMs = _stripTsmTcknPrefix(
         (customer?['tckn_ms'] ?? record.customerTcknMs ?? '').toString(),
@@ -2299,14 +2298,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         4: excel.TextCellValue(modelCode),
         9: excel.TextCellValue(address),
         10: excel.IntCellValue(98),
-        11: taxOfficeCell,
+        11: excel.TextCellValue(taxOffice),
         12: excel.TextCellValue('0'),
         13: excel.TextCellValue(splitName.$1),
         14: excel.TextCellValue(splitName.$2),
         15: excel.TextCellValue(address),
         16: excel.IntCellValue(98),
-        17: taxOfficeCell,
-        18: taxOfficeCell,
+        17: excel.TextCellValue(taxOffice),
+        18: _excelTsmTaxOfficeCell(taxOffice), // Musteri_VergiDairesi: TSM kodu 1–5
         19: _excelCellFromRaw(vkn, preferText: false),
         20: _excelCellFromRaw(tcknMs, preferText: false),
         23: _excelCellFromRaw(phone, preferText: false),
@@ -3609,25 +3608,25 @@ const _bankFallbackTaxOfficeCities = <CityDefinition>[
   CityDefinition(
     id: 'fallback-lefkosa',
     name: 'Lefkoşa',
-    code: '1',
+    code: null,
     isActive: true,
   ),
   CityDefinition(
     id: 'fallback-gazimagusa',
     name: 'Gazimağusa',
-    code: '3',
+    code: null,
     isActive: true,
   ),
   CityDefinition(
     id: 'fallback-girne',
     name: 'Girne',
-    code: '2',
+    code: null,
     isActive: true,
   ),
   CityDefinition(
     id: 'fallback-guzelyurt',
     name: 'Güzelyurt',
-    code: '4',
+    code: null,
     isActive: true,
   ),
   CityDefinition(
@@ -3639,7 +3638,7 @@ const _bankFallbackTaxOfficeCities = <CityDefinition>[
   CityDefinition(
     id: 'fallback-lefke',
     name: 'Lefke',
-    code: '5',
+    code: null,
     isActive: true,
   ),
 ];
