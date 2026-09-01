@@ -1,5 +1,6 @@
 const { getAuthenticatedUser, hasPageAccess } = require('./_lib/auth');
 const { query } = require('./_lib/db');
+const { ensureCustomerEmailColumns } = require('./_lib/schema');
 const {
   handleCors,
   ok,
@@ -222,6 +223,7 @@ module.exports = async (req, res) => {
       return forbidden(req, res, 'Müşteri listesine erişim yetkiniz yok.');
     }
     await ensureCustomerCountrySchema();
+    await ensureCustomerEmailColumns();
 
     if (req.method === 'POST') {
       const body = await readJson(req);
@@ -242,6 +244,8 @@ module.exports = async (req, res) => {
         ).trim(),
         director_name: body.director_name ? String(body.director_name).trim() : null,
         email: normalizeEmail(body.email),
+        email_2: normalizeEmail(body.email_2),
+        email_3: normalizeEmail(body.email_3),
         vkn: normalizeStoredVkn(body.vkn),
         tckn_ms: normalizeTcknMs(body.tckn_ms),
         phone_1_title: body.phone_1_title ? String(body.phone_1_title).trim() : null,
@@ -348,6 +352,8 @@ module.exports = async (req, res) => {
             ? undefined
             : String(body.director_name || '').trim() || null,
         email: body.email == null ? undefined : normalizeEmail(body.email),
+        email_2: body.email_2 == null ? undefined : normalizeEmail(body.email_2),
+        email_3: body.email_3 == null ? undefined : normalizeEmail(body.email_3),
         vkn: body.vkn == null ? undefined : normalizeStoredVkn(body.vkn),
         tckn_ms:
           body.tckn_ms == null ? undefined : normalizeTcknMs(body.tckn_ms),
@@ -493,7 +499,9 @@ module.exports = async (req, res) => {
           or c.phone_1 ilike $${idx}
           or c.phone_2 ilike $${idx}
           or c.phone_3 ilike $${idx}
-          or c.email ilike $${idx})`,
+          or c.email ilike $${idx}
+          or c.email_2 ilike $${idx}
+          or c.email_3 ilike $${idx})`,
       );
     }
 
@@ -514,6 +522,8 @@ module.exports = async (req, res) => {
             c.country,
             c.director_name,
             c.email,
+            c.email_2,
+            c.email_3,
             c.phone_1,
             c.phone_1_title,
             c.phone_2,
@@ -555,9 +565,11 @@ module.exports = async (req, res) => {
           c.address,
           c.country_code,
           c.country,
-          c.director_name,
-          c.email,
-          c.phone_1,
+            c.director_name,
+            c.email,
+            c.email_2,
+            c.email_3,
+            c.phone_1,
           c.phone_1_title,
           c.phone_2,
           c.phone_2_title,

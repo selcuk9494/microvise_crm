@@ -29,6 +29,8 @@
   "rewrites": [
     { "source": "/api/health", "destination": "/api/me?health=1" },
     { "source": "/api/tsm-log", "destination": "/api/mutate?op=parseTsmLog" },
+    { "source": "/p/:token/og.png", "destination": "/api/invoice-pay?token=:token&og=1" },
+    { "source": "/pay/:token/og.png", "destination": "/api/invoice-pay?token=:token&og=1" },
     { "source": "/p/:token", "destination": "/api/invoice-pay?token=:token" },
     { "source": "/pay/:token", "destination": "/api/invoice-pay?token=:token" },
     { "source": "/api/akinsoft/finance/:action", "destination": "/api/akinsoft/finance-:action" },

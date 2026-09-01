@@ -2277,6 +2277,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final splitName = _splitCustomerName(record.customerName);
       final phone = _pickCustomerPhone(customer);
       final taxOffice = (record.taxOfficeCityName ?? '').trim();
+      final taxOfficeCell = _excelTsmTaxOfficeCell(taxOffice);
       final vkn = (customer?['vkn'] ?? '').toString().trim();
       final tcknMs = _stripTsmTcknPrefix(
         (customer?['tckn_ms'] ?? record.customerTcknMs ?? '').toString(),
@@ -2298,14 +2299,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         4: excel.TextCellValue(modelCode),
         9: excel.TextCellValue(address),
         10: excel.IntCellValue(98),
-        11: excel.TextCellValue(taxOffice),
+        11: taxOfficeCell,
         12: excel.TextCellValue('0'),
         13: excel.TextCellValue(splitName.$1),
         14: excel.TextCellValue(splitName.$2),
         15: excel.TextCellValue(address),
         16: excel.IntCellValue(98),
-        17: excel.TextCellValue(taxOffice),
-        18: excel.TextCellValue(taxOffice),
+        17: taxOfficeCell,
+        18: taxOfficeCell,
         19: _excelCellFromRaw(vkn, preferText: false),
         20: _excelCellFromRaw(tcknMs, preferText: false),
         23: _excelCellFromRaw(phone, preferText: false),
@@ -3608,25 +3609,25 @@ const _bankFallbackTaxOfficeCities = <CityDefinition>[
   CityDefinition(
     id: 'fallback-lefkosa',
     name: 'Lefkoşa',
-    code: null,
+    code: '1',
     isActive: true,
   ),
   CityDefinition(
     id: 'fallback-gazimagusa',
     name: 'Gazimağusa',
-    code: null,
+    code: '3',
     isActive: true,
   ),
   CityDefinition(
     id: 'fallback-girne',
     name: 'Girne',
-    code: null,
+    code: '2',
     isActive: true,
   ),
   CityDefinition(
     id: 'fallback-guzelyurt',
     name: 'Güzelyurt',
-    code: null,
+    code: '4',
     isActive: true,
   ),
   CityDefinition(
@@ -3638,7 +3639,7 @@ const _bankFallbackTaxOfficeCities = <CityDefinition>[
   CityDefinition(
     id: 'fallback-lefke',
     name: 'Lefke',
-    code: null,
+    code: '5',
     isActive: true,
   ),
 ];
@@ -9688,6 +9689,36 @@ String _sortKey(String value) {
       .replaceAll('ö', 'o')
       .replaceAll('ş', 's')
       .replaceAll('ü', 'u');
+}
+
+/// TSM vergi dairesi kodları (TSM tablosu: 1 Lefkoşa … 5 Lefke).
+const _tsmTaxOfficeCodesByName = <String, int>{
+  'lefkosa': 1,
+  'girne': 2,
+  'gazimagusa': 3,
+  'magusa': 3,
+  'guzelyurt': 4,
+  'lefke': 5,
+};
+
+int? _tsmTaxOfficeCode(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return null;
+  final asInt = int.tryParse(text);
+  if (asInt != null && asInt >= 1 && asInt <= 5) return asInt;
+  final key = _sortKey(text).replaceAll(RegExp(r'[^a-z]'), '');
+  final exact = _tsmTaxOfficeCodesByName[key];
+  if (exact != null) return exact;
+  for (final entry in _tsmTaxOfficeCodesByName.entries) {
+    if (key.contains(entry.key)) return entry.value;
+  }
+  return null;
+}
+
+excel.CellValue _excelTsmTaxOfficeCell(String? name) {
+  final code = _tsmTaxOfficeCode(name);
+  if (code != null) return excel.IntCellValue(code);
+  return excel.TextCellValue((name ?? '').trim());
 }
 
 String _toTurkishUpper(String value) {

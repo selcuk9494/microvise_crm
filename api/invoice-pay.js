@@ -16,7 +16,9 @@ const {
   verifyInvoiceHostedSession,
   verifyPosRefundTicket,
   signInvoiceHostedSession,
+  getPublicBaseUrl,
 } = require('./_lib/invoice_payment');
+const { buildPaymentOgImage } = require('./_lib/payment_og_image');
 
 function sendHtml(res, statusCode, html) {
   res.statusCode = statusCode;
@@ -30,6 +32,28 @@ function sendJson(res, statusCode, payload) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   res.end(JSON.stringify(payload));
+}
+
+function formatOgAmount(amount, currency) {
+  const value = Number(amount);
+  const safe = Number.isFinite(value) ? value : 0;
+  const formatted = safe.toLocaleString('tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const code = String(currency || 'TRY').toUpperCase();
+  if (code === 'TRY' || code === 'TL') return `${formatted} TL`;
+  if (code === 'USD') return `$${formatted}`;
+  if (code === 'EUR') return `EUR ${formatted}`;
+  return `${formatted} ${code}`;
+}
+
+function paymentPageUrls(req, token) {
+  const base = getPublicBaseUrl(req).replace(/\/$/, '');
+  const short = String(token || '').trim();
+  if (!short) return { pageUrl: '', ogImageUrl: '' };
+  const pageUrl = `${base}/p/${encodeURIComponent(short)}`;
+  return { pageUrl, ogImageUrl: `${pageUrl}/og.png` };
 }
 
 function getQuery(req) {
@@ -46,6 +70,7 @@ async function buildHostedPageFromToken({
   session,
   query = {},
   status = '',
+  req = null,
 }) {
   const lookupToken =
     String(token || '').trim() ||
@@ -116,6 +141,7 @@ async function buildHostedPageFromToken({
       invoices: draftInvoices,
       status,
       errorMessage: query.errmsg || '',
+      ...paymentPageUrls(req, lookupToken),
     }),
   };
 }
@@ -161,6 +187,33 @@ module.exports = async (req, res) => {
     const session = String(query.session || '').trim();
     const invoiceStatus = String(query.invoice || '').trim().toLowerCase();
 
+    const wantsOg =
+      query.og === '1' ||
+      query.preview === '1' ||
+      String(query.format || '').toLowerCase() === 'png';
+
+    if (req.method === 'GET' && wantsOg && token) {
+      const link = await getPaymentLinkByToken(token);
+      if (!link) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end('Og image not found');
+        return;
+      }
+      const numbers = await getInvoiceNumbersForLink(link);
+      const { pageUrl } = paymentPageUrls(req, token);
+      const png = await buildPaymentOgImage({
+        amountLabel: formatOgAmount(link.amount, link.currency),
+        pageUrl,
+        invoiceLabel: (numbers || []).join(', '),
+      });
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.end(png);
+      return;
+    }
+
     // Kısa link (/p/TOKEN) veya eski uzun link → hosted ödeme ekranı
     if (
       req.method === 'GET' &&
@@ -175,6 +228,7 @@ module.exports = async (req, res) => {
         session,
         query,
         status: invoiceStatus,
+        req,
       });
       return sendHtml(res, page.statusCode, page.html);
     }

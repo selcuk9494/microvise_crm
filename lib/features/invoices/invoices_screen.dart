@@ -756,6 +756,12 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             onPressed: () => _addPayment(context, invoice),
             icon: const Icon(LucideIcons.walletCards),
             label: const Text('Ödeme / Tahsilat Ekle'),
+          )
+        else if (invoice.canReverseCollection)
+          OutlinedButton.icon(
+            onPressed: () => _reverseCollection(context, invoice),
+            icon: const Icon(LucideIcons.undo2),
+            label: const Text('Tahsilatı geri al'),
           ),
       ],
     );
@@ -892,6 +898,54 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(SnackBar(content: Text('Hata: $e')));
+      }
+    }
+  }
+
+  Future<void> _reverseCollection(BuildContext context, Invoice invoice) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tahsilatı geri al'),
+        content: Text(
+          '${invoice.invoiceNumberDisplay} faturasındaki CRM tahsilatı geri alınacak; '
+          'fatura tekrar açık görünecek. Karttan otomatik iade yapılmaz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Geri al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'reverseInvoiceCollection',
+          'invoiceId': invoice.id,
+        },
+      );
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Tahsilat geri alındı')),
+      );
+      ref.invalidate(invoiceDetailProvider(widget.invoiceId));
+      ref.invalidate(invoicesProvider);
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Tahsilat geri alınamadı: $e')),
+        );
       }
     }
   }

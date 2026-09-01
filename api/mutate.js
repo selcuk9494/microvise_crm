@@ -52,6 +52,7 @@ const {
 const {
   createInvoicePaymentLink,
   refundInvoicePosPayment,
+  reverseInvoiceCollection,
   markPosPaymentSettled,
   dismissPosCollection,
 } = require('./_lib/invoice_payment');
@@ -3945,6 +3946,24 @@ module.exports = async (req, res) => {
             amount: body.amount != null ? Number(body.amount) : null,
             createdBy: user?.id || null,
             crmOnly: body.crmOnly === true || body.crmOnly === 'true',
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'reverseInvoiceCollection') {
+      if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
+        return;
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await reverseInvoiceCollection({
+            invoiceId: body.invoiceId,
+            createdBy: user?.id || null,
           }),
         );
       } catch (error) {

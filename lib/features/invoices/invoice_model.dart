@@ -170,6 +170,14 @@ class Invoice {
     return desc.contains('sanal pos') || desc.contains('ödeme linki');
   }
 
+  /// CRM tahsilatı (nakit/havale/çek) geri alınabilir. Sanal POS iadesi ayrı.
+  bool get canReverseCollection {
+    if (!isActive || status == 'cancelled') return false;
+    if (paidAmount <= 0.009) return false;
+    if (isPaidViaPos) return false;
+    return true;
+  }
+
   bool get isPaymentLinkAwaiting {
     final status = (paymentLinkStatus ?? '').trim().toLowerCase();
     if (status == 'paid' || status == 'refunded') return false;

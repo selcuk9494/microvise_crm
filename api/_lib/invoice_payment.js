@@ -629,6 +629,130 @@ function extractPosChargeCurrency(link) {
   return '949';
 }
 
+function isPosCollectionTransaction(row) {
+  const method = String(row?.payment_method || '').trim().toLowerCase();
+  if (method === 'pos') return true;
+  const desc = String(row?.description || '').toLowerCase();
+  return (
+    desc.includes('sanal pos') ||
+    desc.includes('odeme linki') ||
+    desc.includes('ödeme linki')
+  );
+}
+
+async function reverseInvoiceCollection({
+  invoiceId,
+  createdBy = null,
+}) {
+  await ensureInvoicePaidCloseRule();
+  const invId = String(invoiceId || '').trim();
+  if (!invId) {
+    const error = new Error('invoiceId zorunludur.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const invoiceResult = await query(
+    `
+      select
+        id,
+        invoice_number,
+        invoice_type,
+        status,
+        coalesce(paid_amount, 0) as paid_amount,
+        coalesce(grand_total, 0) as grand_total,
+        coalesce(is_active, true) as is_active
+      from public.invoices
+      where id = $1::uuid
+      limit 1
+    `,
+    [invId],
+  );
+  const invoice = invoiceResult.rows[0];
+  if (!invoice) {
+    const error = new Error('Fatura bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (String(invoice.status || '') === 'cancelled') {
+    const error = new Error('İptal faturaların tahsilatı geri alınamaz.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const collections = await query(
+    `
+      select t.*
+      from public.transactions t
+      where t.invoice_id = $1::uuid
+        and t.is_active = true
+        and t.transaction_type in ('collection', 'payment')
+      order by t.created_at desc
+    `,
+    [invId],
+  );
+
+  const allRows = collections.rows;
+  const posRows = allRows.filter((row) => isPosCollectionTransaction(row));
+  const crmRows = allRows.filter((row) => !isPosCollectionTransaction(row));
+
+  if (crmRows.length === 0) {
+    if (posRows.length > 0) {
+      const error = new Error(
+        'Bu fatura sanal POS ile tahsil edilmiş. Geri almak için «Sanal POS iade» kullanın.',
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+    if (Number(invoice.paid_amount || 0) <= 0.009) {
+      const error = new Error('Bu faturada geri alınacak tahsilat yok.');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  const collectionIds = crmRows.map((row) => row.id);
+  const reversedAmount = crmRows.reduce(
+    (sum, row) => sum + Number(row.amount || 0),
+    0,
+  );
+
+  await withTransaction(async (txQuery) => {
+    if (collectionIds.length) {
+      await txQuery(
+        `
+          update public.transactions
+          set
+            is_active = false,
+            description = trim(
+              both from coalesce(description, '') ||
+              ' [Tahsilat geri alındı ' || to_char(now(), 'YYYY-MM-DD HH24:MI') || ']'
+            )
+          where id = any($1::uuid[])
+            and is_active = true
+        `,
+        [collectionIds],
+      );
+    }
+    await txQuery(`select public.refresh_invoice_paid_status($1::uuid)`, [invId]);
+  });
+
+  return {
+    ok: true,
+    invoiceId: invId,
+    invoiceNumber: invoice.invoice_number,
+    reversedCount: collectionIds.length,
+    reversedAmount,
+    reversedTransactionIds: collectionIds,
+    remainingPosCount: posRows.length,
+    message:
+      collectionIds.length > 0
+        ? 'CRM tahsilatı geri alındı; fatura tekrar açık.'
+        : 'Fatura tahsilat durumu açık olarak güncellendi.',
+    createdBy: createdBy || null,
+  };
+}
+
 async function refundInvoicePosPayment({
   invoiceId,
   transactionId = null,
@@ -1667,6 +1791,8 @@ function buildCrmHostedPaymentPageHtml({
   invoices,
   status,
   errorMessage,
+  pageUrl,
+  ogImageUrl,
 }) {
   const amountText = Number(amount || 0).toFixed(2);
   const currencyLabel = String(currency || 'TRY');
@@ -1728,12 +1854,39 @@ function buildCrmHostedPaymentPageHtml({
     });
   }
 
+  const pageUrlSafe = String(pageUrl || '').trim();
+  const ogImageSafe = String(ogImageUrl || '').trim();
+  const ogTitle = `${formatPayMoney(amount, currency)} güvenli ödeme`;
+  const ogDescription = numbers.length
+    ? `${customer} · ${countLabel} · Güvenli ödeme butonuna dokunun.`
+    : `${customer} · Microvise 3D Secure ödeme.`;
+  const ogTags = pageUrlSafe
+    ? `
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Microvise" />
+  <meta property="og:locale" content="tr_TR" />
+  <meta property="og:title" content="${escapeHtml(ogTitle)}" />
+  <meta property="og:description" content="${escapeHtml(ogDescription)}" />
+  <meta property="og:url" content="${escapeHtml(pageUrlSafe)}" />
+  ${
+    ogImageSafe
+      ? `<meta property="og:image" content="${escapeHtml(ogImageSafe)}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${escapeHtml(ogImageSafe)}" />`
+      : ''
+  }`
+    : '';
+
   return `<!DOCTYPE html>
 <html lang="tr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Fatura Ödeme · Microvise</title>
+  ${ogTags}
   <style>
     body{margin:0;background:linear-gradient(180deg,#eff6ff 0%,#f8fafc 100%);font-family:system-ui,-apple-system,sans-serif;color:#0f172a}
     .wrap{max-width:720px;margin:16px auto;padding:0 12px}
@@ -2564,6 +2717,8 @@ module.exports = {
   startPaymentRedirect,
   handlePaymentCallback,
   refundInvoicePosPayment,
+  reverseInvoiceCollection,
+  isPosCollectionTransaction,
   markPosPaymentSettled,
   dismissPosCollection,
   loadPosValorDays,

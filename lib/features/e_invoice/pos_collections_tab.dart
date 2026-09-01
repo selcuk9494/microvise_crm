@@ -76,31 +76,17 @@ String paidTotalsByCurrency(Iterable<PosCollectionRow> items) {
 }
 
 class PosCollectionsFilter {
-  final DateTime startDate;
-  final DateTime endDate;
+  final DateTime? startDate;
+  final DateTime? endDate;
   final bool includeRefunded;
   final String status;
 
   const PosCollectionsFilter({
-    required this.startDate,
-    required this.endDate,
+    this.startDate,
+    this.endDate,
     this.includeRefunded = false,
     this.status = 'all',
   });
-
-  PosCollectionsFilter copyWith({
-    DateTime? startDate,
-    DateTime? endDate,
-    bool? includeRefunded,
-    String? status,
-  }) {
-    return PosCollectionsFilter(
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
-      includeRefunded: includeRefunded ?? this.includeRefunded,
-      status: status ?? this.status,
-    );
-  }
 
   @override
   bool operator ==(Object other) {
@@ -285,8 +271,10 @@ final posCollectionsProvider = FutureProvider.autoDispose
         '/data',
         queryParameters: {
           'resource': 'pos_collections_list',
-          'startDate': filter.startDate.toIso8601String().substring(0, 10),
-          'endDate': filter.endDate.toIso8601String().substring(0, 10),
+          if (filter.startDate != null)
+            'startDate': filter.startDate!.toIso8601String().substring(0, 10),
+          if (filter.endDate != null)
+            'endDate': filter.endDate!.toIso8601String().substring(0, 10),
           'includeRefunded': filter.includeRefunded.toString(),
           'status': filter.status,
         },
@@ -407,8 +395,8 @@ class PosCollectionsTab extends ConsumerStatefulWidget {
 }
 
 class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
-  late DateTime _start;
-  late DateTime _end;
+  DateTime? _start;
+  DateTime? _end;
   bool _includeRefunded = false;
   String _status = 'all';
   String _valorFilter = 'all';
@@ -417,14 +405,6 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   bool _savingValor = false;
   final Set<String> _selectedIds = {};
 
-  @override
-  void initState() {
-    super.initState();
-    final today = _dateOnly(DateTime.now());
-    _start = DateTime(today.year, today.month, 1);
-    _end = today;
-  }
-
   PosCollectionsFilter get _filter => PosCollectionsFilter(
     startDate: _start,
     endDate: _end,
@@ -432,20 +412,56 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     status: _status,
   );
 
+  bool get _isAllDates => _start == null || _end == null;
+
+  bool get _isToday {
+    if (_start == null || _end == null) return false;
+    final today = _dateOnly(DateTime.now());
+    return _start == today && _end == today;
+  }
+
+  bool get _isThisMonth {
+    if (_start == null || _end == null) return false;
+    final today = _dateOnly(DateTime.now());
+    return _start == DateTime(today.year, today.month, 1) && _end == today;
+  }
+
   Future<void> _pickRange() async {
     final now = DateTime.now();
+    final today = _dateOnly(now);
+    final initialStart = _start ?? DateTime(today.year, today.month, 1);
+    var initialEnd = _end ?? today;
+    if (initialEnd.isBefore(initialStart)) initialEnd = initialStart;
     final picked = await showDateRangePicker(
       context: context,
-      firstDate: DateTime(now.year - 2),
-      lastDate: DateTime(now.year + 1),
-      initialDateRange: DateTimeRange(start: _start, end: _end),
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      currentDate: today,
+      initialDateRange: DateTimeRange(start: initialStart, end: initialEnd),
       locale: const Locale('tr', 'TR'),
       helpText: 'Sanal POS tarih aralığı',
+      saveText: 'Uygula',
+      cancelText: 'Vazgeç',
+      builder: (context, child) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520, maxHeight: 640),
+            child: child,
+          ),
+        );
+      },
     );
     if (picked == null || !mounted) return;
     setState(() {
       _start = _dateOnly(picked.start);
       _end = _dateOnly(picked.end);
+    });
+  }
+
+  void _setAllDates() {
+    setState(() {
+      _start = null;
+      _end = null;
     });
   }
 
@@ -797,9 +813,11 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
   Widget build(BuildContext context) {
     final async = ref.watch(posCollectionsProvider(_filter));
     final valorDays = async.value?.valorDays ?? 1;
-    final dateLabel = _start == _end
-        ? DateFormat('d MMM yyyy', 'tr_TR').format(_start)
-        : '${DateFormat('d MMM', 'tr_TR').format(_start)} – ${DateFormat('d MMM yyyy', 'tr_TR').format(_end)}';
+    final dateLabel = _isAllDates
+        ? 'Tüm tarihler'
+        : _start == _end
+        ? DateFormat('d MMM yyyy', 'tr_TR').format(_start!)
+        : '${DateFormat('d MMM', 'tr_TR').format(_start!)} – ${DateFormat('d MMM yyyy', 'tr_TR').format(_end!)}';
 
     return CustomScrollView(
       slivers: [
@@ -830,17 +848,20 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                   runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    FilledButton.tonalIcon(
-                      onPressed: _setToday,
-                      icon: const Icon(
-                        AppPhosphorIcons.calendarBlank,
-                        size: 16,
-                      ),
-                      label: const Text('Bugün'),
+                    FilterChip(
+                      label: const Text('Tümü'),
+                      selected: _isAllDates,
+                      onSelected: (_) => _setAllDates(),
                     ),
-                    OutlinedButton(
-                      onPressed: _setMonth,
-                      child: const Text('Bu ay'),
+                    FilterChip(
+                      label: const Text('Bugün'),
+                      selected: _isToday,
+                      onSelected: (_) => _setToday(),
+                    ),
+                    FilterChip(
+                      label: const Text('Bu ay'),
+                      selected: _isThisMonth && !_isToday,
+                      onSelected: (_) => _setMonth(),
                     ),
                     OutlinedButton.icon(
                       onPressed: _pickRange,
