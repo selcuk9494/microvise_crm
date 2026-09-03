@@ -80,6 +80,53 @@ test('KAPALI=0 olsa bile KF Durumu Kapalı faturayı kapatır', () => {
   assert.equal(result.paidAmount, 350);
 });
 
+test('Döviz bakiyesi kalsa bile KF tutarı TL toplamı karşılıyorsa kapanır', () => {
+  const result = paymentOf(
+    {
+      KAPALI: 0,
+      KF_DURUMU: 'Kapalı',
+      KF_TUTARI: 16700,
+      KPB_GENEL_TOPLAM: 16449.84,
+      KPB_BAKIYE: -250.16,
+      DVZ_BAKIYE: 10.11,
+      DVZ_TAHSILAT_TOPLAMI: 339.89,
+    },
+    'USD',
+    350,
+  );
+  assert.equal(result.status, 'paid');
+  assert.equal(result.paidAmount, 350);
+});
+
+test('KF tutarı TL faturayı karşılıyorsa döviz kur farkı kısmi sayılmaz', () => {
+  const result = paymentOf(
+    {
+      KF_TUTARI: 16700,
+      KPB_GENEL_TOPLAM: 16449.84,
+      KPB_BAKIYE: -250.16,
+      DVZ_BAKIYE: 10.11,
+      DVZ_TAHSILAT_TOPLAMI: 339.89,
+    },
+    'USD',
+    350,
+  );
+  assert.equal(result.status, 'paid');
+  assert.equal(result.paidAmount, 350);
+});
+
+test('KF yokken döviz bakiyesi kalan faturayı kısmi bırakır', () => {
+  const result = paymentOf(
+    {
+      DVZ_BAKIYE: 10.11,
+      DVZ_TAHSILAT_TOPLAMI: 339.89,
+    },
+    'USD',
+    350,
+  );
+  assert.equal(result.status, 'partial');
+  assert.ok(result.paidAmount < 350);
+});
+
 test('Yalnızca KAPALI=0 ve bakiye yoksa durumu uydurmaz', () => {
   const result = paymentOf({ KAPALI: 0 }, 'USD', 350);
   assert.equal(result.status, 'open');

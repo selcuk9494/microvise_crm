@@ -131,14 +131,61 @@ function readAkinsoftClosedFlag(row, pick, parseAkinsoftBool) {
   for (const name of AKINSOFT_CLOSED_FLAG_FIELDS) {
     const raw = pick(row, [name]);
     if (raw == null || String(raw).trim() === '') continue;
+    const text = String(raw).trim().toLocaleLowerCase('tr-TR');
+    if (
+      text.includes('kapal') ||
+      text.includes('closed') ||
+      text === 'odendi' ||
+      text === 'ödendi'
+    ) {
+      return true;
+    }
     const flag = parseAkinsoftBool(raw);
     if (flag === true) return true;
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric) && numeric === 1) return true;
   }
   for (const name of ['KAPALI', 'KAPANDI', 'KAPALI_FATURA']) {
     const flag = parseAkinsoftBool(pick(row, [name]));
     if (flag === false) return false;
   }
   return null;
+}
+
+function pickAkinsoftNumber(row, pick, numberOrZero, names) {
+  const raw = pick(row, names);
+  if (raw == null || String(raw).trim() === '') return null;
+  return numberOrZero(raw);
+}
+
+/** Wolvox Kapalı Fatura (KF) tutarı fatura TL toplamını karşılıyorsa kapalıdır. */
+function isAkinsoftKfAmountClosed(row, pick, numberOrZero, tolerance = 0.02) {
+  const kfAmount = pickAkinsoftNumber(row, pick, numberOrZero, [
+    'KF_TUTARI',
+    'KF_TUTAR',
+    'KPB_KAPANAN',
+    'KAPANAN_TUTAR',
+  ]);
+  if (kfAmount == null || kfAmount <= 0) return false;
+  const kpbTotal = pickAkinsoftNumber(row, pick, numberOrZero, [
+    'KPB_GENEL_TOPLAM',
+    'KPB_GENELTOPLAM',
+    'KPB_KDV_DAHIL_TOPLAM',
+    'KPB_KDVLI_TOPLAM',
+    'GENEL_TOPLAM',
+    'FATURA_TOPLAMI',
+  ]);
+  if (kpbTotal != null && kpbTotal > 0 && kfAmount + tolerance >= kpbTotal) {
+    return true;
+  }
+  const kpbLeft = pickAkinsoftNumber(row, pick, numberOrZero, [
+    'KPB_BAKIYE',
+    'KPB_KALAN',
+    'KPB_ACIK_TUTAR',
+    'KPB_KALAN_TUTAR',
+  ]);
+  // TL bakiye sıfır/negatif (fazla ödeme) + KF tutarı varsa Wolvox faturayı kapatmış demektir.
+  return kpbLeft != null && kpbLeft <= tolerance;
 }
 
 function resolveAkinsoftInvoicePayment(
@@ -208,6 +255,14 @@ function resolveAkinsoftInvoicePayment(
       source: 'invoice',
     };
   }
+  if (isAkinsoftKfAmountClosed(row, pick, numberOrZero, tolerance)) {
+    return {
+      paidAmount: grandTotal,
+      status: 'paid',
+      reliable: true,
+      source: 'invoice',
+    };
+  }
   if (remainingRaw != null) {
     if (remainingAmount <= tolerance && grandTotal > 0) {
       return {
@@ -257,6 +312,7 @@ module.exports = {
   akinsoftCariHrEvrakVariants,
   akinsoftCariHrLinkedSourceId,
   akinsoftInvoiceSerialCore,
+  isAkinsoftKfAmountClosed,
   mapCariHrRowToInvoiceNumber,
   readAkinsoftClosedFlag,
   resolveAkinsoftCariHrInvoiceNumber,
