@@ -6,7 +6,7 @@ const QRCode = require('qrcode');
 
 const { query } = require('./db');
 const { escapeHtml, isValidEmail, sendEmail } = require('./mail');
-const { ensureCustomerEmailColumns } = require('./schema');
+const { ensureCustomerEmailColumns, ensureInvoicesCustomerSentColumn } = require('./schema');
 const {
   createInvoicePaymentLink,
   ensureInvoicePaymentLinksTable,
@@ -1084,6 +1084,77 @@ async function markPaymentLinkEmailed({ linkId, emailedTo }) {
   );
 }
 
+function normalizeCustomerSentVia(value) {
+  const via = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (via === 'email' || via === 'mail') return 'email';
+  if (via === 'whatsapp' || via === 'wa') return 'whatsapp';
+  return 'manual';
+}
+
+function uniqueInvoiceIds(values) {
+  const seen = new Set();
+  const ids = [];
+  const list = Array.isArray(values) ? values : [values];
+  for (const value of list) {
+    const id = String(value || '').trim();
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        id,
+      )
+    ) {
+      continue;
+    }
+    const key = id.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ids.push(id);
+  }
+  return ids;
+}
+
+async function markInvoicesCustomerSent({
+  invoiceIds,
+  via = 'manual',
+  sent = true,
+}) {
+  await ensureInvoicesCustomerSentColumn();
+  const ids = uniqueInvoiceIds(invoiceIds);
+  if (!ids.length) {
+    const error = new Error('Fatura seçilmelidir.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (sent === false) {
+    await query(
+      `
+        update public.invoices
+        set
+          customer_sent_at = null,
+          customer_sent_via = null,
+          updated_at = now()
+        where id = any($1::uuid[])
+      `,
+      [ids],
+    );
+    return { ok: true, sent: false, count: ids.length };
+  }
+  const channel = normalizeCustomerSentVia(via);
+  await query(
+    `
+      update public.invoices
+      set
+        customer_sent_at = coalesce(customer_sent_at, now()),
+        customer_sent_via = coalesce(nullif(btrim(customer_sent_via), ''), $2),
+        updated_at = now()
+      where id = any($1::uuid[])
+    `,
+    [ids, channel],
+  );
+  return { ok: true, sent: true, via: channel, count: ids.length };
+}
+
 async function sendInvoicePaymentLinkEmail({
   invoiceIds,
   email,
@@ -1206,6 +1277,10 @@ async function sendInvoicePaymentLinkEmail({
       emailedTo: toLabel,
     });
   }
+  await markInvoicesCustomerSent({
+    invoiceIds: invoices.map((row) => row.id),
+    via: 'email',
+  });
 
   const savedNote = savedToCustomer ? ' Adres cari karta kaydedildi.' : '';
   return {
@@ -1387,6 +1462,8 @@ async function sendPosPaymentReminders({
 module.exports = {
   sendInvoicePaymentLinkEmail,
   sendPosPaymentReminders,
+  markInvoicesCustomerSent,
+  normalizeCustomerSentVia,
   loadInvoicesForMail,
   markPaymentLinkEmailed,
   rememberCustomerEmail,

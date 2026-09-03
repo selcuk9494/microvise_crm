@@ -449,6 +449,17 @@ class _InvoiceCard extends StatelessWidget {
                         ),
                       ),
                       AppBadge(label: statusLabel, tone: statusTone),
+                      if (invoice.invoiceType == 'sales') ...[
+                        const Gap(6),
+                        AppBadge(
+                          label: invoice.isSentToCustomer
+                              ? 'İletildi'
+                              : 'İletilmedi',
+                          tone: invoice.isSentToCustomer
+                              ? AppBadgeTone.success
+                              : AppBadgeTone.warning,
+                        ),
+                      ],
                     ],
                   ),
                   const Gap(4),
@@ -952,6 +963,17 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
   Future<void> _cancelInvoice() async {
     final messenger = ScaffoldMessenger.of(context);
+    final invoice = ref.read(invoiceDetailProvider(widget.invoiceId)).value;
+    if (invoice?.isRecordProtected == true) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Bu fatura iptal edilemez (${invoice!.recordProtectionReason}). Kayıt korunur.',
+          ),
+        ),
+      );
+      return;
+    }
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

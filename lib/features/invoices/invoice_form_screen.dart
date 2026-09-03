@@ -470,6 +470,17 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   Future<void> _saveAndFinalize() => _save('open');
 
   Future<void> _save(String status) async {
+    if (widget.editInvoice != null && !widget.editInvoice!.canEditRecord) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Bu fatura kilitli (${widget.editInvoice!.recordProtectionReason}). '
+            'Yanlışlıkla kaybolmasın diye düzenlenemez.',
+          ),
+        ),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     if (_selectedCustomerId == null) {
       ScaffoldMessenger.of(

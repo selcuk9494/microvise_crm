@@ -23,6 +23,7 @@ final invoicesProvider = FutureProvider.autoDispose
             'startDate': filter.startDate!.toIso8601String().substring(0, 10),
           if (filter.endDate != null)
             'endDate': filter.endDate!.toIso8601String().substring(0, 10),
+          if (filter.customerSent != null) 'customerSent': filter.customerSent!,
           'activeFilter': filter.activeFilter,
         },
       );
@@ -202,6 +203,9 @@ class InvoiceFilter {
   final DateTime? startDate;
   final DateTime? endDate;
 
+  /// `sent` | `unsent` | null (tümü)
+  final String? customerSent;
+
   const InvoiceFilter({
     this.activeFilter = 'active',
     this.invoiceType,
@@ -210,6 +214,7 @@ class InvoiceFilter {
     this.customerId,
     this.startDate,
     this.endDate,
+    this.customerSent,
   });
 
   InvoiceFilter copyWith({
@@ -220,12 +225,14 @@ class InvoiceFilter {
     String? customerId,
     DateTime? startDate,
     DateTime? endDate,
+    String? customerSent,
     bool clearInvoiceType = false,
     bool clearStatus = false,
     bool clearEInvoiceStatus = false,
     bool clearCustomerId = false,
     bool clearStartDate = false,
     bool clearEndDate = false,
+    bool clearCustomerSent = false,
   }) {
     return InvoiceFilter(
       activeFilter: activeFilter ?? this.activeFilter,
@@ -237,6 +244,9 @@ class InvoiceFilter {
       customerId: clearCustomerId ? null : (customerId ?? this.customerId),
       startDate: clearStartDate ? null : (startDate ?? this.startDate),
       endDate: clearEndDate ? null : (endDate ?? this.endDate),
+      customerSent: clearCustomerSent
+          ? null
+          : (customerSent ?? this.customerSent),
     );
   }
 }

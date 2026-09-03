@@ -96,6 +96,8 @@ class Invoice {
   final String? paymentLinkStatus;
   final DateTime? paymentLinkEmailedAt;
   final DateTime? paymentLinkSettledAt;
+  final DateTime? customerSentAt;
+  final String? customerSentVia;
   final String? billingSource;
 
   const Invoice({
@@ -144,6 +146,8 @@ class Invoice {
     this.paymentLinkStatus,
     this.paymentLinkEmailedAt,
     this.paymentLinkSettledAt,
+    this.customerSentAt,
+    this.customerSentVia,
     this.billingSource,
   });
 
@@ -182,6 +186,17 @@ class Invoice {
     final status = (paymentLinkStatus ?? '').trim().toLowerCase();
     if (status == 'paid' || status == 'refunded') return false;
     return paymentLinkEmailedAt != null;
+  }
+
+  bool get isSentToCustomer => customerSentAt != null;
+
+  String get customerSentViaLabel {
+    return switch ((customerSentVia ?? '').trim().toLowerCase()) {
+      'email' || 'mail' => 'Mail',
+      'whatsapp' || 'wa' => 'WhatsApp',
+      'manual' => 'Manuel',
+      _ => 'Müşteri',
+    };
   }
 
   /// POS tahsilatı geldi ama Maliye / manuel kapanış henüz yok.
@@ -235,6 +250,45 @@ class Invoice {
     // Yalnızca SAP tarzı fatura no "bağlı" sayılır.
     // erp_invoice_number CRM taslak (STŞ-...) tutabilir; onu bağlı sanma.
     return Invoice._looksLikeAkinsoftInvoiceNumber(invoiceNumber);
+  }
+
+  /// Maliye, SAP veya tahsilatı olan fatura yanlışlıkla silinmesin / boşalmasın.
+  bool get isRecordProtected {
+    if (isEInvoiceClosed || hasOfficialEInvoice) return true;
+    if (eInvoiceStatus == 'prepared') return true;
+    if (isLinkedToAkinsoft || akinsoftSyncStatusEffective == 'synced') {
+      return true;
+    }
+    if (Invoice._looksLikeAkinsoftInvoiceNumber(erpInvoiceNumber)) return true;
+    if (paidAmount > 0.009) return true;
+    if (isPaidViaPos) return true;
+    if (status == 'paid' || status == 'partial') return true;
+    return false;
+  }
+
+  bool get canDeactivate =>
+      isActive && !isRecordProtected && !isSentToCustomer;
+
+  bool get canEditRecord =>
+      isActive && !isRecordProtected && status != 'cancelled';
+
+  String get recordProtectionReason {
+    if (isEInvoiceClosed || hasOfficialEInvoice || eInvoiceStatus == 'prepared') {
+      return 'Maliye / e-fatura kaydı var';
+    }
+    if (isLinkedToAkinsoft ||
+        akinsoftSyncStatusEffective == 'synced' ||
+        Invoice._looksLikeAkinsoftInvoiceNumber(erpInvoiceNumber)) {
+      return 'SAP kaydı var';
+    }
+    if (paidAmount > 0.009 ||
+        isPaidViaPos ||
+        status == 'paid' ||
+        status == 'partial') {
+      return 'Tahsilat kaydı var';
+    }
+    if (isSentToCustomer) return 'Müşteriye iletilmiş';
+    return 'Kayıt korunuyor';
   }
 
   /// Display-only short invoice number for list rows.
@@ -383,6 +437,18 @@ class Invoice {
       paymentLinkSettledAt: json['payment_link_settled_at'] != null
           ? parseAppDateTime(json['payment_link_settled_at'].toString())
           : null,
+      customerSentAt:
+          json['customer_sent_at'] != null
+          ? parseAppDateTime(json['customer_sent_at'].toString())
+          : json['payment_link_emailed_at'] != null
+          ? parseAppDateTime(json['payment_link_emailed_at'].toString())
+          : null,
+      customerSentVia: () {
+        final via = json['customer_sent_via']?.toString().trim();
+        if (via != null && via.isNotEmpty) return via;
+        if (json['payment_link_emailed_at'] != null) return 'email';
+        return null;
+      }(),
       billingSource: json['billing_source']?.toString(),
     );
   }

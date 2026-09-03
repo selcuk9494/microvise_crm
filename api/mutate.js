@@ -38,6 +38,7 @@ const {
   ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,
   ensureInvoicePricesIncludeVatColumn,
+  ensureInvoicesCustomerSentColumn,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,
   ensureQuotesTables,
@@ -56,7 +57,14 @@ const {
   markPosPaymentSettled,
   dismissPosCollection,
 } = require('./_lib/invoice_payment');
-const { sendInvoicePaymentLinkEmail, sendPosPaymentReminders } = require('./_lib/invoice_mail');
+const { sendInvoicePaymentLinkEmail, sendPosPaymentReminders, markInvoicesCustomerSent } = require('./_lib/invoice_mail');
+const {
+  assertInvoiceIdFilters,
+  assertInvoiceItemsDeleteAllowed,
+  assertInvoiceUpdateAllowed,
+  assertInvoiceUpsertAllowed,
+  assertInvoicesHardDeleteDenied,
+} = require('./_lib/invoice_guard');
 const {
   upsertRecurringBillingPlan,
   setRecurringBillingPlanActive,
@@ -3817,6 +3825,34 @@ module.exports = async (req, res) => {
         throw error;
       }
     }
+    if (op === 'markInvoiceCustomerSent') {
+      if (
+        !hasPageAccess(user, 'faturalama') &&
+        !hasPageAccess(user, 'e_fatura') &&
+        !hasPageAccess(user, 'urunler')
+      ) {
+        return forbidden(req, res);
+      }
+      try {
+        const invoiceIds = Array.isArray(body.invoiceIds)
+          ? body.invoiceIds
+          : body.invoiceId
+            ? [body.invoiceId]
+            : [];
+        return ok(
+          req,
+          res,
+          await markInvoicesCustomerSent({
+            invoiceIds,
+            via: body.via,
+            sent: body.sent !== false,
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
     if (op === 'markPosPaymentSettled') {
       if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
         return;
@@ -4099,6 +4135,7 @@ module.exports = async (req, res) => {
     if (table === 'invoices') {
       await ensureInvoicePricesIncludeVatColumn();
       await ensureIssuedSourceInvoiceColumns();
+      await ensureInvoicesCustomerSentColumn();
       columnsCache.delete('invoices');
       columnsMetaCache.delete('invoices');
     }
@@ -4136,6 +4173,9 @@ module.exports = async (req, res) => {
           : null;
       if (table === 'application_forms') {
         await assertApplicationFormsMutable({ op, values });
+      }
+      if (table === 'invoices') {
+        await assertInvoiceUpsertAllowed(values);
       }
       const result = await upsertRow({ table, values, returningRow, user });
       let invoiceLink = null;
@@ -4198,6 +4238,9 @@ module.exports = async (req, res) => {
       if (table === 'application_forms') {
         await assertApplicationFormsMutable({ op, id });
       }
+      if (table === 'invoices') {
+        await assertInvoicesHardDeleteDenied();
+      }
       await deleteRow({ table, id });
       if (table === 'application_forms' && before) {
         await insertApplicationFormLog({
@@ -4236,6 +4279,10 @@ module.exports = async (req, res) => {
       const before = formId ? await selectApplicationFormAuditRow(formId) : null;
       if (table === 'application_forms') {
         await assertApplicationFormsMutable({ op, values, filters });
+      }
+      if (table === 'invoices') {
+        const invoiceIds = assertInvoiceIdFilters(filters);
+        await assertInvoiceUpdateAllowed({ ids: invoiceIds, values });
       }
       await updateWhere({ table, values, filters, user });
       if (table === 'invoices' && Object.prototype.hasOwnProperty.call(values || {}, 'is_active')) {
@@ -4279,9 +4326,10 @@ module.exports = async (req, res) => {
     if (op === 'deleteWhere') {
       const filters = body.filters;
       if (table === 'invoices') {
-        try {
-          await deleteIssuedHatGmp3ForInvoices(idsFromFilters(filters, 'id'));
-        } catch (_) {}
+        await assertInvoicesHardDeleteDenied();
+      }
+      if (table === 'invoice_items') {
+        await assertInvoiceItemsDeleteAllowed(filters);
       }
       await deleteWhere({ table, filters });
       return ok(req, res, { ok: true });
@@ -4289,6 +4337,7 @@ module.exports = async (req, res) => {
 
     return badRequest(req, res, `Bilinmeyen op: ${op}`);
   } catch (error) {
+    if (error?.statusCode === 400) return badRequest(req, res, error.message);
     return serverError(req, res, error);
   }
 };

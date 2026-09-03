@@ -36,6 +36,7 @@ const ensured = {
   customer_extra_emails: false,
   invoice_prices_include_vat: false,
   invoices_billing_source: false,
+  invoices_customer_sent: false,
   hat_lisans_billing_settings: false,
   hat_lisans_prior_collections: false,
   akinsoft_invoice_sync: false,
@@ -2061,6 +2062,43 @@ async function ensureInvoicesBillingSourceColumn() {
   return true;
 }
 
+async function ensureInvoicesCustomerSentColumn() {
+  if (ensured.invoices_customer_sent) return true;
+  if (!(await tableExists('invoices'))) {
+    ensured.invoices_customer_sent = true;
+    return true;
+  }
+  await query(`
+    alter table public.invoices
+      add column if not exists customer_sent_at timestamptz,
+      add column if not exists customer_sent_via text
+  `);
+  await query(`
+    create index if not exists idx_invoices_customer_sent_at
+    on public.invoices (customer_sent_at)
+    where customer_sent_at is not null
+  `);
+  if (await tableExists('invoice_payment_links')) {
+    await query(`
+      update public.invoices i
+      set
+        customer_sent_at = src.emailed_at,
+        customer_sent_via = coalesce(nullif(btrim(i.customer_sent_via), ''), 'email')
+      from (
+        select invoice_id, min(l.emailed_at) as emailed_at
+        from public.invoice_payment_links l
+        cross join lateral unnest(l.invoice_ids) as invoice_id
+        where l.emailed_at is not null
+        group by invoice_id
+      ) src
+      where i.id = src.invoice_id
+        and i.customer_sent_at is null
+    `);
+  }
+  ensured.invoices_customer_sent = true;
+  return true;
+}
+
 async function ensureHatLisansBillingSettingsTable() {
   if (ensured.hat_lisans_billing_settings) return true;
   await query(`
@@ -2441,6 +2479,7 @@ module.exports = {
   ensureApplicationFormActivityLogsTable,
   ensureInvoicePricesIncludeVatColumn,
   ensureInvoicesBillingSourceColumn,
+  ensureInvoicesCustomerSentColumn,
   ensureHatLisansBillingSettingsTable,
   ensureHatLisansPriorCollectionsTable,
   ensureAkinsoftInvoiceSyncColumns,

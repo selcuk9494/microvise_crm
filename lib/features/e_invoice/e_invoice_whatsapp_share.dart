@@ -345,7 +345,7 @@ Future<String?> pickWhatsAppPhone({
   return null;
 }
 
-Future<void> shareInvoicePaymentLinkWithWhatsApp({
+Future<bool> shareInvoicePaymentLinkWithWhatsApp({
   required BuildContext context,
   required String paymentUrl,
   required String amountLabel,
@@ -363,7 +363,7 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
         ? 'Numara seçin; WhatsApp sohbeti ödeme linki mesajıyla açılır.'
         : 'Numara seçin; WhatsApp sohbeti ödeme linki ve fatura PDF’siyle açılır.',
   );
-  if (phone == null || !context.mounted) return;
+  if (phone == null || !context.mounted) return false;
 
   final message = buildInvoicePaymentWhatsAppMessage(
     paymentUrl: paymentUrl,
@@ -417,7 +417,7 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
     }
   }
 
-  if (!context.mounted) return;
+  if (!context.mounted) return false;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(
@@ -427,6 +427,7 @@ Future<void> shareInvoicePaymentLinkWithWhatsApp({
       ),
     ),
   );
+  return true;
 }
 
 /// TR (+90) ve Kıbrıs (+357 / KKTC 053x→90) numaralarını wa.me için normalize eder.

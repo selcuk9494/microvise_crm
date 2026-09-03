@@ -44,11 +44,12 @@ const {
   ensureQuotesTables,
   ensureProductImageUrlColumn,
   ensureInvoicesBillingSourceColumn,
+  ensureInvoicesCustomerSentColumn,
   ensureHatLisansPriorCollectionsTable,
 } = require('./_lib/schema');
 const { buildSystemReports } = require('./_lib/reports');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
-const { ensureInvoicePaymentLinksTable, loadPosValorDays } = require('./_lib/invoice_payment');
+const { ensureInvoicePaymentLinksTable, loadPosValorDays, reconcilePosPaymentLinks } = require('./_lib/invoice_payment');
 const {
   posListStatus,
   posCollectionVisible,
@@ -1899,6 +1900,7 @@ module.exports = async (req, res) => {
           whereSql += ` and i.invoice_date <= $${values.length}::date`;
         }
         await ensureInvoicesBillingSourceColumn();
+        await ensureInvoicesCustomerSentColumn();
         const billingSource = String(req.query.billingSource || '').trim();
         if (billingSource === 'hat_lisans') {
           whereSql += ` and i.billing_source = 'hat_lisans'`;
@@ -1907,6 +1909,17 @@ module.exports = async (req, res) => {
             coalesce(i.billing_source, '') = 'hat_lisans'
             and i.status = 'draft'
           )`;
+        }
+        const customerSent = String(req.query.customerSent || '')
+          .trim()
+          .toLowerCase();
+        if (customerSent === 'sent') {
+          whereSql += ` and i.customer_sent_at is not null`;
+        } else if (customerSent === 'unsent') {
+          whereSql += `
+            and i.invoice_type = 'sales'
+            and i.customer_sent_at is null
+          `;
         }
 
         const result = await query(
@@ -2038,7 +2051,13 @@ module.exports = async (req, res) => {
               select l.status, l.emailed_at, l.settled_at
               from public.invoice_payment_links l
               where fi.id = any(l.invoice_ids)
-              order by l.created_at desc
+              order by
+                case
+                  when l.status = 'paid' then 0
+                  when l.status = 'refunded' then 2
+                  else 1
+                end,
+                l.created_at desc
               limit 1
             ) pl on true
             order by
@@ -2117,6 +2136,7 @@ module.exports = async (req, res) => {
 
       case 'invoice_detail': {
         if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
+        await ensureInvoicesCustomerSentColumn();
         const id = String(req.query.invoiceId || '').trim();
         if (!id) return badRequest(req, res, 'invoiceId zorunludur.');
         const result = await query(
@@ -2207,6 +2227,7 @@ module.exports = async (req, res) => {
       case 'pos_collections_list': {
         if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
         await ensureInvoicePaymentLinksTable();
+        await reconcilePosPaymentLinks();
         const valorDaysSetting = await loadPosValorDays();
         const startDate = String(req.query.startDate || '').trim();
         const endDate = String(req.query.endDate || '').trim();

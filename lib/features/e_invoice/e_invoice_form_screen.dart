@@ -319,12 +319,22 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
         actions: [
           if (!isMobileLayout) ...[
             TextButton(
-              onPressed: _saving ? null : () => _save(status: 'draft'),
+              onPressed:
+                  _saving ||
+                      (widget.initialInvoice != null &&
+                          !widget.initialInvoice!.canEditRecord)
+                  ? null
+                  : () => _save(status: 'draft'),
               child: const Text('Taslak'),
             ),
             const Gap(8),
             FilledButton.icon(
-              onPressed: _saving ? null : () => _save(status: 'open'),
+              onPressed:
+                  _saving ||
+                      (widget.initialInvoice != null &&
+                          !widget.initialInvoice!.canEditRecord)
+                  ? null
+                  : () => _save(status: 'open'),
               icon: _saving
                   ? const SizedBox(
                       width: 16,
@@ -680,6 +690,14 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
   }
 
   Future<void> _save({required String status}) async {
+    if (widget.initialInvoice != null &&
+        !widget.initialInvoice!.canEditRecord) {
+      _showMessage(
+        'Bu fatura kilitli (${widget.initialInvoice!.recordProtectionReason}). '
+        'Yanlışlıkla kaybolmasın diye düzenlenemez.',
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     if (_customerId == null) {
       _showMessage('Cari seçin.');

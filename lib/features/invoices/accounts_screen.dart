@@ -945,7 +945,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen>
         title: const Text('Ödeme linki oluştur'),
         content: Text(
           '${invoices.length} fatura için toplam ${money.format(total)} '
-          'tutarında Microvise sanal POS ödeme linki oluşturulacak.',
+          'tutarında Microvise sanal POS ödeme linki oluşturulacak. '
+          'Bu faturalara ait eski bekleyen linkler iptal edilir; '
+          'yalnızca bu yeni link tahsilat alır.',
         ),
         actions: [
           TextButton(

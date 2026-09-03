@@ -1246,6 +1246,157 @@ async function loadOpenInvoices(invoiceIds) {
   return open;
 }
 
+function chargeAmountForLink(linkAmount, remaining) {
+  const remainingN = Number(remaining);
+  const linkN = Number(linkAmount);
+  const remainingSafe = Number.isFinite(remainingN) ? remainingN : 0;
+  const linkSafe = Number.isFinite(linkN) ? linkN : 0;
+  if (remainingSafe <= 0.009 || linkSafe <= 0.009) return 0;
+  return Number(Math.min(linkSafe, remainingSafe).toFixed(2));
+}
+
+async function remainingForInvoiceIds(invoiceIds) {
+  const ids = Array.from(
+    new Set(
+      (invoiceIds || []).map((id) => String(id || '').trim()).filter(Boolean),
+    ),
+  );
+  if (!ids.length) return 0;
+  const result = await query(
+    `
+      select coalesce(sum(greatest(0, coalesce(grand_total, 0) - coalesce(paid_amount, 0))), 0) as remaining
+      from public.invoices
+      where id = any($1::uuid[])
+        and coalesce(is_active, true) = true
+    `,
+    [ids],
+  );
+  return Number(result.rows[0]?.remaining || 0);
+}
+
+async function supersedePendingPaymentLinks(invoiceIds, exceptId = null) {
+  const ids = Array.from(
+    new Set(
+      (invoiceIds || []).map((id) => String(id || '').trim()).filter(Boolean),
+    ),
+  );
+  if (!ids.length) return;
+  await query(
+    `
+      update public.invoice_payment_links
+      set
+        dismissed_at = coalesce(dismissed_at, now()),
+        expires_at = least(coalesce(expires_at, now()), now()),
+        updated_at = now()
+      where coalesce(status, 'pending') = 'pending'
+        and dismissed_at is null
+        and invoice_ids && $1::uuid[]
+        and ($2::uuid is null or id <> $2)
+    `,
+    [ids, exceptId],
+  );
+}
+
+async function reconcilePosPaymentLinks() {
+  await ensureInvoicePaymentLinksTable();
+  await query(`
+    update public.invoice_payment_links l
+    set
+      status = 'paid',
+      paid_at = coalesce(l.paid_at, src.paid_at, now()),
+      updated_at = now()
+    from (
+      select distinct on (l2.id)
+        l2.id as link_id,
+        coalesce(t.created_at, t.transaction_date::timestamptz) as paid_at
+      from public.invoice_payment_links l2
+      join public.transactions t
+        on t.invoice_id = any(l2.invoice_ids)
+       and t.is_active = true
+       and t.transaction_type in ('collection', 'payment')
+       and (
+         lower(coalesce(t.payment_method, '')) = 'pos'
+         or lower(coalesce(t.description, '')) like '%sanal pos%'
+         or lower(coalesce(t.description, '')) like '%ödeme linki%'
+         or lower(coalesce(t.description, '')) like '%odeme linki%'
+       )
+       and coalesce(t.created_at, t.transaction_date::timestamptz)
+         >= l2.created_at - interval '2 minutes'
+      where coalesce(l2.status, 'pending') in ('pending', 'failed')
+        and l2.dismissed_at is null
+      order by l2.id, coalesce(t.created_at, t.transaction_date::timestamptz) desc
+    ) src
+    where l.id = src.link_id
+  `);
+
+  const orphans = await query(`
+    select
+      t.customer_id,
+      t.invoice_id,
+      sum(t.amount)::numeric as amount,
+      max(t.currency) as currency,
+      max(coalesce(t.created_at, t.transaction_date::timestamptz)) as paid_at,
+      max(t.description) as description,
+      max(i.invoice_number) as invoice_number
+    from public.transactions t
+    join public.invoices i on i.id = t.invoice_id
+    where t.is_active = true
+      and t.transaction_type in ('collection', 'payment')
+      and t.invoice_id is not null
+      and t.customer_id is not null
+      and (
+        lower(coalesce(t.payment_method, '')) = 'pos'
+        or lower(coalesce(t.description, '')) like '%sanal pos%'
+        or lower(coalesce(t.description, '')) like '%ödeme linki%'
+        or lower(coalesce(t.description, '')) like '%odeme linki%'
+      )
+      and not exists (
+        select 1
+        from public.invoice_payment_links l
+        where t.invoice_id = any(l.invoice_ids)
+          and l.status = 'paid'
+          and l.dismissed_at is null
+      )
+    group by t.customer_id, t.invoice_id
+    order by max(coalesce(t.created_at, t.transaction_date::timestamptz)) desc
+    limit 200
+  `);
+
+  for (const row of orphans.rows) {
+    const amount = Number(row.amount || 0);
+    if (amount <= 0.009 || !row.customer_id || !row.invoice_id) continue;
+    await query(
+      `
+        insert into public.invoice_payment_links (
+          token,
+          customer_id,
+          invoice_ids,
+          amount,
+          currency,
+          description,
+          status,
+          provider,
+          paid_at,
+          expires_at
+        ) values (
+          $1, $2, $3::uuid[], $4, $5, $6, 'paid', 'halkbank', $7, now()
+        )
+      `,
+      [
+        randomToken(),
+        row.customer_id,
+        [row.invoice_id],
+        amount,
+        row.currency || 'TRY',
+        String(row.description || '').trim() ||
+          `Sanal POS tahsilatı: ${row.invoice_number || ''}`.trim(),
+        row.paid_at || new Date().toISOString(),
+      ],
+    );
+    await supersedePendingPaymentLinks([row.invoice_id]);
+  }
+}
+
 function getHostedPageUrl() {
   const configured = String(
     process.env.INVOICE_PAYMENT_HOSTED_PAGE_URL ||
@@ -1463,6 +1614,10 @@ async function createInvoicePaymentLink({
   );
 
   const row = inserted.rows[0];
+  await supersedePendingPaymentLinks(
+    invoices.map((invoice) => invoice.id),
+    row.id,
+  );
   const baseUrl = getPublicBaseUrl(req);
   const directUrl = `${baseUrl.replace(/\/$/, '')}/p/${encodeURIComponent(token)}`;
   const sessionToken = signInvoiceHostedSession({
@@ -2089,6 +2244,29 @@ async function startPaymentRedirect(token, req, card = null) {
       }),
     };
   }
+  if (link.dismissed_at) {
+    return {
+      statusCode: 410,
+      html: buildStatusHtml({
+        title: 'Link iptal edildi',
+        message:
+          'Bu ödeme linkinin yerine yenisi oluşturulmuş. Lütfen CRM’deki güncel linki kullanın.',
+        ok: false,
+      }),
+    };
+  }
+  const remaining = await remainingForInvoiceIds(link.invoice_ids);
+  const chargeAmount = chargeAmountForLink(link.amount, remaining);
+  if (chargeAmount <= 0.009) {
+    return {
+      statusCode: 200,
+      html: buildStatusHtml({
+        title: 'Ödeme tamamlandı',
+        message: 'Bu faturaların bakiyesi kalmadığı için tahsilat alınmaz.',
+        ok: true,
+      }),
+    };
+  }
   if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) {
     return {
       statusCode: 410,
@@ -2189,7 +2367,7 @@ async function startPaymentRedirect(token, req, card = null) {
     statusCode: 200,
     html: buildHalkbankRedirectHtml({
       orderId,
-      amount: Number(link.amount),
+      amount: chargeAmount,
       currency: link.currency || 'TRY',
       callbackUrl,
       config,
@@ -2277,14 +2455,27 @@ async function completeInvoicePayment(link, { success, providerPayload, provider
           status
         from public.invoices
         where id = any($1::uuid[])
+        for update
       `,
       [invoiceIds],
     );
 
+    const remainingTotal = invoices.rows.reduce((sum, invoice) => {
+      const remaining =
+        Number(invoice.grand_total || 0) - Number(invoice.paid_amount || 0);
+      return sum + (remaining > 0 ? remaining : 0);
+    }, 0);
+    let budget = chargeAmountForLink(current.amount, remainingTotal);
+
+    let collected = 0;
     for (const invoice of invoices.rows) {
       const remaining =
         Number(invoice.grand_total || 0) - Number(invoice.paid_amount || 0);
-      if (remaining <= 0.009) continue;
+      if (remaining <= 0.009 || budget <= 0.009) continue;
+      const take = Number(Math.min(remaining, budget).toFixed(2));
+      if (take <= 0.009) continue;
+      collected += take;
+      budget = Number((budget - take).toFixed(2));
       await txQuery(
         `
           insert into public.transactions (
@@ -2306,12 +2497,28 @@ async function completeInvoicePayment(link, { success, providerPayload, provider
           invoice.customer_id,
           invoice.id,
           invoice.invoice_type === 'purchase' ? 'payment' : 'collection',
-          remaining,
+          take,
           invoice.currency || current.currency || 'TRY',
           Number(invoice.exchange_rate || 1) || 1,
           `Sanal POS ödeme linki: ${invoice.invoice_number}`,
         ],
       );
+    }
+
+    if (collected <= 0.009) {
+      await txQuery(
+        `
+          update public.invoice_payment_links
+          set
+            dismissed_at = coalesce(dismissed_at, now()),
+            expires_at = least(coalesce(expires_at, now()), now()),
+            updated_at = now()
+          where id = $1
+            and status = 'pending'
+        `,
+        [current.id],
+      );
+      return;
     }
 
     await txQuery(
@@ -2472,15 +2679,27 @@ async function getHostedSessionInfo({ sessionToken, token }) {
     error.statusCode = 400;
     throw error;
   }
+  if (link.dismissed_at && String(link.status || '') !== 'paid') {
+    const error = new Error(
+      'Bu ödeme linkinin yerine yenisi oluşturulmuş. Lütfen CRM’deki güncel linki kullanın.',
+    );
+    error.statusCode = 410;
+    throw error;
+  }
   const invoiceNumbers =
     Array.isArray(session?.invoiceNumbers) && session.invoiceNumbers.length
       ? session.invoiceNumbers
       : await getInvoiceNumbersForLink(link);
+  const remaining = await remainingForInvoiceIds(link.invoice_ids);
+  const amount =
+    link.status === 'paid'
+      ? Number(link.amount)
+      : chargeAmountForLink(link.amount, remaining);
   return {
     ok: true,
     token: link.token,
     status: link.status,
-    amount: Number(link.amount),
+    amount,
     currency: link.currency || 'TRY',
     customerName: link.customer_name || session?.customerName || '',
     invoiceCount: Array.isArray(link.invoice_ids) ? link.invoice_ids.length : null,
@@ -2708,6 +2927,9 @@ async function dismissPosCollection({
 module.exports = {
   ensureInvoicePaymentLinksTable,
   createInvoicePaymentLink,
+  chargeAmountForLink,
+  remainingForInvoiceIds,
+  reconcilePosPaymentLinks,
   getPublicBaseUrl,
   buildHostedPaymentUrl,
   uniqueLinkIds,

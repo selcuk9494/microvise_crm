@@ -137,7 +137,9 @@ Future<void> _createInvoicePaymentLinkFlow({
       title: const Text('Ödeme linki oluştur'),
       content: Text(
         '${payable.length} fatura için toplam ${money.format(total)} '
-        'tutarında Microvise sanal POS ödeme linki oluşturulacak.',
+        'tutarında Microvise sanal POS ödeme linki oluşturulacak. '
+        'Bu faturalara ait eski bekleyen linkler iptal edilir; '
+        'yalnızca bu yeni link tahsilat alır.',
       ),
       actions: [
         TextButton(
@@ -494,7 +496,7 @@ Future<void> _sendInvoicePaymentLinkWhatsAppFlow({
     }
 
     if (!context.mounted) return;
-    await shareInvoicePaymentLinkWithWhatsApp(
+    final shared = await shareInvoicePaymentLinkWithWhatsApp(
       context: context,
       paymentUrl: paymentUrl,
       amountLabel: resultMoney.format(amount),
@@ -511,6 +513,20 @@ Future<void> _sendInvoicePaymentLinkWhatsAppFlow({
           for (final item in invoice.items) item.description,
       ],
     );
+    if (shared) {
+      try {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'markInvoiceCustomerSent',
+            'invoiceIds': payable.map((invoice) => invoice.id).toList(),
+            'via': 'whatsapp',
+            'sent': true,
+          },
+        );
+        ref.invalidate(invoicesProvider);
+      } catch (_) {}
+    }
   } catch (error) {
     if (!context.mounted) return;
     messenger.showSnackBar(
@@ -1885,6 +1901,12 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final purchases = items.where((e) => e.invoiceType == 'purchase').length;
     final open = items.where((e) => e.status == 'open').length;
     final partial = items.where((e) => e.status == 'partial').length;
+    final sentToCustomer = items
+        .where((e) => e.invoiceType == 'sales' && e.isSentToCustomer)
+        .length;
+    final unsentToCustomer = items
+        .where((e) => e.invoiceType == 'sales' && !e.isSentToCustomer)
+        .length;
     final tryTotal = items
         .where((e) => e.currency.toUpperCase() == 'TRY')
         .fold<double>(0, (sum, item) => sum + item.grandTotal);
@@ -1927,6 +1949,36 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         onTap: () {
           if (_filter.status == 'partial') return;
           _applyFilter(_filter.copyWith(status: 'partial'));
+        },
+      ),
+      _SummaryFilterBadge(
+        label: 'İletildi: $sentToCustomer',
+        tooltip: 'Müşteriye mail veya WhatsApp ile iletilen satış faturaları',
+        selected: _filter.customerSent == 'sent',
+        tone: sentToCustomer > 0 || _filter.customerSent == 'sent'
+            ? AppBadgeTone.success
+            : AppBadgeTone.neutral,
+        onTap: () {
+          if (_filter.customerSent == 'sent') {
+            _applyFilter(_filter.copyWith(clearCustomerSent: true));
+            return;
+          }
+          _applyFilter(_filter.copyWith(customerSent: 'sent'));
+        },
+      ),
+      _SummaryFilterBadge(
+        label: 'İletilmedi: $unsentToCustomer',
+        tooltip: 'Müşteriye henüz iletilmeyen satış faturaları',
+        selected: _filter.customerSent == 'unsent',
+        tone: unsentToCustomer > 0 || _filter.customerSent == 'unsent'
+            ? AppBadgeTone.warning
+            : AppBadgeTone.neutral,
+        onTap: () {
+          if (_filter.customerSent == 'unsent') {
+            _applyFilter(_filter.copyWith(clearCustomerSent: true));
+            return;
+          }
+          _applyFilter(_filter.copyWith(customerSent: 'unsent'));
         },
       ),
       AppBadge(
@@ -2606,7 +2658,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                                 _bulkDeleting ||
                                                 _bulkProcessing
                                             ? null
-                                            : () => _deleteSelected(items),
+                                            : () => _deactivateSelected(items),
                                         icon: _bulkDeleting
                                             ? const SizedBox(
                                                 width: 12,
@@ -2617,10 +2669,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                                     ),
                                               )
                                             : const Icon(
-                                                AppPhosphorIcons.trash,
+                                                AppPhosphorIcons.toggleRight,
                                                 size: 14,
                                               ),
-                                        label: const Text('Sil'),
+                                        label: const Text('Pasife al'),
                                       ),
                                     ],
                                   ),
@@ -2751,69 +2803,105 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     );
   }
 
-  Future<void> _deleteSelected(List<Invoice> visibleInvoices) async {
+  Future<void> _deactivateSelected(List<Invoice> visibleInvoices) async {
     final selected = visibleInvoices
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .toList(growable: false);
     if (selected.isEmpty) return;
+    final eligible = selected
+        .where((invoice) => invoice.canDeactivate)
+        .toList(growable: false);
+    final locked = selected.length - eligible.length;
+    if (eligible.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            locked == 1
+                ? 'Bu fatura ${selected.first.recordProtectionReason} nedeniyle pasife alınamaz. Kayıt korunur.'
+                : 'Seçilen faturalar Maliye, SAP veya tahsilat kaydı nedeniyle pasife alınamaz.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmController = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Seçilen faturaları sil'),
-        content: Text(
-          '${selected.length} fatura ve bu faturalara ait kalemler kalıcı olarak silinsin mi?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Vazgeç'),
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Faturaları pasife al'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${eligible.length} fatura kalıcı silinmez; Pasif filtresine alınır ve oradan geri getirilir.'
+                '${locked > 0 ? ' $locked fatura Maliye/SAP/tahsilat nedeniyle atlanır.' : ''}\n\n'
+                'Onay için PASİF yazın.',
+              ),
+              const Gap(12),
+              TextField(
+                controller: confirmController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Onay',
+                  hintText: 'PASİF',
+                ),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Sil'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final typed = confirmController.text.trim().toUpperCase();
+                Navigator.of(context).pop(typed == 'PASIF' || typed == 'PASİF');
+              },
+              child: const Text('Pasife al'),
+            ),
+          ],
+        );
+      },
     );
+    confirmController.dispose();
     if (confirmed != true) return;
 
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
-    final ids = selected.map((invoice) => invoice.id).toList(growable: false);
+    final ids = eligible.map((invoice) => invoice.id).toList(growable: false);
     setState(() => _bulkDeleting = true);
     try {
       await apiClient.postJson(
         '/mutate',
         body: {
-          'op': 'deleteWhere',
-          'table': 'invoice_items',
-          'filters': [
-            {'col': 'invoice_id', 'op': 'in', 'value': ids},
-          ],
-        },
-      );
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'deleteWhere',
+          'op': 'updateWhere',
           'table': 'invoices',
           'filters': [
             {'col': 'id', 'op': 'in', 'value': ids},
           ],
+          'values': {'is_active': false},
         },
       );
       _selectedInvoiceIds.clear();
       ref.invalidate(invoicesProvider);
       ref.invalidate(accountBalancesProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${ids.length} fatura silindi.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${ids.length} fatura pasife alındı. Pasif filtresinden geri alınabilir.',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Toplu silme başarısız: $error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Pasife alma başarısız: $error')),
+      );
     } finally {
       if (mounted) setState(() => _bulkDeleting = false);
     }
@@ -4596,6 +4684,51 @@ class _InvoiceFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
+              width: 168,
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('sent-${filter.customerSent ?? ''}'),
+                initialValue: filter.customerSent ?? '',
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(
+                    value: '',
+                    child: Text(
+                      'Müşteri: Tümü',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'sent',
+                    child: Text('İletildi', overflow: TextOverflow.ellipsis),
+                  ),
+                  DropdownMenuItem(
+                    value: 'unsent',
+                    child: Text(
+                      'İletilmedi',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+                onChanged: (value) => onChanged(
+                  filter.copyWith(
+                    customerSent: (value ?? '').isEmpty ? null : value,
+                    clearCustomerSent: (value ?? '').isEmpty,
+                  ),
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  prefixIcon: _DuotoneFilterIcon(
+                    icon: AppPhosphorIcons.paperPlaneTilt,
+                    color: AppTheme.success,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(
               width: 132,
               child: OutlinedButton.icon(
                 onPressed: () => _pickDate(context, isStart: true),
@@ -5129,10 +5262,12 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             onPressed: _busy ? null : _pushToAkinsoft,
           ),
         _InvoiceIconAction(
-          tooltip: 'Düzenle',
+          tooltip: invoice.canEditRecord
+              ? 'Düzenle'
+              : 'Kilitli: ${invoice.recordProtectionReason}',
           icon: Icons.edit_outlined,
           tone: _InvoiceActionTone.purple,
-          onPressed: _busy ? null : _edit,
+          onPressed: _busy || !invoice.canEditRecord ? null : _edit,
         ),
         PopupMenuButton<String>(
           tooltip: 'Diğer işlemler',
@@ -5147,6 +5282,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 _emailPaymentLink();
               case 'payment_link_whatsapp':
                 _whatsAppPaymentLink();
+              case 'customer_sent':
+                _toggleCustomerSent();
               case 'pos_refund':
                 _refundPosPayment();
               case 'reverse_collect':
@@ -5195,6 +5332,15 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 child: Text('Fatura + link WhatsApp'),
               ),
             ],
+            if (invoice.invoiceType == 'sales' && invoice.isActive)
+              PopupMenuItem(
+                value: 'customer_sent',
+                child: Text(
+                  invoice.isSentToCustomer
+                      ? 'Müşteriye iletildi işaretini geri al'
+                      : 'Müşteriye iletildi olarak işaretle',
+                ),
+              ),
             if (invoice.invoiceType == 'sales' &&
                 invoice.isActive &&
                 invoice.isPaidViaPos)
@@ -5231,8 +5377,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               value: 'active',
               child: Text(invoice.isActive ? 'Pasife al' : 'Aktifleştir'),
             ),
-            if (!invoice.isActive)
-              const PopupMenuItem(value: 'delete', child: Text('Kalıcı sil')),
           ],
           child: Container(
             width: 44,
@@ -5308,10 +5452,12 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           onPressed: _busy ? null : _pushToAkinsoft,
         ),
       _InvoiceIconAction(
-        tooltip: 'Düzenle',
+        tooltip: invoice.canEditRecord
+            ? 'Düzenle'
+            : 'Kilitli: ${invoice.recordProtectionReason}',
         icon: Icons.edit_outlined,
         tone: _InvoiceActionTone.purple,
-        onPressed: _busy ? null : _edit,
+        onPressed: _busy || !invoice.canEditRecord ? null : _edit,
       ),
       PopupMenuButton<String>(
         tooltip: 'Diğer işlemler',
@@ -5326,6 +5472,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               _emailPaymentLink();
             case 'payment_link_whatsapp':
               _whatsAppPaymentLink();
+            case 'customer_sent':
+              _toggleCustomerSent();
             case 'pos_refund':
               _refundPosPayment();
             case 'collect':
@@ -5374,6 +5522,15 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               child: Text('Fatura + link WhatsApp'),
             ),
           ],
+          if (invoice.invoiceType == 'sales' && invoice.isActive)
+            PopupMenuItem(
+              value: 'customer_sent',
+              child: Text(
+                invoice.isSentToCustomer
+                    ? 'Müşteriye iletildi işaretini geri al'
+                    : 'Müşteriye iletildi olarak işaretle',
+              ),
+            ),
           if (invoice.invoiceType == 'sales' &&
               invoice.isActive &&
               invoice.isPaidViaPos)
@@ -5410,8 +5567,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             value: 'active',
             child: Text(invoice.isActive ? 'Pasife al' : 'Aktifleştir'),
           ),
-          if (!invoice.isActive)
-            const PopupMenuItem(value: 'delete', child: Text('Kalıcı sil')),
         ],
         child: Container(
           width: 44,
@@ -5481,7 +5636,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppDenseList.rowFill(widget.index, selected: widget.selected),
+        color: _invoiceRowFill(
+          invoice,
+          index: widget.index,
+          selected: widget.selected,
+        ),
         border: Border(bottom: AppDenseList.hairline),
       ),
       child: SizedBox(
@@ -5594,6 +5753,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                           ? _invoicePaymentStatusTone(invoice)
                           : AppBadgeTone.neutral,
                     ),
+                    if (_customerSentBadge(invoice) case final sentBadge?)
+                      sentBadge,
                     if (invoice.isPaymentLinkAwaiting)
                       const AppBadge(
                         dense: true,
@@ -5688,7 +5849,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         color: widget.selected
             ? AppTheme.softTint(AppTheme.primary, alpha: 0.12)
-            : AppTheme.surface,
+            : _invoiceRowFill(
+                invoice,
+                index: widget.index,
+                selected: false,
+              ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -5817,6 +5982,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                             ? _invoicePaymentStatusTone(invoice)
                             : AppBadgeTone.neutral,
                       ),
+                      if (_customerSentBadge(invoice) case final sentBadge?)
+                        sentBadge,
                       if (invoice.isPaymentLinkAwaiting)
                         const AppBadge(
                           dense: true,
@@ -5991,6 +6158,17 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   }
 
   Future<void> _edit() async {
+    if (!widget.invoice.canEditRecord) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Bu fatura kilitli (${widget.invoice.recordProtectionReason}). '
+            'Yanlışlıkla kaybolmasın diye düzenlenemez.',
+          ),
+        ),
+      );
+      return;
+    }
     final apiClient = ref.read(apiClientProvider);
     Invoice invoice = widget.invoice;
     if (apiClient != null) {
@@ -6036,7 +6214,41 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   Future<void> _toggleActive() async {
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
-    final nextActive = !widget.invoice.isActive;
+    final invoice = widget.invoice;
+    final nextActive = !invoice.isActive;
+    if (!nextActive && !invoice.canDeactivate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${invoice.invoiceNumberDisplay} pasife alınamaz '
+            '(${invoice.recordProtectionReason}). Kayıt korunur.',
+          ),
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(nextActive ? 'Faturayı aktifleştir' : 'Faturayı pasife al'),
+        content: Text(
+          nextActive
+              ? '${invoice.invoiceNumberDisplay} tekrar aktif listesine alınsın mı?'
+              : '${invoice.invoiceNumberDisplay} kalıcı silinmez. Pasif filtresine alınır ve oradan geri getirilir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(nextActive ? 'Aktifleştir' : 'Pasife al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     setState(() => _busy = true);
     try {
       await apiClient.postJson(
@@ -6045,7 +6257,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           'op': 'updateWhere',
           'table': 'invoices',
           'filters': [
-            {'col': 'id', 'op': 'eq', 'value': widget.invoice.id},
+            {'col': 'id', 'op': 'eq', 'value': invoice.id},
           ],
           'values': {'is_active': nextActive},
         },
@@ -6057,8 +6269,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         SnackBar(
           content: Text(
             nextActive
-                ? '${widget.invoice.invoiceNumber} aktifleştirildi.'
-                : '${widget.invoice.invoiceNumber} pasife alındı.',
+                ? '${invoice.invoiceNumberDisplay} aktifleştirildi.'
+                : '${invoice.invoiceNumberDisplay} pasife alındı. Pasif filtresinden geri alınabilir.',
           ),
         ),
       );
@@ -6073,71 +6285,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   }
 
   Future<void> _delete() async {
-    if (widget.invoice.isActive) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Faturayı kalıcı sil'),
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
         content: Text(
-          '${widget.invoice.invoiceNumber} numaralı pasif fatura ve kalemleri '
-          'kalıcı olarak silinsin mi? Bu işlem geri alınamaz.',
+          'Faturalar kalıcı silinmez. Yanlışlıkla kaybolmayı önlemek için Pasife al kullanılır.',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Vazgeç'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Kalıcı Sil'),
-          ),
-        ],
       ),
     );
-    if (confirmed != true) return;
-
-    final apiClient = ref.read(apiClientProvider);
-    if (apiClient == null) return;
-    setState(() => _busy = true);
-    try {
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'deleteWhere',
-          'table': 'invoice_items',
-          'filters': [
-            {'col': 'invoice_id', 'op': 'eq', 'value': widget.invoice.id},
-          ],
-        },
-      );
-      await apiClient.postJson(
-        '/mutate',
-        body: {
-          'op': 'deleteWhere',
-          'table': 'invoices',
-          'filters': [
-            {'col': 'id', 'op': 'eq', 'value': widget.invoice.id},
-          ],
-        },
-      );
-      ref.invalidate(invoicesProvider);
-      ref.invalidate(accountBalancesProvider);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${widget.invoice.invoiceNumber} kalıcı olarak silindi.',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Fatura silinemedi: $error')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   Future<void> _toggleManual() async {
@@ -6207,6 +6362,44 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Manuel durum güncellenemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _toggleCustomerSent() async {
+    final invoice = widget.invoice;
+    if (invoice.invoiceType != 'sales') return;
+    final marking = !invoice.isSentToCustomer;
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _busy = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'markInvoiceCustomerSent',
+          'invoiceIds': [invoice.id],
+          'via': 'manual',
+          'sent': marking,
+        },
+      );
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            marking
+                ? '${invoice.invoiceNumberDisplay} müşteriye iletildi olarak işaretlendi.'
+                : '${invoice.invoiceNumberDisplay} iletildi işareti geri alındı.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İletildi durumu güncellenemedi: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -6845,6 +7038,43 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Color _invoiceRowFill(
+    Invoice invoice, {
+    required int index,
+    required bool selected,
+  }) {
+    if (selected) return AppDenseList.rowFill(index, selected: true);
+    final base = AppDenseList.rowFill(index);
+    if (invoice.invoiceType != 'sales' || !invoice.isActive) return base;
+    final tint = invoice.isSentToCustomer ? AppTheme.success : AppTheme.warning;
+    return Color.alphaBlend(AppTheme.softTint(tint, alpha: 0.18), base);
+  }
+
+  Widget? _customerSentBadge(Invoice invoice) {
+    if (invoice.invoiceType != 'sales') return null;
+    if (invoice.isSentToCustomer) {
+      final when = invoice.customerSentAt;
+      final via = invoice.customerSentViaLabel;
+      final detail = when == null
+          ? via
+          : '$via · ${DateFormat('d MMM yyyy HH:mm', 'tr_TR').format(when)}';
+      return Tooltip(
+        message: 'Müşteriye iletildi ($detail)',
+        waitDuration: const Duration(milliseconds: 250),
+        child: const AppBadge(
+          dense: true,
+          label: 'İletildi',
+          tone: AppBadgeTone.success,
+        ),
+      );
+    }
+    return const AppBadge(
+      dense: true,
+      label: 'İletilmedi',
+      tone: AppBadgeTone.warning,
+    );
   }
 
   String _statusLabel(String status) {
