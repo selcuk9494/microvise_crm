@@ -10,6 +10,7 @@ const {
   akinsoftCariHrEntegrasyonKeys,
   akinsoftCariHrEvrakVariants,
   mapCariHrRowToInvoiceNumber,
+  resolveAkinsoftCariHrPayment,
   resolveAkinsoftInvoicePayment,
 } = require(path.join(rootDir, 'api', '_lib', 'akinsoft_invoice_status.js'));
 const akinsoftJobs = new Map();
@@ -1729,27 +1730,10 @@ function resolveLocalAkinsoftInvoicePayment(row, currency, grandTotal) {
 }
 
 function resolveAkinsoftCariPayment(movements, currency, grandTotal) {
-  if (!Array.isArray(movements) || movements.length === 0 || grandTotal <= 0) {
-    return null;
-  }
-  const debitKey = currency === 'TRY' ? 'KPB_BTUT' : 'DVZ_BTUT';
-  const creditKey = currency === 'TRY' ? 'KPB_ATUT' : 'DVZ_ATUT';
-  let debit = movements.reduce((sum, row) => sum + numberOrZero(row[debitKey]), 0);
-  let credit = movements.reduce((sum, row) => sum + numberOrZero(row[creditKey]), 0);
-  if (currency !== 'TRY' && debit <= 0 && credit <= 0) {
-    debit = movements.reduce((sum, row) => sum + numberOrZero(row.KPB_BTUT), 0);
-    credit = movements.reduce((sum, row) => sum + numberOrZero(row.KPB_ATUT), 0);
-  }
-  if (debit <= 0 && credit <= 0) return null;
-  const paidAmount = Math.min(Math.max(0, credit), grandTotal);
-  const remaining = Math.max(0, debit - credit);
-  if (remaining <= PAYMENT_CLOSE_TOLERANCE && credit > 0) {
-    return { paidAmount: grandTotal, status: 'paid', reliable: true, source: 'movement' };
-  }
-  if (paidAmount > 0) {
-    return { paidAmount, status: 'partial', reliable: true, source: 'movement' };
-  }
-  return { paidAmount: 0, status: 'open', reliable: true, source: 'movement' };
+  return resolveAkinsoftCariHrPayment(movements, currency, grandTotal, {
+    numberOrZero,
+    tolerance: PAYMENT_CLOSE_TOLERANCE,
+  });
 }
 
 function resolveAkinsoftDiscount(row, currency, lineNet) {

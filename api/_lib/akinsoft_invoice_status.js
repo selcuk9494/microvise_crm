@@ -143,6 +143,14 @@ function readAkinsoftClosedFlag(row, pick, parseAkinsoftBool) {
     const flag = parseAkinsoftBool(raw);
     if (flag === true) return true;
     const numeric = Number(raw);
+    // Wolvox KF_DURUMU: 0 = açık, 0 dışı = kapalı (raporda "Kapalı").
+    if (
+      Number.isFinite(numeric) &&
+      numeric !== 0 &&
+      ['KF_DURUMU', 'KF_DURUM'].includes(String(name).toLocaleUpperCase('tr-TR'))
+    ) {
+      return true;
+    }
     if (Number.isFinite(numeric) && numeric === 1) return true;
   }
   for (const name of ['KAPALI', 'KAPANDI', 'KAPALI_FATURA']) {
@@ -305,6 +313,82 @@ function resolveAkinsoftInvoicePayment(
   return { paidAmount: 0, status: 'open', reliable: false, source: 'invoice' };
 }
 
+function movementFieldAmount(row, names, numberOrZero) {
+  if (!row || typeof numberOrZero !== 'function') return 0;
+  const keys = Object.keys(row);
+  for (const name of names) {
+    const found = keys.find(
+      (key) =>
+        String(key).toLocaleUpperCase('tr-TR') ===
+        String(name).toLocaleUpperCase('tr-TR'),
+    );
+    if (found != null) return numberOrZero(row[found]);
+  }
+  return 0;
+}
+
+/**
+ * CARIHR tahsilatı: döviz faturada TL (KPB) kapanmışsa kur farkı kısmi sayılmaz.
+ */
+function resolveAkinsoftCariHrPayment(
+  movements,
+  currency,
+  grandTotal,
+  { numberOrZero, tolerance = 0.02 } = {},
+) {
+  if (!Array.isArray(movements) || movements.length === 0 || grandTotal <= 0) {
+    return null;
+  }
+  if (typeof numberOrZero !== 'function') return null;
+  const isTry = String(currency || '').toUpperCase() === 'TRY';
+  const sumKeys = (names) =>
+    movements.reduce(
+      (sum, row) => sum + movementFieldAmount(row, names, numberOrZero),
+      0,
+    );
+  let debit = sumKeys(isTry ? ['KPB_BTUT', 'BTUT'] : ['DVZ_BTUT', 'DVZ_BTUT2']);
+  let credit = sumKeys(isTry ? ['KPB_ATUT', 'ATUT'] : ['DVZ_ATUT', 'DVZ_ATUT2']);
+  if (!isTry && debit <= 0 && credit <= 0) {
+    debit = sumKeys(['KPB_BTUT', 'BTUT']);
+    credit = sumKeys(['KPB_ATUT', 'ATUT']);
+  }
+  if (debit <= 0 && credit <= 0) return null;
+
+  if (!isTry) {
+    const kpbDebit = sumKeys(['KPB_BTUT', 'BTUT']);
+    const kpbCredit = sumKeys(['KPB_ATUT', 'ATUT']);
+    const kpbRemaining = kpbDebit - kpbCredit;
+    if (kpbCredit > 0 && kpbRemaining <= tolerance) {
+      return {
+        paidAmount: grandTotal,
+        status: 'paid',
+        reliable: true,
+        source: 'movement',
+      };
+    }
+  }
+
+  const paidAmount = Math.min(Math.max(0, credit), grandTotal);
+  const remaining = Math.max(0, debit - credit);
+  if (remaining <= tolerance && credit > 0) {
+    return {
+      paidAmount: grandTotal,
+      status: 'paid',
+      reliable: true,
+      source: 'movement',
+    };
+  }
+  if (paidAmount > 0) {
+    return {
+      paidAmount,
+      status: 'partial',
+      reliable: true,
+      source: 'movement',
+    };
+  }
+  return { paidAmount: 0, status: 'open', reliable: true, source: 'movement' };
+}
+
 module.exports = {
   AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN,
   AKINSOFT_CLOSED_FLAG_FIELDS,
@@ -316,5 +400,6 @@ module.exports = {
   mapCariHrRowToInvoiceNumber,
   readAkinsoftClosedFlag,
   resolveAkinsoftCariHrInvoiceNumber,
+  resolveAkinsoftCariHrPayment,
   resolveAkinsoftInvoicePayment,
 };

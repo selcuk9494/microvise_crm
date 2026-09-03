@@ -6,6 +6,7 @@ const {
   akinsoftInvoiceSerialCore,
   mapCariHrRowToInvoiceNumber,
   resolveAkinsoftCariHrInvoiceNumber,
+  resolveAkinsoftCariHrPayment,
   resolveAkinsoftInvoicePayment,
 } = require('../api/_lib/akinsoft_invoice_status');
 
@@ -125,6 +126,36 @@ test('KF yokken döviz bakiyesi kalan faturayı kısmi bırakır', () => {
   );
   assert.equal(result.status, 'partial');
   assert.ok(result.paidAmount < 350);
+});
+
+test('CARIHR döviz kalanı olsa bile TL kapama paid sayılır', () => {
+  const result = resolveAkinsoftCariHrPayment(
+    [
+      { KPB_BTUT: 16449.84, DVZ_BTUT: 350, ENTEGRASYON: 'FTO_1' },
+      { KPB_ATUT: 16700, DVZ_ATUT: 339.89, ENTEGRASYON: 'FTK_1' },
+    ],
+    'USD',
+    350,
+    { numberOrZero, tolerance: 0.02 },
+  );
+  assert.equal(result.status, 'paid');
+  assert.equal(result.paidAmount, 350);
+});
+
+test('PARVISTA tarzı KF tutarı TL toplamı aşıyorsa kapanır', () => {
+  const result = paymentOf(
+    {
+      KF_DURUMU: 1,
+      KF_TUTARI: 282177.35,
+      KPB_GENEL_TOPLAM: 280979.96,
+      DVZ_BAKIYE: 26.77,
+      DVZ_TAHSILAT_TOPLAMI: 6255.23,
+    },
+    'USD',
+    6282,
+  );
+  assert.equal(result.status, 'paid');
+  assert.equal(result.paidAmount, 6282);
 });
 
 test('Yalnızca KAPALI=0 ve bakiye yoksa durumu uydurmaz', () => {
