@@ -1879,6 +1879,29 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               invoice.canReverseCollection,
         )
         .length;
+    final selectedCustomerUnsentCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.invoiceType == 'sales' &&
+              invoice.isActive &&
+              !invoice.isSentToCustomer,
+        )
+        .length;
+    final selectedCustomerSentCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.invoiceType == 'sales' &&
+              invoice.isActive &&
+              invoice.isSentToCustomer,
+        )
+        .length;
+    final bulkCustomerSentUndo =
+        selectedCustomerUnsentCount == 0 && selectedCustomerSentCount > 0;
+    final bulkCustomerSentCount = bulkCustomerSentUndo
+        ? selectedCustomerSentCount
+        : selectedCustomerUnsentCount;
     // Seçimden bağımsız: listedeki SAP'a henüz gitmemiş tüm faturalar.
     // Tek buton hem yeni kayıt yazar hem de SAP numarası güncellemesi gerekenleri işler.
     final newErpCreateItems = items
@@ -2233,6 +2256,27 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                   const Gap(8),
                                   OutlinedButton.icon(
                                     onPressed:
+                                        bulkCustomerSentCount == 0 ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () => _markCustomerSentSelected(
+                                            items,
+                                            sent: !bulkCustomerSentUndo,
+                                          ),
+                                    icon: const Icon(
+                                      AppPhosphorIcons.checkCircle,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      bulkCustomerSentUndo
+                                          ? 'İletildi geri al'
+                                          : 'İletildi işaretle',
+                                    ),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
                                         _selectedInvoiceIds.isEmpty ||
                                             _bulkDeleting ||
                                             _bulkProcessing
@@ -2499,6 +2543,26 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                           size: 14,
                                         ),
                                         label: const Text('WhatsApp'),
+                                      ),
+                                      OutlinedButton.icon(
+                                        onPressed:
+                                            bulkCustomerSentCount == 0 ||
+                                                _bulkDeleting ||
+                                                _bulkProcessing
+                                            ? null
+                                            : () => _markCustomerSentSelected(
+                                                items,
+                                                sent: !bulkCustomerSentUndo,
+                                              ),
+                                        icon: const Icon(
+                                          AppPhosphorIcons.checkCircle,
+                                          size: 14,
+                                        ),
+                                        label: Text(
+                                          bulkCustomerSentUndo
+                                              ? 'İletildi geri al'
+                                              : 'İletildi',
+                                        ),
                                       ),
                                       OutlinedButton.icon(
                                         onPressed:
@@ -3470,6 +3534,88 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(_akinsoftBridgeError(error))));
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
+  }
+
+  Future<void> _markCustomerSentSelected(
+    List<Invoice> visibleInvoices, {
+    required bool sent,
+  }) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .where((invoice) => invoice.invoiceType == 'sales')
+        .where((invoice) => invoice.isActive)
+        .where((invoice) => sent ? !invoice.isSentToCustomer : invoice.isSentToCustomer)
+        .toList(growable: false);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            sent
+                ? 'İşaretlenecek satış faturası yok. Zaten iletilmiş veya alış faturası seçili.'
+                : 'Geri alınacak iletildi işareti yok.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(sent ? 'Müşteriye iletildi' : 'İletildi işaretini geri al'),
+        content: Text(
+          sent
+              ? '${selected.length} fatura müşteriye iletildi olarak işaretlensin mi? Mail veya WhatsApp gitmemiş olsa da listede yeşil görünür.'
+              : '${selected.length} faturanın müşteriye iletildi işareti geri alınsın mı?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(sent ? 'İşaretle' : 'Geri al'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    final ids = selected.map((invoice) => invoice.id).toList(growable: false);
+    setState(() => _bulkProcessing = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'markInvoiceCustomerSent',
+          'invoiceIds': ids,
+          'via': 'manual',
+          'sent': sent,
+        },
+      );
+      _selectedInvoiceIds.clear();
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            sent
+                ? '${ids.length} fatura müşteriye iletildi olarak işaretlendi.'
+                : '${ids.length} faturanın iletildi işareti geri alındı.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İletildi durumu güncellenemedi: $error')),
+      );
     } finally {
       if (mounted) setState(() => _bulkProcessing = false);
     }
