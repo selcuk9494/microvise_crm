@@ -1052,6 +1052,13 @@ function createAkinsoftFinanceHandlers(ctx) {
     const kpbAmount = Number(
       (explicitKpb > 0 ? explicitKpb : isTry ? amount : amount * exchangeRate).toFixed(2),
     );
+    const commissionKpb = Math.max(0, Number(numberOrZero(body.commissionKpb ?? body.commission).toFixed(2)));
+    if (commissionKpb > 0 && commissionKpb >= kpbAmount) {
+      throw Object.assign(
+        new Error('Komisyon, POS TL tutarından küçük olmalı.'),
+        { statusCode: 400 },
+      );
+    }
     const tarih = toSqlDate(body.date, new Date()) || new Date();
     const tarihOnly = new Date(tarih);
     tarihOnly.setHours(0, 0, 0, 0);
@@ -1203,6 +1210,8 @@ function createAkinsoftFinanceHandlers(ctx) {
       amount,
       currency,
       kpbAmount,
+      commissionKpb,
+      bankKpb: Number(Math.max(0, kpbAmount - commissionKpb).toFixed(2)),
       kurFarkKpb,
       remainingKpb,
       remainingDvz,
@@ -1250,8 +1259,9 @@ function createAkinsoftFinanceHandlers(ctx) {
         throw Object.assign(new Error('BANKAHR tablosu bulunamadı.'), { statusCode: 400 });
       }
       const accountMeta = await resolveAccountMeta(pool, accountId);
+      const bankKpb = Number(Math.max(0, kpbAmount - commissionKpb).toFixed(2));
       const bankNativeAmount =
-        accountMeta.currency === 'TRY' ? kpbAmount : amount;
+        accountMeta.currency === 'TRY' ? bankKpb : amount;
       const bankHrColumns = await akinsoftTableColumnSet(pool, 'BANKAHR');
       const bankHrId = await akinsoftNextBlkoduSafe(pool, 'BANKAHR');
       const bankRow = { BLKODU: bankHrId };
@@ -1261,7 +1271,7 @@ function createAkinsoftFinanceHandlers(ctx) {
       setFirstColumn(bankRow, bankHrColumns, ['ISLEM_TURU'], islemTuru);
       setFirstColumn(bankRow, bankHrColumns, ['ACIKLAMA'], aciklama);
       setFirstColumn(bankRow, bankHrColumns, ['BLHSKODU'], accountId);
-      setFirstColumn(bankRow, bankHrColumns, ['KPB_TUTARI'], kpbAmount);
+      setFirstColumn(bankRow, bankHrColumns, ['KPB_TUTARI'], bankKpb);
       if (isSales) setFirstColumn(bankRow, bankHrColumns, ['TUTAR_BORC'], bankNativeAmount);
       else setFirstColumn(bankRow, bankHrColumns, ['TUTAR_ALACAK'], bankNativeAmount);
       if (accountMeta.currency !== 'TRY') {

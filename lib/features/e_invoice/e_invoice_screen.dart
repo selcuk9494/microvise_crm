@@ -923,6 +923,8 @@ class _CollectionDetails {
     required this.amount,
     required this.kpbAmount,
     required this.exchangeRate,
+    this.commission = 0,
+    this.closeInvoice = false,
     this.kasaAdi,
     this.bankAccountId,
     this.checkNo,
@@ -935,6 +937,8 @@ class _CollectionDetails {
   final double amount;
   final double kpbAmount;
   final double exchangeRate;
+  final double commission;
+  final bool closeInvoice;
   final String? kasaAdi;
   final String? bankAccountId;
   final String? checkNo;
@@ -970,12 +974,14 @@ class _CollectionDialog extends StatefulWidget {
 class _CollectionDialogState extends State<_CollectionDialog> {
   late String _method;
   late bool _postToSap;
+  late bool _closeInvoice;
   String? _kasaAdi;
   String? _bankAccountId;
   late final TextEditingController _checkNo;
   late final TextEditingController _desc;
   late final TextEditingController _amount;
   late final TextEditingController _tlAmount;
+  late final TextEditingController _commission;
   DateTime _checkDate = DateTime.now().add(const Duration(days: 7));
   var _loading = true;
   var _loadError = '';
@@ -985,6 +991,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
   String get _currency =>
       widget.currencies.length == 1 ? widget.currencies.first : 'TRY';
   bool get _isFx => _currency != 'TRY' && _currency != 'TL';
+  bool get _isPosMethod => _method == 'pos' || _method == 'credit_card';
   double get _invoiceRate {
     if (widget.invoices.length == 1) {
       final rate = widget.invoices.first.exchangeRate;
@@ -993,10 +1000,18 @@ class _CollectionDialogState extends State<_CollectionDialog> {
     return 1;
   }
 
+  double get _parsedAmount => _parseCollectionAmount(_amount.text) ?? 0;
+  double get _parsedTl =>
+      _isFx ? (_parseCollectionAmount(_tlAmount.text) ?? 0) : _parsedAmount;
+  double get _parsedCommission => _parseCollectionAmount(_commission.text) ?? 0;
+  double get _bankNetTl => (_parsedTl - _parsedCommission).clamp(0, double.infinity);
+
   @override
   void initState() {
     super.initState();
-    _method = 'cash';
+    final posPaid = widget.invoices.any((invoice) => invoice.isPaidViaPos);
+    _method = posPaid ? 'pos' : 'cash';
+    _closeInvoice = posPaid || _isPosMethod;
     _postToSap = widget.linkedCount > 0;
     _checkNo = TextEditingController();
     _desc = TextEditingController();
@@ -1005,15 +1020,27 @@ class _CollectionDialogState extends State<_CollectionDialog> {
         ? widget.total * _invoiceRate
         : widget.total;
     _tlAmount = TextEditingController(text: defaultTl.toStringAsFixed(2));
+    _commission = TextEditingController();
+    _amount.addListener(_onMoneyChanged);
+    _tlAmount.addListener(_onMoneyChanged);
+    _commission.addListener(_onMoneyChanged);
     _loadCatalog();
+  }
+
+  void _onMoneyChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _amount.removeListener(_onMoneyChanged);
+    _tlAmount.removeListener(_onMoneyChanged);
+    _commission.removeListener(_onMoneyChanged);
     _checkNo.dispose();
     _desc.dispose();
     _amount.dispose();
     _tlAmount.dispose();
+    _commission.dispose();
     super.dispose();
   }
 
@@ -1091,6 +1118,21 @@ class _CollectionDialogState extends State<_CollectionDialog> {
       }
       rate = kpb / amount;
     }
+    final commission = _isPosMethod ? (_parseCollectionAmount(_commission.text) ?? 0) : 0.0;
+    if (commission < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Komisyon negatif olamaz.')),
+      );
+      return;
+    }
+    if (commission > 0 && commission >= kpb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Komisyon, POS TL tutarından küçük olmalı.'),
+        ),
+      );
+      return;
+    }
     if (_postToSap && _method == 'cash' && (_kasaAdi ?? '').isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Nakit için kasa seçin.')),
@@ -1132,6 +1174,8 @@ class _CollectionDialogState extends State<_CollectionDialog> {
         amount: amount,
         kpbAmount: kpb,
         exchangeRate: rate,
+        commission: commission,
+        closeInvoice: _isPosMethod ? _closeInvoice : false,
       ),
     );
   }
@@ -1173,7 +1217,9 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   labelText: 'Tutar ($_currency)',
                   helperText: widget.invoices.length > 1
                       ? 'Birden fazla faturada kalan bakiyeye göre dağıtılır.'
-                      : 'Kısmi tahsilat için düşürün.',
+                      : (_isPosMethod && _closeInvoice
+                            ? 'Fatura dövizi. Komisyon buradan düşülmez.'
+                            : 'Kısmi tahsilat için düşürün.'),
                 ),
               ),
               if (_isFx) ...[
@@ -1183,10 +1229,11 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'TL karşılığı',
-                    helperText:
-                        'Bankaya yansıyan TL. Fatura TL’sinden farkı kur farkı olarak kapanır.',
+                  decoration: InputDecoration(
+                    labelText: _isPosMethod ? 'POS TL tutarı' : 'TL karşılığı',
+                    helperText: _isPosMethod
+                        ? 'Sanal POS’un müşteriden çektiği TL (komisyon düşülmeden).'
+                        : 'Bankaya yansıyan TL. Fatura TL’sinden farkı kur farkı olarak kapanır.',
                   ),
                 ),
               ],
@@ -1206,7 +1253,10 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   DropdownMenuItem(value: 'check', child: Text('Çek')),
                   DropdownMenuItem(value: 'other', child: Text('Diğer')),
                 ],
-                onChanged: (v) => setState(() => _method = v ?? 'cash'),
+                onChanged: (v) => setState(() {
+                  _method = v ?? 'cash';
+                  if (_isPosMethod) _closeInvoice = true;
+                }),
               ),
               if (_method == 'cash') ...[
                 const Gap(10),
@@ -1292,6 +1342,44 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   },
                 ),
               ],
+              if (_isPosMethod) ...[
+                const Gap(10),
+                TextField(
+                  controller: _commission,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Komisyon (TL)',
+                    helperText:
+                        'Bankanın kestiği tutar. Müşteri bakiyesinden düşülmez.',
+                  ),
+                ),
+                if (_parsedCommission > 0 || _isFx)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      _isFx
+                          ? 'Fatura $_currency ${_parsedAmount.toStringAsFixed(2)}'
+                                ' · POS TL ${_parsedTl.toStringAsFixed(2)}'
+                                ' · Komisyon ${_parsedCommission.toStringAsFixed(2)}'
+                                ' · Bankaya ${_bankNetTl.toStringAsFixed(2)} TL'
+                          : 'Tahsilat ${_parsedAmount.toStringAsFixed(2)} TL'
+                                ' · Komisyon ${_parsedCommission.toStringAsFixed(2)}'
+                                ' · Bankaya ${_bankNetTl.toStringAsFixed(2)} TL',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Faturayı kapat'),
+                  subtitle: const Text(
+                    'Komisyon girilse de kalan bakiye kapanır.',
+                  ),
+                  value: _closeInvoice,
+                  onChanged: (v) => setState(() => _closeInvoice = v),
+                ),
+              ],
               const Gap(10),
               TextField(
                 controller: _desc,
@@ -1303,7 +1391,9 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                 subtitle: Text(
                   _loadError.isEmpty
                       ? (_isFx
-                            ? 'Döviz tutarı + TL karşılığı yazılır; fark kur farkı hareketidir.'
+                            ? (_isPosMethod
+                                ? 'USD/döviz + POS TL yazılır; komisyon bankaya net yansır, fatura kapanır.'
+                                : 'Döviz tutarı + TL karşılığı yazılır; fark kur farkı hareketidir.')
                             : 'Nakit kasaya, banka ilgili hesaba, çek portföye yazılır.')
                       : _loadError,
                 ),
@@ -3932,14 +4022,28 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     String? lastSapError;
     try {
       for (final invoice in selected) {
+        final closeInvoice = details.closeInvoice;
         final amount = selected.length == 1
-            ? details.amount.clamp(0.01, invoice.remainingAmount).toDouble()
+            ? (closeInvoice
+                  ? invoice.remainingAmount
+                  : details.amount.clamp(0.01, invoice.remainingAmount).toDouble())
             : invoice.remainingAmount;
         if (amount <= 0) continue;
         final kpbAmount = selected.length == 1
             ? details.kpbAmount
             : amount * details.exchangeRate;
+        final commission = selected.length == 1
+            ? details.commission
+            : (details.amount > 0
+                  ? details.commission * (amount / details.amount)
+                  : 0.0);
         final exchangeRate = amount > 0 ? kpbAmount / amount : details.exchangeRate;
+        final baseDescription = details.description.isEmpty
+            ? 'E-Fatura tahsilatı: ${invoice.invoiceNumber}'
+            : details.description;
+        final description = commission > 0.009
+            ? '$baseDescription · POS komisyon ${commission.toStringAsFixed(2)} TL'
+            : baseDescription;
         await apiClient.postJson(
           '/mutate',
           body: {
@@ -3960,9 +4064,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 0,
                 10,
               ),
-              'description': details.description.isEmpty
-                  ? 'E-Fatura tahsilatı: ${invoice.invoiceNumber}'
-                  : details.description,
+              'description': description,
             },
           },
         );
@@ -3974,6 +4076,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             'invoiceNumber': invoice.invoiceNumber,
             'amount': amount,
             'kpbAmount': kpbAmount,
+            'commissionKpb': commission,
             'currency': invoice.currency,
             'exchangeRate': exchangeRate,
             'method': details.method,
@@ -3981,11 +4084,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             'bankAccountId': details.bankAccountId,
             'checkNo': details.checkNo,
             'checkDate': details.checkDate?.toIso8601String(),
-            'description': details.description.isEmpty
-                ? 'CRM tahsilat ${invoice.invoiceNumber}'
-                : details.description,
+            'description': description,
             'invoiceType': invoice.invoiceType,
-            'closeInvoice': amount >= invoice.remainingAmount - 0.02,
+            'closeInvoice':
+                closeInvoice || amount >= invoice.remainingAmount - 0.02,
           });
           sapOk += 1;
         } catch (error) {
