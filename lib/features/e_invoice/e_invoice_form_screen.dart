@@ -277,6 +277,26 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     super.dispose();
   }
 
+  Widget? _sapCorrectionBanner() {
+    final invoice = widget.initialInvoice;
+    if (invoice == null || !invoice.canReplaceAkinsoftRecord) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: AppTheme.softTint(AppTheme.warning, alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+        child: const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text(
+            'Bu fatura SAP’ta var; Maliye’ye gitmemiş ve tahsilatı yok. '
+            'Kaydedince Wolvox kaydı da CRM’deki haliyle güncellenir. '
+            'Wolvox’ta fatura ekranı kapalı olsun.',
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final customersAsync = ref.watch(customersLookupProvider);
@@ -372,6 +392,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 120),
                 children: [
+                  if (_sapCorrectionBanner() case final banner?) banner,
                   _DesktopInvoiceTop(
                     isSales: _isSales,
                     customersAsync: customersAsync,
@@ -461,6 +482,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
             return ListView(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
               children: [
+                if (_sapCorrectionBanner() case final banner?) banner,
                 AppCard(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -871,15 +893,37 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
               if (issuedHats > 0) '$issuedHats hat',
               if (issuedGmp3 > 0) '$issuedGmp3 GMP3',
             ].join(' ve ');
+      var sapNote = '';
+      if (widget.initialInvoice?.canReplaceAkinsoftRecord == true) {
+        try {
+          final settings = await ref.read(eInvoiceSettingsProvider.future);
+          final decoded = await postAkinsoftPushInvoices(
+            settings: settings,
+            invoiceIds: [invoiceId],
+            forceUpdate: true,
+          );
+          final items = decoded['items'];
+          final first = items is List && items.isNotEmpty ? items.first : null;
+          final ok = first is Map && first['ok'] == true;
+          final reason = first is Map ? first['reason']?.toString() : null;
+          sapNote = ok
+              ? ' SAP kaydı güncellendi.'
+              : ' CRM kaydedildi; SAP güncellenemedi${reason == null || reason.isEmpty ? '.' : ': $reason'}';
+        } catch (error) {
+          sapNote =
+              ' CRM kaydedildi; SAP güncellenemedi: ${akinsoftBridgeError(error)}';
+        }
+      }
       _showMessage(
         _sendAfterSave && _isSales && status != 'draft'
             ? 'Fatura kaydedildi ve '
                   '${(ref.read(eInvoiceSettingsProvider).value?['environment'] ?? 'test') == 'production' ? 'canlı' : 'test'} '
                   'API’ye gönderildi.'
                   '${issuedNote.isEmpty ? '' : ' $issuedNote listeye işlendi.'}'
+                  '$sapNote'
             : issuedNote.isEmpty
-            ? 'Fatura kaydedildi.'
-            : 'Fatura kaydedildi. $issuedNote listeye işlendi.',
+            ? 'Fatura kaydedildi.$sapNote'
+            : 'Fatura kaydedildi. $issuedNote listeye işlendi.$sapNote',
       );
       Navigator.of(context).pop();
     } catch (error) {

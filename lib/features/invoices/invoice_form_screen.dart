@@ -12,6 +12,7 @@ import '../../core/ui/app_card.dart';
 import '../billing/application_form_invoice_link.dart';
 import '../customers/customers_providers.dart';
 import '../work_orders/currency_service.dart';
+import '../e_invoice/e_invoice_screen.dart';
 import 'invoice_model.dart';
 import 'invoice_providers.dart';
 
@@ -628,11 +629,33 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         );
       }
 
+      var sapNote = '';
+      if (widget.editInvoice?.canReplaceAkinsoftRecord == true) {
+        try {
+          final settings = await ref.read(eInvoiceSettingsProvider.future);
+          final decoded = await postAkinsoftPushInvoices(
+            settings: settings,
+            invoiceIds: [invoiceId],
+            forceUpdate: true,
+          );
+          final items = decoded['items'];
+          final first = items is List && items.isNotEmpty ? items.first : null;
+          final ok = first is Map && first['ok'] == true;
+          final reason = first is Map ? first['reason']?.toString() : null;
+          sapNote = ok
+              ? '. SAP kaydı güncellendi'
+              : '. CRM kaydedildi; SAP güncellenemedi${reason == null || reason.isEmpty ? '' : ': $reason'}';
+        } catch (error) {
+          sapNote =
+              '. CRM kaydedildi; SAP güncellenemedi: ${akinsoftBridgeError(error)}';
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              status == 'draft' ? 'Taslak kaydedildi' : 'Fatura kaydedildi',
+              '${status == 'draft' ? 'Taslak kaydedildi' : 'Fatura kaydedildi'}$sapNote',
             ),
           ),
         );

@@ -252,17 +252,24 @@ class Invoice {
     return Invoice._looksLikeAkinsoftInvoiceNumber(invoiceNumber);
   }
 
-  /// Maliye, SAP veya tahsilatı olan fatura yanlışlıkla silinmesin / boşalmasın.
-  bool get isRecordProtected {
+  /// Maliye e-faturası veya tahsilat varsa içerik kilitlenir.
+  /// Yalnızca SAP’a gitmiş açık fatura CRM’den düzeltilip tekrar yazılabilir.
+  bool get isContentLocked {
     if (isEInvoiceClosed || hasOfficialEInvoice) return true;
     if (eInvoiceStatus == 'prepared') return true;
+    if (paidAmount > 0.009) return true;
+    if (isPaidViaPos) return true;
+    if (status == 'paid' || status == 'partial') return true;
+    return false;
+  }
+
+  /// Maliye, SAP veya tahsilatı olan fatura yanlışlıkla silinmesin / boşalmasın.
+  bool get isRecordProtected {
+    if (isContentLocked) return true;
     if (isLinkedToAkinsoft || akinsoftSyncStatusEffective == 'synced') {
       return true;
     }
     if (Invoice._looksLikeAkinsoftInvoiceNumber(erpInvoiceNumber)) return true;
-    if (paidAmount > 0.009) return true;
-    if (isPaidViaPos) return true;
-    if (status == 'paid' || status == 'partial') return true;
     return false;
   }
 
@@ -270,7 +277,10 @@ class Invoice {
       isActive && !isRecordProtected && !isSentToCustomer;
 
   bool get canEditRecord =>
-      isActive && !isRecordProtected && status != 'cancelled';
+      isActive && !isContentLocked && status != 'cancelled';
+
+  bool get canReplaceAkinsoftRecord =>
+      canEditRecord && isLinkedToAkinsoft;
 
   String get recordProtectionReason {
     if (isEInvoiceClosed || hasOfficialEInvoice || eInvoiceStatus == 'prepared') {

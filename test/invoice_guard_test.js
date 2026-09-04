@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   isProtectedInvoice,
   invoiceProtectionReason,
+  invoiceContentLockReason,
   blockedProtectedUpdateKeys,
   assertInvoiceIdFilters,
 } = require('../api/_lib/invoice_guard');
@@ -30,6 +31,21 @@ test('Maliye, SAP ve tahsilatlı faturalar korunur', () => {
     'Müşteriye iletilmiş',
   );
   assert.equal(isProtectedInvoice({ status: 'open', paid_amount: 0 }), false);
+});
+
+test('yalnızca SAP kaydı içerik düzenlemeyi kilitlemez', () => {
+  assert.equal(
+    invoiceContentLockReason({ akinsoft_sync_status: 'synced', status: 'open' }),
+    null,
+  );
+  assert.equal(
+    invoiceContentLockReason({ e_invoice_status: 'sent' }),
+    'Maliye / e-fatura kaydı var',
+  );
+  assert.equal(
+    invoiceContentLockReason({ paid_amount: 10 }),
+    'Tahsilat kaydı var',
+  );
 });
 
 test('korunan faturada yalnızca izinli alanlar güncellenir', () => {

@@ -6522,6 +6522,63 @@ async function resolveAkinsoftCustomerForPush(pool, sql, query, invoice) {
   });
 }
 
+async function akinsoftInvoiceHasFtkCollections(pool, sql, faturaId) {
+  if (!(await akinsoftTableExists(pool, 'CARIHR'))) return false;
+  const id = Number(faturaId);
+  if (!Number.isFinite(id) || id <= 0) return false;
+  const result = await pool
+    .request()
+    .input('ftk', sql.NVarChar(40), `FTK_${id}`)
+    .query(`
+      select count(*) as n
+      from dbo.CARIHR
+      where coalesce(SILINDI, 0) = 0
+        and ENTEGRASYON = @ftk
+    `);
+  return Number(result.recordset?.[0]?.n || 0) > 0;
+}
+
+async function retireAkinsoftInvoiceChildren(
+  txRequest,
+  sql,
+  faturaBlkodu,
+  { hasFaturaKdv, hasFaturaKur, hasCariHr },
+) {
+  const run = async (sqlText, extra = {}) => {
+    const req = txRequest();
+    req.input('id', sql.BigInt, faturaBlkodu);
+    for (const [key, value] of Object.entries(extra)) {
+      req.input(key, sql.NVarChar(40), value);
+    }
+    await req.query(sqlText);
+  };
+  await run(`
+    update dbo.FATURAHR
+    set SILINDI = 1
+    where BLFTKODU = @id and coalesce(SILINDI, 0) = 0
+  `);
+  if (hasFaturaKdv) {
+    try {
+      await run('delete from dbo.FATURA_KDV where BLFTKODU = @id');
+    } catch (_) {}
+  }
+  if (hasFaturaKur) {
+    try {
+      await run('delete from dbo.FATURA_KUR where BLFTKODU = @id');
+    } catch (_) {}
+  }
+  if (hasCariHr) {
+    await run(
+      `
+        update dbo.CARIHR
+        set SILINDI = 1
+        where ENTEGRASYON = @fto and coalesce(SILINDI, 0) = 0
+      `,
+      { fto: `FTO_${faturaBlkodu}` },
+    );
+  }
+}
+
 async function attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice) {
   const invoiceId = textOrNull(invoice.id);
   const maliyeNumber = localEInvoiceNumber(invoice.e_invoice_number);
@@ -6541,15 +6598,44 @@ async function attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice) {
   await applyAkinsoftLockTimeout(pool);
 
   const existingMap = await findAkinsoftSourceByLocalId(query, 'invoice', invoiceId);
+  let replaceSourceId = null;
   if (existingMap?.source_id) {
-    await setInvoiceAkinsoftSyncStatus(query, invoiceId, 'synced');
-    return {
-      ok: true,
-      skipped: true,
-      reason: 'Fatura zaten Akınsoft ile eşleşmiş.',
-      sourceId: String(existingMap.source_id),
-      invoiceNumber,
-    };
+    const forceUpdate =
+      invoice.forceUpdate === true || invoice.forceUpdate === 'true';
+    if (!forceUpdate) {
+      await setInvoiceAkinsoftSyncStatus(query, invoiceId, 'synced');
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'Fatura zaten Akınsoft ile eşleşmiş.',
+        sourceId: String(existingMap.source_id),
+        invoiceNumber,
+      };
+    }
+    const eStatus = String(invoice.e_invoice_status || '').trim().toLowerCase();
+    if (['sent', 'received', 'manual', 'manual_sent', 'prepared'].includes(eStatus)) {
+      return {
+        ok: false,
+        reason: 'Maliye e-faturası SAP kaydının üzerine yazılamaz.',
+      };
+    }
+    if (Number(invoice.paid_amount || 0) > 0.009) {
+      return {
+        ok: false,
+        reason: 'Tahsilatı olan fatura SAP’ta üzerine yazılamaz.',
+      };
+    }
+    if (await akinsoftInvoiceHasFtkCollections(pool, sql, existingMap.source_id)) {
+      return {
+        ok: false,
+        reason:
+          'Tahsilatı olan SAP faturası güncellenemez. Wolvox’tan düzeltin veya tahsilatı geri alın.',
+      };
+    }
+    replaceSourceId = Number(existingMap.source_id);
+    if (!Number.isFinite(replaceSourceId) || replaceSourceId <= 0) {
+      return { ok: false, reason: 'SAP fatura kodu geçersiz.' };
+    }
   }
 
   let customerRef;
@@ -6797,7 +6883,7 @@ async function attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice) {
   let reservedCariHrBlkodu = null;
   const reservedKdvBlkodus = [];
   try {
-    if (!faturaIdentity) {
+    if (!faturaIdentity && !replaceSourceId) {
       reservedFaturaBlkodu = await akinsoftNextBlkoduSafe(pool, 'FATURA');
     }
     // Her satır için sequence'den ayrı ID al. Tek ID + lineBlkodu++ sequence'i
@@ -6870,9 +6956,34 @@ async function attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice) {
         ? null
         : String(result.recordset[0].BLKODU);
     };
+    const updateWithTx = async (tableName, columns, values, blkodu) => {
+      const safeTable = String(tableName || '').replace(/[^A-Za-z0-9_]/g, '');
+      const entries = Object.entries(values).filter(
+        ([key, value]) =>
+          value !== undefined &&
+          String(key).toUpperCase() !== 'BLKODU' &&
+          columns.has(String(key).toUpperCase()),
+      );
+      const request = txRequest();
+      request.input('id', sql.BigInt, blkodu);
+      const setSql = [];
+      entries.forEach(([key, value], index) => {
+        const col = String(key).toUpperCase();
+        const param = `u${index}`;
+        setSql.push(`[${col}]=@${param}`);
+        bindSqlValue(request, sql, param, value);
+      });
+      if (!setSql.length) return String(blkodu);
+      await request.query(`
+        update dbo.${safeTable}
+        set ${setSql.join(', ')}
+        where BLKODU=@id
+      `);
+      return String(blkodu);
+    };
 
     const header = {};
-    if (!faturaIdentity) {
+    if (!faturaIdentity && !replaceSourceId) {
       header.BLKODU = reservedFaturaBlkodu;
     }
     setFirstColumn(header, faturaColumns, ['FATURA_NO'], invoiceNumber);
@@ -7091,7 +7202,16 @@ async function attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice) {
       );
     }
 
-    const faturaSourceId = await insertWithTx('FATURA', faturaColumns, header);
+    if (replaceSourceId) {
+      await retireAkinsoftInvoiceChildren(txRequest, sql, replaceSourceId, {
+        hasFaturaKdv,
+        hasFaturaKur,
+        hasCariHr: hasCariHr && cariHrColumns.size > 0,
+      });
+    }
+    const faturaSourceId = replaceSourceId
+      ? await updateWithTx('FATURA', faturaColumns, header, replaceSourceId)
+      : await insertWithTx('FATURA', faturaColumns, header);
     if (!faturaSourceId) {
       throw new Error('FATURA kaydı oluşturulamadı (BLKODU alınamadı).');
     }
@@ -7347,6 +7467,8 @@ async function attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice) {
       ok: true,
       sourceId: faturaSourceId,
       invoiceNumber,
+      replaced: Boolean(replaceSourceId),
+      reason: replaceSourceId ? 'Mevcut SAP kaydı CRM içeriğiyle güncellendi.' : null,
       lineCount: linePayloads.length,
       descriptionOnlyLines: linePayloads.filter((line) => line.asDescriptionOnly)
         .length,
@@ -7430,6 +7552,7 @@ async function handleAkinsoftPushInvoices(req, res) {
         i.is_active,
         i.e_invoice_number,
         i.e_invoice_status,
+        i.paid_amount,
         c.name as customer_name,
         c.vkn as customer_vkn,
         c.tax_office as customer_tax_office,
@@ -7529,6 +7652,7 @@ async function handleAkinsoftPushInvoices(req, res) {
         const write = await writeAkinsoftInvoiceCreate(pool, sql, query, {
           ...row,
           items: itemsByInvoice.get(String(invoiceId)) || [],
+          forceUpdate: body.forceUpdate === true,
         });
         const ok = write.ok === true;
         if (ok) {

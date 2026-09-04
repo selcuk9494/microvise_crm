@@ -857,6 +857,34 @@ Future<void> _saveLocalEInvoiceSettings(Map<String, dynamic> settings) async {
   await prefs.setString(_localSettingsKey, jsonEncode(settings));
 }
 
+Future<Map<String, dynamic>> postAkinsoftPushInvoices({
+  required Map<String, dynamic> settings,
+  required List<String> invoiceIds,
+  bool forceUpdate = false,
+  Duration timeout = const Duration(minutes: 5),
+}) async {
+  final response = await http
+      .post(
+        _akinsoftUri('push-invoices'),
+        headers: const {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode({
+          ...settings,
+          'invoiceIds': invoiceIds,
+          'forceUpdate': forceUpdate,
+        }),
+      )
+      .timeout(timeout);
+  final decoded = jsonDecode(response.body);
+  if (decoded is! Map) {
+    throw Exception('Beklenmeyen SAP yanıtı.');
+  }
+  final map = Map<String, dynamic>.from(decoded);
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(map['error'] ?? 'SAP gönderimi başarısız.');
+  }
+  return map;
+}
+
 Uri _akinsoftUri(String path, [Map<String, String>? queryParameters]) {
   final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
   final base = Uri.base;
@@ -871,6 +899,10 @@ Uri _akinsoftUri(String path, [Map<String, String>? queryParameters]) {
       ? Uri.parse('http://127.0.0.1:4000/api/akinsoft/')
       : base.resolve('/api/akinsoft/');
   return uri.resolve(normalizedPath).replace(queryParameters: queryParameters);
+}
+
+String akinsoftBridgeError(Object error) {
+  return _akinsoftBridgeError(error);
 }
 
 String _akinsoftBridgeError(Object error) {
@@ -5496,14 +5528,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             tone: _InvoiceActionTone.success,
             onPressed: _busy ? null : _openMaliyeLink,
           ),
-        if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
+        if ((invoice.needsAkinsoftNumberSync ||
+                !invoice.isLinkedToAkinsoft ||
+                invoice.canReplaceAkinsoftRecord) &&
             invoice.isActive &&
             invoice.status != 'cancelled')
           _InvoiceIconAction(
             tooltip: invoice.needsAkinsoftNumberSync
                 ? 'SAP fatura numarasını Maliye no ile güncelle'
-                : 'SAP’a fatura gönder',
-            icon: invoice.needsAkinsoftNumberSync
+                : invoice.isLinkedToAkinsoft
+                    ? 'SAP kaydını güncelle'
+                    : 'SAP’a fatura gönder',
+            icon: invoice.needsAkinsoftNumberSync || invoice.isLinkedToAkinsoft
                 ? AppPhosphorIcons.arrowsClockwise
                 : AppPhosphorIcons.cloudArrowUp,
             tone: _InvoiceActionTone.success,
@@ -5686,14 +5722,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           tone: _InvoiceActionTone.success,
           onPressed: _busy ? null : _openMaliyeLink,
         ),
-      if ((!invoice.isLinkedToAkinsoft || invoice.needsAkinsoftNumberSync) &&
+      if ((invoice.needsAkinsoftNumberSync ||
+              !invoice.isLinkedToAkinsoft ||
+              invoice.canReplaceAkinsoftRecord) &&
           invoice.isActive &&
           invoice.status != 'cancelled')
         _InvoiceIconAction(
           tooltip: invoice.needsAkinsoftNumberSync
               ? 'SAP fatura numarasını Maliye no ile güncelle'
-              : 'SAP’a fatura gönder',
-          icon: invoice.needsAkinsoftNumberSync
+              : invoice.isLinkedToAkinsoft
+                  ? 'SAP kaydını güncelle'
+                  : 'SAP’a fatura gönder',
+          icon: invoice.needsAkinsoftNumberSync || invoice.isLinkedToAkinsoft
               ? AppPhosphorIcons.arrowsClockwise
               : AppPhosphorIcons.cloudArrowUp,
           tone: _InvoiceActionTone.success,
@@ -7204,9 +7244,17 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   Future<void> _pushToAkinsoft() async {
     final invoice = widget.invoice;
     final syncNumber = invoice.needsAkinsoftNumberSync;
-    if (!syncNumber && invoice.isLinkedToAkinsoft) {
+    final updateExisting = invoice.isLinkedToAkinsoft && !syncNumber;
+    if (updateExisting && !invoice.canReplaceAkinsoftRecord) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bu fatura zaten SAP ile eşleşmiş.')),
+        SnackBar(
+          content: Text(
+            invoice.isContentLocked
+                ? 'Bu fatura kilitli (${invoice.recordProtectionReason}). '
+                    'Maliye veya tahsilat varsa SAP kaydı CRM’den üzerine yazılmaz.'
+                : 'Bu fatura zaten SAP ile eşleşmiş.',
+          ),
+        ),
       );
       return;
     }
@@ -7214,16 +7262,25 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          syncNumber ? 'SAP fatura no güncelle' : 'SAP’a fatura gönder',
+          syncNumber
+              ? 'SAP fatura no güncelle'
+              : updateExisting
+                  ? 'SAP kaydını güncelle'
+                  : 'SAP’a fatura gönder',
         ),
         content: Text(
           syncNumber
               ? '${invoice.invoiceNumber} için SAP kaydı Maliye e-fatura '
                     'numarasına güncellensin mi?\n\n'
                     'SAP’ta yoksa Maliye numarasıyla yeni oluşturulur.'
-              : '${invoice.invoiceNumber} numaralı fatura SAP’a yeni kayıt '
-                    'olarak yazılsın mı?\n\n'
-                    'Cari yoksa eklenir; stok eşleşmezse kalem açıklama olarak yazılır.',
+              : updateExisting
+                  ? '${invoice.invoiceNumber} CRM’deki haliyle SAP kaydının '
+                        'üzerine yazılsın mı?\n\n'
+                        'Tahsilatı veya Maliye e-faturası varsa işlem durur. '
+                        'Wolvox’ta fatura ekranı kapalı olsun.'
+                  : '${invoice.invoiceNumber} numaralı fatura SAP’a yeni kayıt '
+                        'olarak yazılsın mı?\n\n'
+                        'Cari yoksa eklenir; stok eşleşmezse kalem açıklama olarak yazılır.',
         ),
         actions: [
           TextButton(
@@ -7232,7 +7289,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text(syncNumber ? 'Güncelle' : 'Gönder'),
+            child: Text(
+              syncNumber
+                  ? 'Güncelle'
+                  : updateExisting
+                      ? 'SAP’ı güncelle'
+                      : 'Gönder',
+            ),
           ),
         ],
       ),
@@ -7242,23 +7305,34 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     setState(() => _busy = true);
     try {
       final settings = await ref.read(eInvoiceSettingsProvider.future);
-      final response = await http
-          .post(
-            _akinsoftUri(syncNumber ? 'push-invoice-numbers' : 'push-invoices'),
-            headers: {'Content-Type': 'application/json; charset=utf-8'},
-            body: jsonEncode({
-              ...settings,
-              'invoiceIds': [invoice.id],
-            }),
-          )
-          .timeout(const Duration(minutes: 5));
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map) {
-        throw Exception('Beklenmeyen SAP yanıtı.');
-      }
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(decoded['error'] ?? 'SAP gönderimi başarısız.');
-      }
+      final decoded = syncNumber
+          ? await () async {
+              final response = await http
+                  .post(
+                    _akinsoftUri('push-invoice-numbers'),
+                    headers: {
+                      'Content-Type': 'application/json; charset=utf-8',
+                    },
+                    body: jsonEncode({
+                      ...settings,
+                      'invoiceIds': [invoice.id],
+                    }),
+                  )
+                  .timeout(const Duration(minutes: 5));
+              final body = jsonDecode(response.body);
+              if (body is! Map) {
+                throw Exception('Beklenmeyen SAP yanıtı.');
+              }
+              if (response.statusCode < 200 || response.statusCode >= 300) {
+                throw Exception(body['error'] ?? 'SAP gönderimi başarısız.');
+              }
+              return Map<String, dynamic>.from(body);
+            }()
+          : await postAkinsoftPushInvoices(
+              settings: settings,
+              invoiceIds: [invoice.id],
+              forceUpdate: updateExisting,
+            );
       ref.invalidate(invoicesProvider);
       if (!mounted) return;
       final items = decoded['items'];
@@ -7273,6 +7347,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                       ? '${invoice.invoiceNumber}: $reason'
                       : syncNumber
                       ? '${invoice.invoiceNumber} SAP no güncellendi.'
+                      : updateExisting
+                      ? '${invoice.invoiceNumber} SAP kaydı güncellendi.'
                       : '${invoice.invoiceNumber} SAP’a yazıldı.')
                 : '${invoice.invoiceNumber} gönderilemedi: ${reason ?? 'bilinmeyen hata'}',
           ),

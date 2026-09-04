@@ -45,7 +45,7 @@ function isFalsyFlag(value) {
   return value === false || value === 'false';
 }
 
-function invoiceProtectionReason(row, { includeCustomerSent = true } = {}) {
+function invoiceContentLockReason(row) {
   if (!row) return null;
   const eStatus = String(row.e_invoice_status || '').trim().toLowerCase();
   if (PROTECTED_E_INVOICE_STATUSES.has(eStatus)) {
@@ -53,6 +53,16 @@ function invoiceProtectionReason(row, { includeCustomerSent = true } = {}) {
   }
   if (String(row.e_invoice_uuid || '').trim()) return 'Maliye UUID kaydı var';
   if (String(row.e_invoice_number || '').trim()) return 'E-fatura numarası var';
+  if (Number(row.paid_amount || 0) > 0.009) return 'Tahsilat kaydı var';
+  const status = String(row.status || '').trim().toLowerCase();
+  if (status === 'paid' || status === 'partial') return 'Tahsilat kaydı var';
+  return null;
+}
+
+function invoiceProtectionReason(row, { includeCustomerSent = true } = {}) {
+  if (!row) return null;
+  const contentLock = invoiceContentLockReason(row);
+  if (contentLock) return contentLock;
   if (String(row.akinsoft_sync_status || '').trim().toLowerCase() === 'synced') {
     return 'SAP kaydı var';
   }
@@ -62,9 +72,6 @@ function invoiceProtectionReason(row, { includeCustomerSent = true } = {}) {
   if (looksLikeAkinsoftInvoiceNumber(row.invoice_number)) {
     return 'SAP fatura numarası var';
   }
-  if (Number(row.paid_amount || 0) > 0.009) return 'Tahsilat kaydı var';
-  const status = String(row.status || '').trim().toLowerCase();
-  if (status === 'paid' || status === 'partial') return 'Tahsilat kaydı var';
   if (includeCustomerSent && row.customer_sent_at) return 'Müşteriye iletilmiş';
   return null;
 }
@@ -212,12 +219,10 @@ async function assertInvoiceUpdateAllowed({ ids, values }) {
 
   const identityKeys = blockedProtectedUpdateKeys(next);
   if (!identityKeys.length) return;
-  const blocked = rows.filter((row) =>
-    isProtectedInvoice(row, { includeCustomerSent: false }),
-  );
+  const blocked = rows.filter((row) => invoiceContentLockReason(row));
   if (!blocked.length) return;
   throw guardError(
-    'Maliye / SAP / tahsilat kaydı olan fatura içeriği değiştirilemez. Yanlışlıkla kaybolmayı önlemek için kilitlendi.',
+    'Maliye veya tahsilat kaydı olan fatura içeriği değiştirilemez. Yanlışlıkla kaybolmayı önlemek için kilitlendi.',
   );
 }
 
@@ -248,12 +253,10 @@ async function assertInvoiceItemsDeleteAllowed(filters) {
     );
   }
   const rows = await loadInvoicesForGuard(ids);
-  const blocked = rows.filter((row) =>
-    isProtectedInvoice(row, { includeCustomerSent: false }),
-  );
+  const blocked = rows.filter((row) => invoiceContentLockReason(row));
   if (!blocked.length) return;
   throw guardError(
-    'Maliye / SAP / tahsilat kaydı olan faturanın kalemleri silinemez. Kayıt korunur.',
+    'Maliye veya tahsilat kaydı olan faturanın kalemleri silinemez. Kayıt korunur.',
   );
 }
 
@@ -262,6 +265,7 @@ module.exports = {
   PROTECTED_UPDATE_ALLOWLIST,
   isProtectedInvoice,
   invoiceProtectionReason,
+  invoiceContentLockReason,
   uniqueIds,
   idsFromFilterList,
   assertInvoiceIdFilters,
