@@ -375,28 +375,7 @@ class _DesktopShell extends ConsumerWidget {
                                             .toggle();
                                         context.go(item.path);
                                       },
-                                      subItems: const [
-                                        _FormsNavSubItem(
-                                          label: 'CRM Finans',
-                                          path: '/finans',
-                                        ),
-                                        _FormsNavSubItem(
-                                          label: 'Bankalar / Hesaplar',
-                                          path: '/finans/akinsoft/bankalar',
-                                        ),
-                                        _FormsNavSubItem(
-                                          label: 'Kasa',
-                                          path: '/finans/akinsoft/kasa',
-                                        ),
-                                        _FormsNavSubItem(
-                                          label: 'Transferler',
-                                          path: '/finans/akinsoft/transferler',
-                                        ),
-                                        _FormsNavSubItem(
-                                          label: 'Masraf Faturaları',
-                                          path: '/finans/akinsoft/masraf',
-                                        ),
-                                      ],
+                                      subItems: _financeNavSubItems,
                                       matchedLocation: location,
                                     )
                                   else if (item.pageKey == 'mutakabat')
@@ -985,6 +964,18 @@ List<_FormsNavSubItem> _eInvoiceNavSubItems(Set<String> allowedPages) {
   return items;
 }
 
+const _financeNavSubItems = <_FormsNavSubItem>[
+  _FormsNavSubItem(label: 'CRM Finans', path: '/finans'),
+  _FormsNavSubItem(label: 'Kapatılan Ödemeler', path: '/finans/odemeler'),
+  _FormsNavSubItem(
+    label: 'Bankalar / Hesaplar',
+    path: '/finans/akinsoft/bankalar',
+  ),
+  _FormsNavSubItem(label: 'Kasa', path: '/finans/akinsoft/kasa'),
+  _FormsNavSubItem(label: 'Transferler', path: '/finans/akinsoft/transferler'),
+  _FormsNavSubItem(label: 'Masraf Faturaları', path: '/finans/akinsoft/masraf'),
+];
+
 List<_FormsNavSubItem> _mobileNavSubItems(
   _NavItem item,
   Set<String> allowedPages,
@@ -998,22 +989,7 @@ List<_FormsNavSubItem> _mobileNavSubItems(
     return _eInvoiceNavSubItems(allowedPages);
   }
   if (item.pageKey == 'finans') {
-    return const [
-      _FormsNavSubItem(label: 'CRM Finans', path: '/finans'),
-      _FormsNavSubItem(
-        label: 'Bankalar / Hesaplar',
-        path: '/finans/akinsoft/bankalar',
-      ),
-      _FormsNavSubItem(label: 'Kasa', path: '/finans/akinsoft/kasa'),
-      _FormsNavSubItem(
-        label: 'Transferler',
-        path: '/finans/akinsoft/transferler',
-      ),
-      _FormsNavSubItem(
-        label: 'Masraf Faturaları',
-        path: '/finans/akinsoft/masraf',
-      ),
-    ];
+    return _financeNavSubItems;
   }
   if (item.pageKey == 'mutakabat') {
     return const [
@@ -1429,22 +1405,7 @@ List<_FormsNavSubItem> _navSubItemsForItem(
     return _eInvoiceNavSubItems(allowedPages);
   }
   if (item.pageKey == 'finans') {
-    return const [
-      _FormsNavSubItem(label: 'CRM Finans', path: '/finans'),
-      _FormsNavSubItem(
-        label: 'Bankalar / Hesaplar',
-        path: '/finans/akinsoft/bankalar',
-      ),
-      _FormsNavSubItem(label: 'Kasa', path: '/finans/akinsoft/kasa'),
-      _FormsNavSubItem(
-        label: 'Transferler',
-        path: '/finans/akinsoft/transferler',
-      ),
-      _FormsNavSubItem(
-        label: 'Masraf Faturaları',
-        path: '/finans/akinsoft/masraf',
-      ),
-    ];
+    return _financeNavSubItems;
   }
   if (item.pageKey == 'mutakabat') {
     return const [

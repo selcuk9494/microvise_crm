@@ -17,6 +17,7 @@ import '../features/quotes/quote_form_screen.dart';
 import '../features/quotes/quote_settings_screen.dart';
 import '../features/finance/finance_screen.dart';
 import '../features/finance/akinsoft_finance_screen.dart';
+import '../features/finance/closed_payments_screen.dart';
 import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
@@ -251,23 +252,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
             GoRoute(
               path: 'teklif/yeni',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: QuoteFormScreen(),
-              ),
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: QuoteFormScreen()),
             ),
             GoRoute(
               path: 'teklif/duzenle/:id',
               pageBuilder: (context, state) => NoTransitionPage(
-                child: QuoteFormScreen(
-                  quoteId: state.pathParameters['id'],
-                ),
+                child: QuoteFormScreen(quoteId: state.pathParameters['id']),
               ),
             ),
             GoRoute(
               path: 'teklif/ayarlar',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: QuoteSettingsScreen(),
-              ),
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: QuoteSettingsScreen()),
             ),
             GoRoute(
               path: 'ayarlar',
@@ -282,6 +279,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: FinanceScreen()),
           routes: [
+            GoRoute(
+              path: 'odemeler',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: ClosedPaymentsScreen()),
+            ),
             GoRoute(
               path: 'akinsoft/bankalar',
               pageBuilder: (context, state) => const NoTransitionPage(
@@ -315,9 +317,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
         GoRoute(
           path: '/mutakabat/fiyatlar',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: MutakabatScreen(openPrices: true),
-          ),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: MutakabatScreen(openPrices: true)),
         ),
         GoRoute(
           path: '/teklif',
@@ -363,7 +364,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final pages = ref.read(currentUserPagePermissionsProvider);
       if ((profile?.isBankLike ?? false) &&
           location != '/banka-panel' &&
-          (location.startsWith('/formlar') || location.startsWith('/tsm-log')) &&
+          (location.startsWith('/formlar') ||
+              location.startsWith('/tsm-log')) &&
           location != '/formlar/basvuru' &&
           location != '/formlar/banka-rapor') {
         return '/banka-panel';

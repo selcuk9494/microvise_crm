@@ -9,6 +9,7 @@ const {
   applyBranchToSettings,
   resolveSelectedBranch,
 } = require('./e_invoice_branches');
+const { safeDownloadFilename } = require('./safe_filename');
 
 const MODULE_ROOT = path.resolve(__dirname, '../..');
 
@@ -549,16 +550,10 @@ function getPdfOutputDir() {
 }
 
 function writeLocalEInvoicePdf(pdf, fileName) {
-  const safeName = String(fileName || 'e_fatura.pdf')
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .slice(0, 120);
-  const finalName =
-    safeName.toLowerCase().endsWith('.pdf') && safeName
-      ? safeName
-      : `${safeName || 'e_fatura'}.pdf`;
+  const finalName = safeDownloadFilename(fileName, {
+    fallback: 'e_fatura.pdf',
+    maxLen: 120,
+  });
   const absolutePath = path.join(getPdfOutputDir(), finalName);
   fs.writeFileSync(absolutePath, pdf);
   return absolutePath;

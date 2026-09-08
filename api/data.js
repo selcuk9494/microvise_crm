@@ -2144,6 +2144,8 @@ module.exports = async (req, res) => {
             select
               i.*,
               json_build_object('name', c.name) as customers,
+              asm.source_id as akinsoft_source_id,
+              asm.source_code as akinsoft_source_code,
               coalesce(
                 (
                   select json_agg(ii order by ii.sort_order asc)
@@ -2154,6 +2156,10 @@ module.exports = async (req, res) => {
               ) as invoice_items
             from public.invoices i
             left join public.customers c on c.id = i.customer_id
+            left join public.akinsoft_sync_map asm
+              on asm.source_system = 'akinsoft'
+             and asm.source_type = 'invoice'
+             and asm.local_id = i.id
             where i.id = $1
             limit 1
           `,
@@ -2171,10 +2177,18 @@ module.exports = async (req, res) => {
       }
 
       case 'transactions_list': {
-        if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
+        if (
+          !requireAnyPage(req, user, ['faturalama', 'e_fatura', 'finans'], res)
+        ) {
+          return;
+        }
         const customerId = String(req.query.customerId || '').trim();
         const invoiceId = String(req.query.invoiceId || '').trim();
         const transactionType = String(req.query.transactionType || '').trim();
+        const paymentMethod = String(req.query.paymentMethod || '').trim().toLowerCase();
+        const invoiceType = String(req.query.invoiceType || '').trim();
+        const currency = String(req.query.currency || '').trim().toUpperCase();
+        const search = String(req.query.search || '').trim();
         const startDate = String(req.query.startDate || '').trim();
         const endDate = String(req.query.endDate || '').trim();
         const includePassive = parseBoolean(req.query.includePassive, false);
@@ -2197,6 +2211,39 @@ module.exports = async (req, res) => {
           values.push(transactionType);
           whereSql += ` and t.transaction_type = $${values.length}`;
         }
+        if (invoiceType) {
+          values.push(invoiceType);
+          whereSql += ` and i.invoice_type = $${values.length}`;
+        }
+        if (paymentMethod === 'pos') {
+          whereSql += `
+            and (
+              lower(coalesce(t.payment_method, '')) = 'pos'
+              or lower(coalesce(t.description, '')) like '%sanal pos%'
+              or lower(coalesce(t.description, '')) like '%odeme linki%'
+              or lower(coalesce(t.description, '')) like '%ödeme linki%'
+            )
+          `;
+        } else if (paymentMethod === 'check') {
+          whereSql += `
+            and lower(coalesce(t.payment_method, '')) in ('check', 'cheque', 'cek', 'çek')
+          `;
+        } else if (paymentMethod === 'fx' || paymentMethod === 'doviz') {
+          whereSql += `
+            and upper(coalesce(t.currency, 'TRY')) not in ('TRY', 'TL', '949')
+          `;
+        } else if (paymentMethod) {
+          values.push(paymentMethod);
+          whereSql += ` and lower(coalesce(t.payment_method, '')) = $${values.length}`;
+        }
+        if (currency === 'FX') {
+          whereSql += `
+            and upper(coalesce(t.currency, 'TRY')) not in ('TRY', 'TL', '949')
+          `;
+        } else if (currency) {
+          values.push(currency);
+          whereSql += ` and upper(coalesce(t.currency, 'TRY')) = $${values.length}`;
+        }
         if (startDate) {
           values.push(startDate);
           whereSql += ` and t.transaction_date >= $${values.length}::date`;
@@ -2205,23 +2252,73 @@ module.exports = async (req, res) => {
           values.push(endDate);
           whereSql += ` and t.transaction_date <= $${values.length}::date`;
         }
+        if (search) {
+          values.push(`%${search}%`);
+          whereSql += `
+            and (
+              coalesce(c.name, '') ilike $${values.length}
+              or coalesce(i.invoice_number, '') ilike $${values.length}
+              or coalesce(t.description, '') ilike $${values.length}
+              or coalesce(t.payment_method, '') ilike $${values.length}
+            )
+          `;
+        }
 
         const result = await query(
           `
             select
               t.*,
               json_build_object('name', c.name) as customers,
-              json_build_object('invoice_number', i.invoice_number) as invoices
+              json_build_object(
+                'invoice_number', i.invoice_number,
+                'status', i.status,
+                'invoice_type', i.invoice_type,
+                'paid_amount', i.paid_amount,
+                'grand_total', i.grand_total,
+                'currency', i.currency
+              ) as invoices,
+              asm.source_id as akinsoft_source_id,
+              (
+                select count(*)::int
+                from public.transactions t2
+                where t2.invoice_id = t.invoice_id
+                  and t2.is_active = true
+                  and t2.transaction_type in ('collection', 'payment')
+              ) as invoice_active_payment_count
             from public.transactions t
             left join public.customers c on c.id = t.customer_id
             left join public.invoices i on i.id = t.invoice_id
+            left join lateral (
+              select source_id
+              from public.akinsoft_sync_map asm
+              where asm.source_system = 'akinsoft'
+                and asm.source_type = 'invoice'
+                and asm.local_id = t.invoice_id
+              limit 1
+            ) asm on true
             ${whereSql}
             order by t.transaction_date desc, t.created_at desc
             limit 1200
           `,
           values,
         );
-        return ok(req, res, { items: result.rows });
+        const totals = {};
+        const methodCounts = {};
+        for (const row of result.rows) {
+          const cur = String(row.currency || 'TRY').toUpperCase();
+          totals[cur] = (totals[cur] || 0) + Number(row.amount || 0);
+          const method = String(row.payment_method || 'other').toLowerCase();
+          methodCounts[method] = (methodCounts[method] || 0) + 1;
+        }
+        return ok(req, res, {
+          items: result.rows,
+          summary: {
+            count: result.rows.length,
+            totals,
+            methodCounts,
+            truncated: result.rows.length >= 1200,
+          },
+        });
       }
 
       case 'pos_collections_list': {

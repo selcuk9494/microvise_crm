@@ -14,6 +14,7 @@ const {
   buildHostedPaymentUrl,
 } = require('./invoice_payment');
 const { posPaymentOverdue } = require('./pos_status');
+const { safeFilenamePart } = require('./safe_filename');
 
 const MODULE_ROOT = path.resolve(__dirname, '../..');
 
@@ -318,7 +319,7 @@ function officialPdfAttachment(invoice) {
     }
     const label = localInvoiceNumber(invoice.invoice_number) || 'efatura';
     return {
-      filename: `e-fatura-${label.replace(/[^\w.-]+/g, '_').slice(0, 60)}.pdf`,
+      filename: `e-fatura-${safeFilenamePart(label, 'efatura', 60)}.pdf`,
       content: fs.readFileSync(objectPath).toString('base64'),
       contentType: 'application/pdf',
     };
@@ -1234,9 +1235,7 @@ async function sendInvoicePaymentLinkEmail({
   };
   const named = invoiceNumbersPhrase(invoices);
   const crmAttachment = {
-    filename: `fatura-${(invoiceLabel || 'microvise')
-      .replace(/[^\w.-]+/g, '_')
-      .slice(0, 60)}.pdf`,
+    filename: `fatura-${safeFilenamePart(invoiceLabel || 'microvise', 'microvise', 60)}.pdf`,
     content: pdf.toString('base64'),
     contentType: 'application/pdf',
   };
@@ -1422,9 +1421,7 @@ async function sendPosPaymentReminders({
       text: buildPaymentEmailText(mailPayload),
       attachments: [
         {
-          filename: `hatirlatma-${(invoiceLabel || 'microvise')
-            .replace(/[^\w.-]+/g, '_')
-            .slice(0, 60)}.pdf`,
+          filename: `hatirlatma-${safeFilenamePart(invoiceLabel || 'microvise', 'microvise', 60)}.pdf`,
           content: pdf.toString('base64'),
           contentType: 'application/pdf',
         },

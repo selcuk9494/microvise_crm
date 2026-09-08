@@ -45,6 +45,17 @@ function isFalsyFlag(value) {
   return value === false || value === 'false';
 }
 
+function isSapLinkedInvoice(row) {
+  if (!row) return false;
+  if (String(row.akinsoft_source_id || '').trim()) return true;
+  if (String(row.akinsoft_sync_status || '').trim().toLowerCase() === 'synced') {
+    return true;
+  }
+  if (looksLikeAkinsoftInvoiceNumber(row.erp_invoice_number)) return true;
+  if (looksLikeAkinsoftInvoiceNumber(row.invoice_number)) return true;
+  return false;
+}
+
 function invoiceContentLockReason(row) {
   if (!row) return null;
   const eStatus = String(row.e_invoice_status || '').trim().toLowerCase();
@@ -53,6 +64,7 @@ function invoiceContentLockReason(row) {
   }
   if (String(row.e_invoice_uuid || '').trim()) return 'Maliye UUID kaydı var';
   if (String(row.e_invoice_number || '').trim()) return 'E-fatura numarası var';
+  if (isSapLinkedInvoice(row)) return null;
   if (Number(row.paid_amount || 0) > 0.009) return 'Tahsilat kaydı var';
   const status = String(row.status || '').trim().toLowerCase();
   if (status === 'paid' || status === 'partial') return 'Tahsilat kaydı var';
@@ -158,7 +170,15 @@ async function loadInvoicesForGuard(ids) {
         e_invoice_number,
         akinsoft_sync_status,
         erp_invoice_number,
-        customer_sent_at
+        customer_sent_at,
+        (
+          select asm.source_id
+          from public.akinsoft_sync_map asm
+          where asm.source_system = 'akinsoft'
+            and asm.source_type = 'invoice'
+            and asm.local_id = invoices.id
+          limit 1
+        ) as akinsoft_source_id
       from public.invoices
       where id = any($1::uuid[])
     `,
@@ -266,6 +286,7 @@ module.exports = {
   isProtectedInvoice,
   invoiceProtectionReason,
   invoiceContentLockReason,
+  isSapLinkedInvoice,
   uniqueIds,
   idsFromFilterList,
   assertInvoiceIdFilters,

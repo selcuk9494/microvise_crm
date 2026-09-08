@@ -141,7 +141,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
     for (final item in _items) {
       final base = (item.quantity ?? 0) * (item.unitPrice ?? 0);
       final afterDiscount = base * (1 - item.discountRate / 100);
-      total += afterDiscount * (item.taxRate / 100);
+      total += afterDiscount * ((item.taxRate ?? 0) / 100);
     }
     return total;
   }
@@ -496,6 +496,15 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
       ).showSnackBar(const SnackBar(content: Text('En az bir kalem ekleyin')));
       return;
     }
+    if (_items.any(
+      (item) =>
+          (item.description?.isNotEmpty ?? false) && item.taxRate == null,
+    )) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Her kalem için KDV seçin')));
+      return;
+    }
 
     setState(() => _saving = true);
     final apiClient = ref.read(apiClientProvider);
@@ -592,7 +601,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         final base = qty * price;
         final discAmt = base * (item.discountRate / 100);
         final afterDiscount = base - discAmt;
-        final taxAmt = afterDiscount * (item.taxRate / 100);
+        final taxAmt = afterDiscount * ((item.taxRate ?? 0) / 100);
         final total = afterDiscount + taxAmt;
 
         itemsData.add({
@@ -602,7 +611,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
           'quantity': qty,
           'unit': item.unit,
           'unit_price': price,
-          'tax_rate': item.taxRate,
+          'tax_rate': item.taxRate ?? 0,
           'tax_amount': taxAmt,
           'discount_rate': item.discountRate,
           'discount_amount': discAmt,
@@ -678,7 +687,7 @@ class _ItemDraft {
     TextEditingController? descController,
     TextEditingController? qtyController,
     TextEditingController? priceController,
-    this.taxRate = 20,
+    this.taxRate,
     this.discountRate = 0,
     this.unit = 'Adet',
     this.productId,
@@ -689,7 +698,7 @@ class _ItemDraft {
   final TextEditingController descController;
   final TextEditingController qtyController;
   final TextEditingController priceController;
-  double taxRate;
+  double? taxRate;
   double discountRate;
   String unit;
   String? productId;
@@ -849,7 +858,9 @@ class _ItemRow extends StatelessWidget {
             children: [
               Expanded(
                 child: DropdownButtonFormField<double>(
+                  key: ValueKey('inv-tax-${identityHashCode(item)}-${item.taxRate}'),
                   initialValue: item.taxRate,
+                  hint: const Text('Seçin'),
                   items: const [
                     DropdownMenuItem(value: 0.0, child: Text('%0')),
                     DropdownMenuItem(value: 5.0, child: Text('%5')),
@@ -858,9 +869,10 @@ class _ItemRow extends StatelessWidget {
                     DropdownMenuItem(value: 20.0, child: Text('%20')),
                   ],
                   onChanged: (v) {
-                    item.taxRate = v ?? 20;
+                    item.taxRate = v;
                     onChanged();
                   },
+                  validator: (value) => value == null ? 'KDV seçin' : null,
                   decoration: const InputDecoration(
                     labelText: 'KDV',
                     isDense: true,
@@ -920,7 +932,7 @@ class _ItemRow extends StatelessWidget {
     final price = item.unitPrice ?? 0;
     final base = qty * price;
     final afterDiscount = base * (1 - item.discountRate / 100);
-    final total = afterDiscount * (1 + item.taxRate / 100);
+    final total = afterDiscount * (1 + (item.taxRate ?? 0) / 100);
     return NumberFormat.currency(
       locale: 'tr_TR',
       symbol: '',

@@ -31,6 +31,7 @@ const {
   syncActiveCredentialsFromEnvironment,
 } = require('./_lib/e_invoice_credentials');
 const { normalizeValorDays } = require('./_lib/pos_status');
+const { safeFilenamePart } = require('./_lib/safe_filename');
 
 async function readJson(req) {
   const chunks = [];
@@ -1345,6 +1346,30 @@ function preferLocalPdfMode() {
   return !url || !key;
 }
 
+/** Vercel / genel domain: /api/_local/open-pdf yok, /tmp yolu istemciye gitmesin. */
+function hostnameFromHostHeader(hostHeader) {
+  const raw = String(hostHeader || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (raw.startsWith('[')) {
+    const end = raw.indexOf(']');
+    return end >= 0 ? raw.slice(1, end) : raw;
+  }
+  const colon = raw.lastIndexOf(':');
+  if (colon > 0 && raw.indexOf(':') === colon) {
+    return raw.slice(0, colon);
+  }
+  return raw;
+}
+
+function clientAllowsLocalPdf(req) {
+  if (String(process.env.VERCEL || '').trim()) return false;
+  const host = hostnameFromHostHeader(req?.headers?.host);
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+    return true;
+  }
+  return Boolean(String(process.env.MICROVISE_LOCAL_ORIGIN || '').trim());
+}
+
 function hasSupabaseStorageConfig() {
   if (String(process.env.DISABLE_SUPABASE || '').trim().toLowerCase() === 'true') {
     return false;
@@ -1385,35 +1410,12 @@ function storageHeaders(key) {
   };
 }
 
-function safePdfFilenamePart(value, fallback = 'fatura') {
-  const cleaned = String(value || '')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ı/g, 'i')
-    .replace(/İ/g, 'I')
-    .replace(/ğ/g, 'g')
-    .replace(/Ğ/g, 'G')
-    .replace(/ü/g, 'u')
-    .replace(/Ü/g, 'U')
-    .replace(/ş/g, 's')
-    .replace(/Ş/g, 'S')
-    .replace(/ö/g, 'o')
-    .replace(/Ö/g, 'O')
-    .replace(/ç/g, 'c')
-    .replace(/Ç/g, 'C')
-    .replace(/[^a-zA-Z0-9._-]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .slice(0, 80);
-  return cleaned || fallback;
-}
-
 function buildEInvoicePdfFileName(invoice) {
-  const invoiceNumber = safePdfFilenamePart(
+  const invoiceNumber = safeFilenamePart(
     localInvoiceNumber(invoice?.e_invoice_number || invoice?.invoice_number),
     'fatura',
   );
-  const customerName = safePdfFilenamePart(
+  const customerName = safeFilenamePart(
     invoice?.customer_name ||
       invoice?.customer?.name ||
       invoice?.customers?.name,
@@ -1617,6 +1619,7 @@ async function deliverBuiltArchivePdf({
   officialUbl,
   verificationCode,
   includePdf = false,
+  allowLocalOpenPdf = false,
 }) {
   const pdf = await buildEInvoiceArchivePdf({
     invoice,
@@ -1627,7 +1630,7 @@ async function deliverBuiltArchivePdf({
   });
   const fileName = buildEInvoicePdfFileName(invoice);
   const sha256 = crypto.createHash('sha256').update(pdf).digest('hex');
-  const localOnly = preferLocalPdfMode();
+  const localOnly = preferLocalPdfMode() && allowLocalOpenPdf;
 
   let storedPdf = null;
   let localPdfPath = null;
@@ -1740,7 +1743,7 @@ async function deliverBuiltArchivePdf({
     archivedAt: new Date().toISOString(),
     pdfUrl: pdfUrl || null,
     pdfFileName: fileName,
-    localPdfPath,
+    localPdfPath: allowLocalOpenPdf ? localPdfPath : null,
     bucket: storedPdf?.bucket || null,
     path: storedPdf?.path || null,
     ...(shouldIncludePdf ? { pdfBase64: pdf.toString('base64') } : {}),
@@ -1758,6 +1761,7 @@ async function archiveOfficialInvoice({
   refreshOfficial = false,
   includePdf = false,
   invoice: invoiceHint = null,
+  allowLocalOpenPdf = false,
 }) {
   try {
     const invoice = invoiceHint || (await fetchInvoice(invoiceId));
@@ -1811,6 +1815,7 @@ async function archiveOfficialInvoice({
       officialUbl,
       verificationCode: code,
       includePdf: includePdf || localOnly,
+      allowLocalOpenPdf,
     });
     return maliyeWarning
       ? { ...delivered, storageWarning: delivered.storageWarning || maliyeWarning }
@@ -3116,7 +3121,8 @@ async function handler(req, res) {
       }
 
       const includePdf = body.includePdf === true;
-      const localOnly = preferLocalPdfMode();
+      const allowLocalOpenPdf = clientAllowsLocalPdf(req);
+      const localOnly = preferLocalPdfMode() && allowLocalOpenPdf;
       // force / includePdf: PDF yeniden üret. Maliye yalnızca refreshOfficial:true.
       const refreshOfficial = shouldRefreshOfficialForArchive({
         refreshOfficial: body.refreshOfficial === true,
@@ -3202,7 +3208,7 @@ async function handler(req, res) {
             archivedAt: invoice.e_invoice_archived_at,
             pdfUrl: pdfUrl || null,
             pdfFileName,
-            localPdfPath,
+            localPdfPath: allowLocalOpenPdf ? localPdfPath : null,
             ...((includePdf || localOnly) && pdfBuffer
               ? { pdfBase64: pdfBuffer.toString('base64') }
               : {}),
@@ -3243,6 +3249,7 @@ async function handler(req, res) {
         refreshOfficial,
         includePdf: includePdf || localOnly,
         invoice,
+        allowLocalOpenPdf,
       });
       return ok(req, res, { ok: archive.archived, ...archive });
     }
@@ -3312,4 +3319,5 @@ module.exports.testUtils = {
   looksLikeOfficialInvoice,
   officialInvoiceLineItems,
   preferLocalPdfMode,
+  clientAllowsLocalPdf,
 };

@@ -630,8 +630,6 @@ function extractPosChargeCurrency(link) {
 }
 
 function isPosCollectionTransaction(row) {
-  const method = String(row?.payment_method || '').trim().toLowerCase();
-  if (method === 'pos') return true;
   const desc = String(row?.description || '').toLowerCase();
   return (
     desc.includes('sanal pos') ||
@@ -640,12 +638,111 @@ function isPosCollectionTransaction(row) {
   );
 }
 
+function selectCollectionsToReverse(
+  allRows,
+  { transactionId = null, allowPos = false } = {},
+) {
+  const txId = String(transactionId || '').trim();
+  const rows = txId
+    ? allRows.filter((row) => String(row.id) === txId)
+    : allRows.slice();
+  const posRows = rows.filter((row) => isPosCollectionTransaction(row));
+  const crmRows = rows.filter((row) => !isPosCollectionTransaction(row));
+  return {
+    transactionId: txId || null,
+    rows,
+    posRows,
+    crmRows,
+    toReverse: allowPos ? rows : crmRows,
+  };
+}
+
+async function deactivateStandaloneTransaction(txId, createdBy = null) {
+  const found = await query(
+    `
+      select *
+      from public.transactions
+      where id = $1::uuid
+      limit 1
+    `,
+    [txId],
+  );
+  const row = found.rows[0];
+  if (!row) {
+    const error = new Error('Ödeme kaydı bulunamadı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (row.is_active === false) {
+    const error = new Error('Bu ödeme zaten geri alınmış.');
+    error.statusCode = 400;
+    throw error;
+  }
+  await query(
+    `
+      update public.transactions
+      set
+        is_active = false,
+        description = trim(
+          both from coalesce(description, '') ||
+          ' [Tahsilat geri alındı ' || to_char(now(), 'YYYY-MM-DD HH24:MI') || ']'
+        )
+      where id = $1::uuid
+        and is_active = true
+    `,
+    [txId],
+  );
+  return {
+    ok: true,
+    invoiceId: null,
+    invoiceNumber: null,
+    reversedCount: 1,
+    reversedAmount: Number(row.amount || 0),
+    reversedTransactionIds: [txId],
+    remainingPosCount: 0,
+    message: 'Cari ödeme hareketi silindi.',
+    createdBy: createdBy || null,
+  };
+}
+
 async function reverseInvoiceCollection({
   invoiceId,
+  transactionId = null,
   createdBy = null,
+  allowPos = false,
 }) {
   await ensureInvoicePaidCloseRule();
-  const invId = String(invoiceId || '').trim();
+  const rawTxId = String(transactionId || '').trim();
+  const txId = rawTxId ? asUuidOrNull(rawTxId) : '';
+  if (rawTxId && !txId) {
+    const error = new Error('Geçersiz ödeme kaydı.');
+    error.statusCode = 400;
+    throw error;
+  }
+  let invId = String(invoiceId || '').trim();
+
+  if (!invId && txId) {
+    const found = await query(
+      `
+        select invoice_id
+        from public.transactions
+        where id = $1::uuid
+        limit 1
+      `,
+      [txId],
+    );
+    const row = found.rows[0];
+    if (!row) {
+      const error = new Error('Ödeme kaydı bulunamadı.');
+      error.statusCode = 400;
+      throw error;
+    }
+    invId = String(row.invoice_id || '').trim();
+    if (!invId) {
+      return deactivateStandaloneTransaction(txId, createdBy);
+    }
+  }
+
   if (!invId) {
     const error = new Error('invoiceId zorunludur.');
     error.statusCode = 400;
@@ -692,11 +789,27 @@ async function reverseInvoiceCollection({
     [invId],
   );
 
-  const allRows = collections.rows;
-  const posRows = allRows.filter((row) => isPosCollectionTransaction(row));
-  const crmRows = allRows.filter((row) => !isPosCollectionTransaction(row));
+  const selection = selectCollectionsToReverse(collections.rows, {
+    transactionId: txId,
+    allowPos,
+  });
 
-  if (crmRows.length === 0) {
+  if (txId && selection.rows.length === 0) {
+    const error = new Error(
+      'Bu ödeme kaydı bulunamadı, bu faturaya ait değil veya zaten geri alınmış.',
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const posRows = selection.posRows;
+  const collectionIds = selection.toReverse.map((row) => row.id);
+  const reversedAmount = selection.toReverse.reduce(
+    (sum, row) => sum + Number(row.amount || 0),
+    0,
+  );
+
+  if (collectionIds.length === 0) {
     if (posRows.length > 0) {
       const error = new Error(
         'Bu fatura sanal POS ile tahsil edilmiş. Geri almak için «Sanal POS iade» kullanın.',
@@ -711,11 +824,12 @@ async function reverseInvoiceCollection({
     }
   }
 
-  const collectionIds = crmRows.map((row) => row.id);
-  const reversedAmount = crmRows.reduce(
-    (sum, row) => sum + Number(row.amount || 0),
-    0,
+  const reversedPos = selection.toReverse.filter((row) =>
+    isPosCollectionTransaction(row),
   );
+  if (reversedPos.length) {
+    await ensureInvoicePaymentLinksTable();
+  }
 
   await withTransaction(async (txQuery) => {
     if (collectionIds.length) {
@@ -735,6 +849,49 @@ async function reverseInvoiceCollection({
       );
     }
     await txQuery(`select public.refresh_invoice_paid_status($1::uuid)`, [invId]);
+
+    if (reversedPos.length) {
+      const remainingPos = await txQuery(
+        `
+          select count(*)::int as cnt
+          from public.transactions t
+          where t.invoice_id = $1::uuid
+            and t.is_active = true
+            and t.transaction_type in ('collection', 'payment')
+            and (
+              lower(coalesce(t.description, '')) like '%sanal pos%'
+              or lower(coalesce(t.description, '')) like '%odeme linki%'
+              or lower(coalesce(t.description, '')) like '%ödeme linki%'
+            )
+        `,
+        [invId],
+      );
+      if (Number(remainingPos.rows[0]?.cnt || 0) === 0) {
+        await txQuery(
+          `
+            update public.invoice_payment_links
+            set
+              status = 'refunded',
+              provider_payload = coalesce(provider_payload, '{}'::jsonb) || $2::jsonb,
+              updated_at = now()
+            where status = 'paid'
+              and $1::uuid = any(invoice_ids)
+          `,
+          [
+            invId,
+            JSON.stringify({
+              refund: {
+                at: new Date().toISOString(),
+                by: createdBy || null,
+                via: 'crm_only',
+                source: 'closed_payments',
+                transactionIds: collectionIds,
+              },
+            }),
+          ],
+        );
+      }
+    }
   });
 
   return {
@@ -744,10 +901,13 @@ async function reverseInvoiceCollection({
     reversedCount: collectionIds.length,
     reversedAmount,
     reversedTransactionIds: collectionIds,
-    remainingPosCount: posRows.length,
+    remainingPosCount: collections.rows.filter(
+      (row) =>
+        isPosCollectionTransaction(row) && !collectionIds.includes(row.id),
+    ).length,
     message:
       collectionIds.length > 0
-        ? 'CRM tahsilatı geri alındı; fatura tekrar açık.'
+        ? 'CRM tahsilatı geri alındı; fatura ödeme hareketi düşüldü.'
         : 'Fatura tahsilat durumu açık olarak güncellendi.',
     createdBy: createdBy || null,
   };
@@ -2940,6 +3100,7 @@ module.exports = {
   handlePaymentCallback,
   refundInvoicePosPayment,
   reverseInvoiceCollection,
+  selectCollectionsToReverse,
   isPosCollectionTransaction,
   markPosPaymentSettled,
   dismissPosCollection,

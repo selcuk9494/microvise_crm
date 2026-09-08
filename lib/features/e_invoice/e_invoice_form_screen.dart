@@ -8,7 +8,6 @@ import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/format/app_date_time.dart';
-import '../../core/format/search_normalize.dart';
 import '../../core/ui/app_card.dart';
 import '../billing/application_form_invoice_link.dart';
 import '../customers/customer_form_dialog.dart';
@@ -140,6 +139,10 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
 
   bool get _isSales => widget.invoiceType == 'sales';
   bool get _isEditing => widget.initialInvoice != null;
+  bool get _isReadOnly {
+    final invoice = widget.initialInvoice;
+    return invoice != null && !invoice.canEditRecord;
+  }
 
   double get _subtotal =>
       _items.fold(0, (sum, item) => sum + item.subtotal(_pricesIncludeVat));
@@ -277,6 +280,25 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     super.dispose();
   }
 
+  Widget? _viewOnlyBanner() {
+    if (!_isReadOnly) return null;
+    final invoice = widget.initialInvoice!;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: AppTheme.softTint(AppTheme.primary, alpha: 0.16),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(
+            'Görüntüleme: bu fatura kilitli (${invoice.recordProtectionReason}). '
+            'Maliye kaydı değiştirilmez; satırlar salt okunur.',
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget? _sapCorrectionBanner() {
     final invoice = widget.initialInvoice;
     if (invoice == null || !invoice.canReplaceAkinsoftRecord) return null;
@@ -288,8 +310,8 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
         child: const Padding(
           padding: EdgeInsets.all(12),
           child: Text(
-            'Bu fatura SAP’ta var; Maliye’ye gitmemiş ve tahsilatı yok. '
-            'Kaydedince Wolvox kaydı da CRM’deki haliyle güncellenir. '
+            'Bu fatura SAP’ta var. Tarih, cari veya kalem değişince kaydettiğinizde '
+            'Wolvox kaydı CRM’deki haliyle yeniden yazılır. '
             'Wolvox’ta fatura ekranı kapalı olsun.',
           ),
         ),
@@ -309,7 +331,11 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     final apiEnvironmentLabel = isProduction ? 'canlı' : 'test';
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isMobileLayout = screenWidth < 980;
-    final title = isMobileLayout
+    final title = _isReadOnly
+        ? (isMobileLayout
+              ? (_isSales ? 'Faturayı görüntüle' : 'Alış görüntüle')
+              : '${_isSales ? 'Satış e-faturası' : 'Alış faturası'} — görüntüle')
+        : isMobileLayout
         ? (_isEditing
               ? (_isSales ? 'Faturayı Düzenle' : 'Alış Düzenle')
               : (_isSales ? 'Yeni Satış' : 'Yeni Alış'))
@@ -325,6 +351,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       sendAfterSave: _sendAfterSave,
       isSales: _isSales,
       saving: _saving,
+      readOnly: _isReadOnly,
       onPricesIncludeVatChanged: _setPricesIncludeVat,
       onSendAfterSaveChanged: (value) => setState(() => _sendAfterSave = value),
       onSaveDraft: () => _save(status: 'draft'),
@@ -337,7 +364,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       appBar: AppBar(
         title: Text(title),
         actions: [
-          if (!isMobileLayout) ...[
+          if (!isMobileLayout && !_isReadOnly) ...[
             TextButton(
               onPressed:
                   _saving ||
@@ -375,6 +402,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
               sendAfterSave: _sendAfterSave,
               isSales: _isSales,
               saving: _saving,
+              readOnly: _isReadOnly,
               apiEnvironmentLabel: apiEnvironmentLabel,
               onSendAfterSaveChanged: (value) =>
                   setState(() => _sendAfterSave = value),
@@ -392,87 +420,99 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 120),
                 children: [
+                  if (_viewOnlyBanner() case final banner?) banner,
                   if (_sapCorrectionBanner() case final banner?) banner,
-                  _DesktopInvoiceTop(
-                    isSales: _isSales,
-                    customersAsync: customersAsync,
-                    selectedCustomerId: _customerId,
-                    invoiceDate: _invoiceDate,
-                    dueDate: _dueDate,
-                    currency: _currency,
-                    exchangeRateController: _exchangeRateController,
-                    onCustomerSelected: (customer) =>
-                        setState(() => _customerId = customer?.id),
-                    onCreateCustomer: _createCustomer,
-                    onInvoiceDateChanged: (value) =>
-                        setState(() => _invoiceDate = normalizeAppDate(value)),
-                    onDueDateChanged: (value) => setState(
-                      () => _dueDate = value == null
-                          ? null
-                          : normalizeAppDate(value),
-                    ),
-                    onCurrencyChanged: _setCurrency,
-                    onExchangeRateChanged: (value) =>
-                        _exchangeRate = _parseDecimal(value),
-                  ),
-                  const Gap(14),
-                  _DesktopItemsTable(
-                    items: _items,
-                    productsAsync: productsAsync,
-                    taxRatesAsync: taxRatesAsync,
-                    currency: _currency,
-                    pricesIncludeVat: _pricesIncludeVat,
-                    isSales: _isSales,
-                    onChanged: () => setState(() {}),
-                    onProductSearch: () async {
-                      final products =
-                          await ref.read(productsProvider(null).future);
-                      if (!mounted) return;
-                      await _addProducts(products);
-                    },
-                    onAdd: () =>
-                        setState(() => _items.add(_EInvoiceItemDraft())),
-                    onRemove: (index) {
-                      setState(() {
-                        _items[index].dispose();
-                        _items.removeAt(index);
-                      });
-                    },
-                  ),
-                  const Gap(14),
-                  _DispatchCard(
-                    numberController: _irsaliyeNoController,
-                    poController: _poNumberController,
-                    date: _irsaliyeTarihi,
-                    invoiceDate: _invoiceDate,
-                    onDateChanged: (value) =>
-                        setState(() => _irsaliyeTarihi = value),
-                    onClear: () => setState(() {
-                      _irsaliyeNoController.clear();
-                      _irsaliyeTarihi = null;
-                    }),
-                  ),
-                  const Gap(14),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: AppCard(
-                          padding: const EdgeInsets.all(16),
-                          child: TextField(
-                            controller: _notesController,
-                            minLines: 7,
-                            maxLines: 9,
-                            decoration: const InputDecoration(
-                              labelText: 'Not',
-                              hintText: 'Fatura notu',
-                            ),
+                  IgnorePointer(
+                    ignoring: _isReadOnly,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _DesktopInvoiceTop(
+                          isSales: _isSales,
+                          customersAsync: customersAsync,
+                          selectedCustomerId: _customerId,
+                          invoiceDate: _invoiceDate,
+                          dueDate: _dueDate,
+                          currency: _currency,
+                          exchangeRateController: _exchangeRateController,
+                          onCustomerSelected: (customer) =>
+                              setState(() => _customerId = customer?.id),
+                          onCreateCustomer: _createCustomer,
+                          onInvoiceDateChanged: (value) => setState(
+                            () => _invoiceDate = normalizeAppDate(value),
                           ),
+                          onDueDateChanged: (value) => setState(
+                            () => _dueDate = value == null
+                                ? null
+                                : normalizeAppDate(value),
+                          ),
+                          onCurrencyChanged: _setCurrency,
+                          onExchangeRateChanged: (value) =>
+                              _exchangeRate = _parseDecimal(value),
                         ),
-                      ),
-                      const Gap(16),
-                      SizedBox(width: 360, child: summary),
-                    ],
+                        const Gap(14),
+                        _DesktopItemsTable(
+                          items: _items,
+                          productsAsync: productsAsync,
+                          taxRatesAsync: taxRatesAsync,
+                          currency: _currency,
+                          pricesIncludeVat: _pricesIncludeVat,
+                          isSales: _isSales,
+                          onChanged: () => setState(() {}),
+                          onProductSearch: () async {
+                            final products = await ref.read(
+                              productsProvider(null).future,
+                            );
+                            if (!mounted) return;
+                            await _addProducts(products);
+                          },
+                          onAdd: () =>
+                              setState(() => _items.add(_EInvoiceItemDraft())),
+                          onRemove: (index) {
+                            setState(() {
+                              _items[index].dispose();
+                              _items.removeAt(index);
+                            });
+                          },
+                        ),
+                        const Gap(14),
+                        _DispatchCard(
+                          numberController: _irsaliyeNoController,
+                          poController: _poNumberController,
+                          date: _irsaliyeTarihi,
+                          invoiceDate: _invoiceDate,
+                          onDateChanged: (value) =>
+                              setState(() => _irsaliyeTarihi = value),
+                          onClear: () => setState(() {
+                            _irsaliyeNoController.clear();
+                            _irsaliyeTarihi = null;
+                          }),
+                        ),
+                        const Gap(14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: AppCard(
+                                padding: const EdgeInsets.all(16),
+                                child: TextField(
+                                  controller: _notesController,
+                                  minLines: 7,
+                                  maxLines: 9,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Not',
+                                    hintText: 'Fatura notu',
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const Gap(16),
+                            SizedBox(width: 360, child: summary),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               );
@@ -482,225 +522,253 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
             return ListView(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
               children: [
+                if (_viewOnlyBanner() case final banner?) banner,
                 if (_sapCorrectionBanner() case final banner?) banner,
-                AppCard(
-                  padding: const EdgeInsets.all(12),
+                IgnorePointer(
+                  ignoring: _isReadOnly,
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        '1. Cari ve tarih',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const Gap(10),
-                      customersAsync.when(
-                        data: (customers) => CustomerSelectField(
-                          customers: customers,
-                          selectedCustomerId: _customerId,
-                          label: _isSales ? 'Müşteri' : 'Tedarikçi',
-                          onSelected: (customer) =>
-                              setState(() => _customerId = customer?.id),
-                          onCreateNew: _createCustomer,
-                        ),
-                        loading: () => const LinearProgressIndicator(),
-                        error: (_, _) =>
-                            const Text('Cari listesi yüklenemedi.'),
-                      ),
-                      const Gap(10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _DateField(
-                              label: 'Fatura Tarihi',
-                              value: dateFormat.format(_invoiceDate),
-                              initialDate: _invoiceDate,
-                              onPicked: (value) => setState(
-                                () => _invoiceDate = normalizeAppDate(value),
-                              ),
+                      AppCard(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              '1. Cari ve tarih',
+                              style: Theme.of(context).textTheme.titleSmall,
                             ),
-                          ),
-                          const Gap(8),
-                          SizedBox(
-                            width: 118,
-                            child: DropdownButtonFormField<String>(
-                              initialValue:
-                                  _invoiceCurrencies.contains(_currency)
-                                  ? _currency
-                                  : 'USD',
-                              isExpanded: true,
-                              items: [
-                                for (final code in _invoiceCurrencies)
-                                  DropdownMenuItem(
-                                    value: code,
-                                    child: Text(_currencyLabel(code)),
+                            const Gap(10),
+                            customersAsync.when(
+                              data: (customers) => CustomerSelectField(
+                                customers: customers,
+                                selectedCustomerId: _customerId,
+                                label: _isSales ? 'Müşteri' : 'Tedarikçi',
+                                onSelected: (customer) =>
+                                    setState(() => _customerId = customer?.id),
+                                onCreateNew: _createCustomer,
+                              ),
+                              loading: () => const LinearProgressIndicator(),
+                              error: (_, _) =>
+                                  const Text('Cari listesi yüklenemedi.'),
+                            ),
+                            const Gap(10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _DateField(
+                                    label: 'Fatura Tarihi',
+                                    value: dateFormat.format(_invoiceDate),
+                                    initialDate: _invoiceDate,
+                                    onPicked: (value) => setState(
+                                      () => _invoiceDate = normalizeAppDate(
+                                        value,
+                                      ),
+                                    ),
                                   ),
+                                ),
+                                const Gap(8),
+                                SizedBox(
+                                  width: 118,
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue:
+                                        _invoiceCurrencies.contains(_currency)
+                                        ? _currency
+                                        : 'USD',
+                                    isExpanded: true,
+                                    items: [
+                                      for (final code in _invoiceCurrencies)
+                                        DropdownMenuItem(
+                                          value: code,
+                                          child: Text(_currencyLabel(code)),
+                                        ),
+                                    ],
+                                    onChanged: (value) => _setCurrency(
+                                      value ?? (_isSales ? 'USD' : 'TRY'),
+                                    ),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Para',
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
                               ],
-                              onChanged: (value) => _setCurrency(
-                                value ?? (_isSales ? 'USD' : 'TRY'),
-                              ),
-                              decoration: const InputDecoration(
-                                labelText: 'Para',
-                                isDense: true,
-                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const Gap(8),
-                      SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: const Text('KDV dahil'),
-                        subtitle: Text(
-                          _pricesIncludeVat
-                              ? 'Birim fiyatlar KDV dahil girilir'
-                              : 'Birim fiyatlar KDV hariç girilir',
+                            const Gap(8),
+                            SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                              title: const Text('KDV dahil'),
+                              subtitle: Text(
+                                _pricesIncludeVat
+                                    ? 'Birim fiyatlar KDV dahil girilir'
+                                    : 'Birim fiyatlar KDV hariç girilir',
+                              ),
+                              value: _pricesIncludeVat,
+                              onChanged: _setPricesIncludeVat,
+                            ),
+                            if (_currency != 'TRY') ...[
+                              const Gap(8),
+                              TextFormField(
+                                controller: _exchangeRateController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Kur',
+                                  isDense: true,
+                                ),
+                                onChanged: (value) =>
+                                    _exchangeRate = _parseDecimal(value),
+                                validator: (value) =>
+                                    _parseDecimal(value ?? '') <= 0
+                                    ? 'Kur gerekli'
+                                    : null,
+                              ),
+                            ],
+                          ],
                         ),
-                        value: _pricesIncludeVat,
-                        onChanged: _setPricesIncludeVat,
                       ),
-                      if (_currency != 'TRY') ...[
-                        const Gap(8),
-                        TextFormField(
-                          controller: _exchangeRateController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                      const Gap(10),
+                      _MobileItemsCard(
+                        items: _items,
+                        productsAsync: productsAsync,
+                        taxRatesAsync: taxRatesAsync,
+                        currency: _currency,
+                        pricesIncludeVat: _pricesIncludeVat,
+                        isSales: _isSales,
+                        onChanged: () => setState(() {}),
+                        onAddBlank: () =>
+                            setState(() => _items.add(_EInvoiceItemDraft())),
+                        onAddFromStock: () async {
+                          final products = await ref.read(
+                            productsProvider(null).future,
+                          );
+                          if (!mounted) return;
+                          await _addProducts(products);
+                        },
+                        onRemove: (index) {
+                          setState(() {
+                            _items[index].dispose();
+                            _items.removeAt(index);
+                          });
+                        },
+                      ),
+                      const Gap(10),
+                      AppCard(
+                        padding: EdgeInsets.zero,
+                        child: Theme(
+                          data: Theme.of(
+                            context,
+                          ).copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            tilePadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                            childrenPadding: const EdgeInsets.fromLTRB(
+                              12,
+                              0,
+                              12,
+                              12,
+                            ),
+                            title: Text(
+                              '3. Ek bilgiler (isteğe bağlı)',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            subtitle: Text(() {
+                              final bits = <String>[
+                                if (_dueDate != null)
+                                  'Vade ${dateFormat.format(_dueDate!)}',
+                                if (_irsaliyeNoController.text
+                                    .trim()
+                                    .isNotEmpty)
+                                  'İrsaliye',
+                                if (_poNumberController.text.trim().isNotEmpty)
+                                  'PO',
+                                if (_notesController.text.trim().isNotEmpty)
+                                  'Not',
+                              ];
+                              return bits.isEmpty
+                                  ? 'Vade, irsaliye, PO, not'
+                                  : bits.join(' · ');
+                            }(), style: Theme.of(context).textTheme.bodySmall),
+                            children: [
+                              _DateField(
+                                label: 'Vade Tarihi',
+                                value: _dueDate == null
+                                    ? 'Seçilmedi'
+                                    : dateFormat.format(_dueDate!),
+                                initialDate:
+                                    _dueDate ??
+                                    _invoiceDate.add(const Duration(days: 30)),
+                                onPicked: (value) => setState(
+                                  () => _dueDate = normalizeAppDate(value),
+                                ),
+                              ),
+                              const Gap(8),
+                              TextFormField(
+                                controller: _irsaliyeNoController,
+                                decoration: const InputDecoration(
+                                  labelText: 'İrsaliye No',
+                                  isDense: true,
+                                ),
+                                validator: (value) {
+                                  final hasNumber = (value ?? '')
+                                      .trim()
+                                      .isNotEmpty;
+                                  if (hasNumber != (_irsaliyeTarihi != null)) {
+                                    return 'Numara ve tarih birlikte girilmeli';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const Gap(8),
+                              _DateField(
+                                label: 'İrsaliye Tarihi',
+                                value: _irsaliyeTarihi == null
+                                    ? 'Seçilmedi'
+                                    : dateFormat.format(_irsaliyeTarihi!),
+                                initialDate: _irsaliyeTarihi ?? _invoiceDate,
+                                onPicked: (value) =>
+                                    setState(() => _irsaliyeTarihi = value),
+                              ),
+                              const Gap(8),
+                              TextField(
+                                controller: _poNumberController,
+                                decoration: const InputDecoration(
+                                  labelText: 'PO No',
+                                  isDense: true,
+                                ),
+                              ),
+                              const Gap(8),
+                              TextField(
+                                controller: _notesController,
+                                minLines: 2,
+                                maxLines: 4,
+                                decoration: const InputDecoration(
+                                  labelText: 'Not',
+                                  isDense: true,
+                                ),
+                              ),
+                              if (_irsaliyeTarihi != null ||
+                                  _irsaliyeNoController.text.trim().isNotEmpty)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton(
+                                    onPressed: () => setState(() {
+                                      _irsaliyeNoController.clear();
+                                      _irsaliyeTarihi = null;
+                                    }),
+                                    child: const Text('İrsaliyeyi temizle'),
+                                  ),
+                                ),
+                            ],
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Kur',
-                            isDense: true,
-                          ),
-                          onChanged: (value) =>
-                              _exchangeRate = _parseDecimal(value),
-                          validator: (value) => _parseDecimal(value ?? '') <= 0
-                              ? 'Kur gerekli'
-                              : null,
                         ),
-                      ],
+                      ),
                     ],
-                  ),
-                ),
-                const Gap(10),
-                _MobileItemsCard(
-                  items: _items,
-                  productsAsync: productsAsync,
-                  taxRatesAsync: taxRatesAsync,
-                  currency: _currency,
-                  pricesIncludeVat: _pricesIncludeVat,
-                  isSales: _isSales,
-                  onChanged: () => setState(() {}),
-                  onAddBlank: () =>
-                      setState(() => _items.add(_EInvoiceItemDraft())),
-                  onAddFromStock: () async {
-                    final products =
-                        await ref.read(productsProvider(null).future);
-                    if (!mounted) return;
-                    await _addProducts(products);
-                  },
-                  onRemove: (index) {
-                    setState(() {
-                      _items[index].dispose();
-                      _items.removeAt(index);
-                    });
-                  },
-                ),
-                const Gap(10),
-                AppCard(
-                  padding: EdgeInsets.zero,
-                  child: Theme(
-                    data: Theme.of(
-                      context,
-                    ).copyWith(dividerColor: Colors.transparent),
-                    child: ExpansionTile(
-                      tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-                      childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      title: Text(
-                        '3. Ek bilgiler (isteğe bağlı)',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      subtitle: Text(() {
-                        final bits = <String>[
-                          if (_dueDate != null)
-                            'Vade ${dateFormat.format(_dueDate!)}',
-                          if (_irsaliyeNoController.text.trim().isNotEmpty)
-                            'İrsaliye',
-                          if (_poNumberController.text.trim().isNotEmpty) 'PO',
-                          if (_notesController.text.trim().isNotEmpty) 'Not',
-                        ];
-                        return bits.isEmpty
-                            ? 'Vade, irsaliye, PO, not'
-                            : bits.join(' · ');
-                      }(), style: Theme.of(context).textTheme.bodySmall),
-                      children: [
-                        _DateField(
-                          label: 'Vade Tarihi',
-                          value: _dueDate == null
-                              ? 'Seçilmedi'
-                              : dateFormat.format(_dueDate!),
-                          initialDate:
-                              _dueDate ??
-                              _invoiceDate.add(const Duration(days: 30)),
-                          onPicked: (value) => setState(
-                            () => _dueDate = normalizeAppDate(value),
-                          ),
-                        ),
-                        const Gap(8),
-                        TextFormField(
-                          controller: _irsaliyeNoController,
-                          decoration: const InputDecoration(
-                            labelText: 'İrsaliye No',
-                            isDense: true,
-                          ),
-                          validator: (value) {
-                            final hasNumber = (value ?? '').trim().isNotEmpty;
-                            if (hasNumber != (_irsaliyeTarihi != null)) {
-                              return 'Numara ve tarih birlikte girilmeli';
-                            }
-                            return null;
-                          },
-                        ),
-                        const Gap(8),
-                        _DateField(
-                          label: 'İrsaliye Tarihi',
-                          value: _irsaliyeTarihi == null
-                              ? 'Seçilmedi'
-                              : dateFormat.format(_irsaliyeTarihi!),
-                          initialDate: _irsaliyeTarihi ?? _invoiceDate,
-                          onPicked: (value) =>
-                              setState(() => _irsaliyeTarihi = value),
-                        ),
-                        const Gap(8),
-                        TextField(
-                          controller: _poNumberController,
-                          decoration: const InputDecoration(
-                            labelText: 'PO No',
-                            isDense: true,
-                          ),
-                        ),
-                        const Gap(8),
-                        TextField(
-                          controller: _notesController,
-                          minLines: 2,
-                          maxLines: 4,
-                          decoration: const InputDecoration(
-                            labelText: 'Not',
-                            isDense: true,
-                          ),
-                        ),
-                        if (_irsaliyeTarihi != null ||
-                            _irsaliyeNoController.text.trim().isNotEmpty)
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton(
-                              onPressed: () => setState(() {
-                                _irsaliyeNoController.clear();
-                                _irsaliyeTarihi = null;
-                              }),
-                              child: const Text('İrsaliyeyi temizle'),
-                            ),
-                          ),
-                      ],
-                    ),
                   ),
                 ),
               ],
@@ -715,8 +783,8 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
     if (widget.initialInvoice != null &&
         !widget.initialInvoice!.canEditRecord) {
       _showMessage(
-        'Bu fatura kilitli (${widget.initialInvoice!.recordProtectionReason}). '
-        'Yanlışlıkla kaybolmasın diye düzenlenemez.',
+        'Bu fatura görüntüleme modunda (${widget.initialInvoice!.recordProtectionReason}). '
+        'Maliye kaydı buradan değiştirilmez.',
       );
       return;
     }
@@ -730,6 +798,10 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
         .toList(growable: false);
     if (validItems.isEmpty) {
       _showMessage('En az bir fatura kalemi ekleyin.');
+      return;
+    }
+    if (validItems.any((item) => item.taxRate == null)) {
+      _showMessage('Her kalem için KDV seçin.');
       return;
     }
 
@@ -837,7 +909,7 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
                 'unit_price': _round2(
                   validItems[i].exclusiveUnitPrice(_pricesIncludeVat),
                 ),
-                'tax_rate': validItems[i].taxRate,
+                'tax_rate': validItems[i].taxRate ?? 0,
                 'tax_amount': validItems[i].taxAmount(_pricesIncludeVat),
                 'discount_rate': validItems[i].discountRate,
                 'discount_amount': validItems[i].discountAmount(
@@ -883,10 +955,16 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
       if (!mounted) return;
       final issuedHats = validItems
           .where((item) => item.issueKind == 'line')
-          .fold<int>(0, (sum, item) => sum + item.quantity.round().clamp(1, 999));
+          .fold<int>(
+            0,
+            (sum, item) => sum + item.quantity.round().clamp(1, 999),
+          );
       final issuedGmp3 = validItems
           .where((item) => item.issueKind == 'gmp3')
-          .fold<int>(0, (sum, item) => sum + item.quantity.round().clamp(1, 999));
+          .fold<int>(
+            0,
+            (sum, item) => sum + item.quantity.round().clamp(1, 999),
+          );
       final issuedNote = !_isSales || (issuedHats == 0 && issuedGmp3 == 0)
           ? ''
           : [
@@ -1373,7 +1451,9 @@ class _DesktopItemsTable extends StatelessWidget {
                       constraints: const BoxConstraints(minWidth: 1160),
                       child: Column(
                         children: [
-                          _InvoiceTableHeader(pricesIncludeVat: pricesIncludeVat),
+                          _InvoiceTableHeader(
+                            pricesIncludeVat: pricesIncludeVat,
+                          ),
                           for (var i = 0; i < items.length; i++)
                             _InvoiceTableRow(
                               key: ObjectKey(items[i]),
@@ -1650,11 +1730,13 @@ class _InvoiceTableRow extends StatelessWidget {
                     isDense: true,
                     decoration: const InputDecoration(
                       isDense: true,
+                      hintText: 'Seçin',
                       contentPadding: EdgeInsets.symmetric(
                         horizontal: 8,
                         vertical: 8,
                       ),
                     ),
+                    hint: const Text('Seçin'),
                     items: [
                       for (final rate in taxRates)
                         DropdownMenuItem(
@@ -1663,9 +1745,10 @@ class _InvoiceTableRow extends StatelessWidget {
                         ),
                     ],
                     onChanged: (value) {
-                      item.taxRate = value ?? taxRate;
+                      item.taxRate = value;
                       onChanged();
                     },
+                    validator: (value) => value == null ? 'KDV seçin' : null,
                   ),
                 ),
               ),
@@ -2179,14 +2262,16 @@ class _ItemEditor extends StatelessWidget {
           key: ValueKey('m-tax-${identityHashCode(item)}-$taxRate'),
           initialValue: taxRate,
           isExpanded: true,
+          hint: const Text('Seçin'),
           items: [
             for (final rate in taxRates)
               DropdownMenuItem(value: rate, child: Text(_taxLabel(rate))),
           ],
           onChanged: (value) {
-            item.taxRate = value ?? taxRate;
+            item.taxRate = value;
             onChanged();
           },
+          validator: (value) => value == null ? 'KDV seçin' : null,
           decoration: inputDecoration.copyWith(labelText: 'KDV'),
         );
         final discountField = TextFormField(
@@ -2541,6 +2626,7 @@ class _MobileSaveBar extends StatelessWidget {
     required this.onSendAfterSaveChanged,
     required this.onSaveDraft,
     required this.onSaveOpen,
+    this.readOnly = false,
   });
 
   final double grandTotal;
@@ -2552,6 +2638,7 @@ class _MobileSaveBar extends StatelessWidget {
   final ValueChanged<bool> onSendAfterSaveChanged;
   final VoidCallback onSaveDraft;
   final VoidCallback onSaveOpen;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -2570,7 +2657,7 @@ class _MobileSaveBar extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (isSales)
+              if (isSales && !readOnly)
                 CheckboxListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
@@ -2604,21 +2691,23 @@ class _MobileSaveBar extends StatelessWidget {
                       ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: saving ? null : onSaveDraft,
-                    child: const Text('Taslak'),
-                  ),
-                  const Gap(4),
-                  FilledButton(
-                    onPressed: saving ? null : onSaveOpen,
-                    child: saving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Kaydet'),
-                  ),
+                  if (!readOnly) ...[
+                    TextButton(
+                      onPressed: saving ? null : onSaveDraft,
+                      child: const Text('Taslak'),
+                    ),
+                    const Gap(4),
+                    FilledButton(
+                      onPressed: saving ? null : onSaveOpen,
+                      child: saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Kaydet'),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -2645,6 +2734,7 @@ class _SummaryPanel extends StatelessWidget {
     required this.onSaveDraft,
     required this.onSaveOpen,
     required this.apiEnvironmentLabel,
+    this.readOnly = false,
   });
 
   final double subtotal;
@@ -2661,6 +2751,7 @@ class _SummaryPanel extends StatelessWidget {
   final VoidCallback onSaveDraft;
   final VoidCallback onSaveOpen;
   final String apiEnvironmentLabel;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -2686,7 +2777,7 @@ class _SummaryPanel extends StatelessWidget {
                   : 'Birim fiyatlar KDV hariç girilir',
             ),
             value: pricesIncludeVat,
-            onChanged: saving ? null : onPricesIncludeVatChanged,
+            onChanged: (saving || readOnly) ? null : onPricesIncludeVatChanged,
           ),
           const Gap(6),
           _SummaryLine(label: 'Ara Toplam', value: money.format(subtotal)),
@@ -2699,25 +2790,27 @@ class _SummaryPanel extends StatelessWidget {
             isTotal: true,
           ),
           const Gap(12),
-          if (isSales)
+          if (!readOnly && isSales)
             SwitchListTile(
               value: sendAfterSave,
               onChanged: saving ? null : onSendAfterSaveChanged,
               title: Text('Kaydet ve $apiEnvironmentLabel API’ye gönder'),
               contentPadding: EdgeInsets.zero,
             ),
-          const Gap(8),
-          OutlinedButton(
-            onPressed: saving ? null : onSaveDraft,
-            child: const Text('Taslak Kaydet'),
-          ),
-          const Gap(8),
-          FilledButton(
-            onPressed: saving ? null : onSaveOpen,
-            child: Text(
-              isSales ? 'Faturayı Oluştur' : 'Alış Faturasını Kaydet',
+          if (!readOnly) ...[
+            const Gap(8),
+            OutlinedButton(
+              onPressed: saving ? null : onSaveDraft,
+              child: const Text('Taslak Kaydet'),
             ),
-          ),
+            const Gap(8),
+            FilledButton(
+              onPressed: saving ? null : onSaveOpen,
+              child: Text(
+                isSales ? 'Faturayı Oluştur' : 'Alış Faturasını Kaydet',
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2822,7 +2915,7 @@ class _EInvoiceItemDraft {
   final TextEditingController priceController;
   String? productId;
   String _unit = 'Adet';
-  double taxRate = 20;
+  double? taxRate;
   double discountRate = 0;
   String? issueKind;
   bool _issueKindManual = false;
@@ -2837,10 +2930,11 @@ class _EInvoiceItemDraft {
 
   double exclusiveUnitPrice(bool pricesIncludeVat) {
     final entered = unitPrice;
-    if (!pricesIncludeVat || taxRate <= 0) return entered;
+    final rate = taxRate ?? 0;
+    if (!pricesIncludeVat || rate <= 0) return entered;
     // KDV dahil → hariç çevirirken 2 hane; aksi halde 350/1.05=333.333…
     // DB/Maliye toplamında 0,01 sapma üretir.
-    return _round2(entered / (1 + taxRate / 100));
+    return _round2(entered / (1 + rate / 100));
   }
 
   double subtotal(bool pricesIncludeVat) =>
@@ -2851,7 +2945,7 @@ class _EInvoiceItemDraft {
 
   double taxAmount(bool pricesIncludeVat) => _round2(
     (subtotal(pricesIncludeVat) - discountAmount(pricesIncludeVat)) *
-        (taxRate / 100),
+        ((taxRate ?? 0) / 100),
   );
 
   double lineTotal(bool pricesIncludeVat) => _round2(
@@ -2905,13 +2999,14 @@ class _EInvoiceItemDraft {
     required bool fromIncludeVat,
     required bool toIncludeVat,
   }) {
-    if (fromIncludeVat == toIncludeVat || taxRate <= 0) {
+    final rate = taxRate ?? 0;
+    if (fromIncludeVat == toIncludeVat || rate <= 0) {
       return;
     }
     final current = unitPrice;
     final next = fromIncludeVat
-        ? current / (1 + taxRate / 100)
-        : current * (1 + taxRate / 100);
+        ? current / (1 + rate / 100)
+        : current * (1 + rate / 100);
     priceController.text = _round2(next).toStringAsFixed(2);
   }
 
@@ -3009,13 +3104,15 @@ List<double> _availableTaxRates(
     }
   });
   for (final item in items) {
-    rates.add(_normalizeRate(item.taxRate));
+    final rate = item.taxRate;
+    if (rate != null) rates.add(_normalizeRate(rate));
   }
   final sorted = rates.where((rate) => rate >= 0).toList()..sort();
   return sorted;
 }
 
-double _taxInitialValue(double value, List<double> rates) {
+double? _taxInitialValue(double? value, List<double> rates) {
+  if (value == null) return null;
   final normalized = _normalizeRate(value);
   if (rates.contains(normalized)) return normalized;
   return normalized;
@@ -3025,7 +3122,8 @@ double _round2(double value) => (value * 100).roundToDouble() / 100;
 
 double _normalizeRate(double value) => (value * 100).roundToDouble() / 100;
 
-String _taxLabel(double value) {
+String _taxLabel(double? value) {
+  if (value == null) return 'Seçin';
   final normalized = _normalizeRate(value);
   final text = normalized.truncateToDouble() == normalized
       ? normalized.toInt().toString()

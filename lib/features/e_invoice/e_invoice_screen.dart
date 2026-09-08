@@ -37,6 +37,7 @@ import 'e_invoice_official_url.dart';
 import 'e_invoice_pdf_share.dart';
 import 'e_invoice_print.dart';
 import 'e_invoice_whatsapp_share.dart';
+import 'local_pdf_bridge.dart';
 import 'pos_collections_tab.dart';
 import 'recurring_billing_tab.dart';
 import '../quotes/quote_providers.dart';
@@ -986,18 +987,70 @@ double? _parseCollectionAmount(String raw) {
   return double.tryParse(normalized);
 }
 
+class _CollectionSeed {
+  const _CollectionSeed({
+    this.method,
+    this.amount,
+    this.kpbAmount,
+    this.commission = 0,
+    this.description = '',
+  });
+
+  final String? method;
+  final double? amount;
+  final double? kpbAmount;
+  final double commission;
+  final String description;
+}
+
+String _normalizeCollectionMethod(String? raw) {
+  return switch ((raw ?? '').trim().toLowerCase()) {
+    'pos' => 'pos',
+    'credit_card' || 'card' || 'kredi kartı' || 'kredi_karti' => 'credit_card',
+    'bank' || 'transfer' || 'havale' || 'eft' => 'bank',
+    'check' || 'cheque' || 'cek' || 'çek' => 'check',
+    'other' || 'diğer' || 'diger' => 'other',
+    _ => 'cash',
+  };
+}
+
+double _parseCommissionFromDescription(String? description) {
+  final match = RegExp(
+    r'POS komisyon\s+([\d.,]+)',
+    caseSensitive: false,
+  ).firstMatch(description ?? '');
+  if (match == null) return 0;
+  return _parseCollectionAmount(match.group(1) ?? '') ?? 0;
+}
+
+String _stripCommissionFromDescription(String? description) {
+  return (description ?? '')
+      .replaceAll(
+        RegExp(
+          r'\s*·\s*POS komisyon\s+[\d.,]+\s*TL',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .trim();
+}
+
 class _CollectionDialog extends StatefulWidget {
   const _CollectionDialog({
     required this.invoices,
     required this.total,
     required this.currencies,
     required this.linkedCount,
+    this.correcting = false,
+    this.seed,
   });
 
   final List<Invoice> invoices;
   final double total;
   final Set<String> currencies;
   final int linkedCount;
+  final bool correcting;
+  final _CollectionSeed? seed;
 
   @override
   State<_CollectionDialog> createState() => _CollectionDialogState();
@@ -1041,18 +1094,26 @@ class _CollectionDialogState extends State<_CollectionDialog> {
   @override
   void initState() {
     super.initState();
+    final seed = widget.seed;
     final posPaid = widget.invoices.any((invoice) => invoice.isPaidViaPos);
-    _method = posPaid ? 'pos' : 'cash';
-    _closeInvoice = posPaid || _isPosMethod;
+    _method = _normalizeCollectionMethod(
+      seed?.method ?? (posPaid || widget.correcting ? 'pos' : 'cash'),
+    );
+    _closeInvoice = widget.correcting || posPaid || _isPosMethod;
     _postToSap = widget.linkedCount > 0;
     _checkNo = TextEditingController();
-    _desc = TextEditingController();
-    _amount = TextEditingController(text: widget.total.toStringAsFixed(2));
-    final defaultTl = _isFx && _invoiceRate > 1.5
-        ? widget.total * _invoiceRate
-        : widget.total;
+    _desc = TextEditingController(text: seed?.description ?? '');
+    final amount = seed?.amount ?? widget.total;
+    _amount = TextEditingController(text: amount.toStringAsFixed(2));
+    final defaultTl = seed?.kpbAmount != null && seed!.kpbAmount! > 0
+        ? seed.kpbAmount!
+        : (_isFx && _invoiceRate > 1.5 ? amount * _invoiceRate : amount);
     _tlAmount = TextEditingController(text: defaultTl.toStringAsFixed(2));
-    _commission = TextEditingController();
+    _commission = TextEditingController(
+      text: (seed?.commission ?? 0) > 0.009
+          ? seed!.commission.toStringAsFixed(2)
+          : '',
+    );
     _amount.addListener(_onMoneyChanged);
     _tlAmount.addListener(_onMoneyChanged);
     _commission.addListener(_onMoneyChanged);
@@ -1227,7 +1288,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
         : 'karışık para birimi';
 
     return AlertDialog(
-      title: const Text('Tahsilat'),
+      title: Text(widget.correcting ? 'Tahsilatı düzelt' : 'Tahsilat'),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
@@ -1237,7 +1298,8 @@ class _CollectionDialogState extends State<_CollectionDialog> {
             children: [
               Text(
                 '${widget.invoices.length} fatura · $totalLabel'
-                '${widget.linkedCount > 0 ? ' · ${widget.linkedCount} SAP bağlı' : ''}',
+                '${widget.linkedCount > 0 ? ' · ${widget.linkedCount} SAP bağlı' : ''}'
+                '${widget.correcting ? ' · mevcut tahsilat değiştirilecek' : ''}',
               ),
               const Gap(12),
               TextField(
@@ -1441,7 +1503,10 @@ class _CollectionDialogState extends State<_CollectionDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Vazgeç'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Tahsil et')),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.correcting ? 'Düzelt' : 'Tahsil et'),
+        ),
       ],
     );
   }
@@ -1884,6 +1949,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           onReverseCollect: visibleItems[i].canReverseCollection
               ? () => _reverseCollections([visibleItems[i]])
               : null,
+          onCorrectCollect: visibleItems[i].canCorrectCollection
+              ? () => _correctCollections([visibleItems[i]])
+              : null,
           onSelectedChanged: _bulkDeleting
               ? null
               : (selected) {
@@ -2314,6 +2382,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       size: 18,
                                     ),
                                     label: const Text('Tahsilat'),
+                                  ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        selectedReversibleCount == 0 ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () => _correctSelected(items),
+                                    icon: const Icon(
+                                      AppPhosphorIcons.notePencil,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Tahsilatı düzelt'),
                                   ),
                                   const Gap(8),
                                   OutlinedButton.icon(
@@ -2941,6 +3023,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                                   visibleItems[i],
                                                 ])
                                               : null,
+                                          onCorrectCollect:
+                                              visibleItems[i]
+                                                  .canCorrectCollection
+                                              ? () => _correctCollections([
+                                                  visibleItems[i],
+                                                ])
+                                              : null,
                                           onSelectedChanged: _bulkDeleting
                                               ? null
                                               : (selected) {
@@ -3228,9 +3317,12 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           ),
         );
         for (final item in downloads) {
-          if (item.url.trim().isNotEmpty) {
-            await openExternalUrl(item.url);
+          final url = item.url.trim();
+          if (url.isEmpty) continue;
+          if (isLocalOpenPdfUrl(url) && !canUseLocalOpenPdfBridge()) {
+            continue;
           }
+          await openExternalUrl(url);
         }
       }
 
@@ -3936,7 +4028,27 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     await _reverseCollections(selected);
   }
 
-  Future<void> _reverseCollections(List<Invoice> selected) async {
+  Future<void> _correctSelected(List<Invoice> visibleInvoices) async {
+    final selected = visibleInvoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .where((invoice) => invoice.canCorrectCollection)
+        .toList(growable: false);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Düzeltilecek CRM tahsilatı yok.')),
+      );
+      return;
+    }
+    await _correctCollections(selected);
+  }
+
+  Future<bool> _reverseCollections(
+    List<Invoice> selected, {
+    bool confirm = true,
+    bool notify = true,
+    bool manageBusy = true,
+    bool requireSap = false,
+  }) async {
     final money = NumberFormat.currency(
       locale: 'tr_TR',
       symbol: '₺',
@@ -3947,45 +4059,62 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       0,
       (sum, invoice) => sum + invoice.paidAmount,
     );
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Tahsilatı geri al'),
-        content: Text(
-          selected.length == 1
-              ? '${selected.first.invoiceNumberDisplay} faturasındaki '
-                    'CRM tahsilatı (${money.format(selected.first.paidAmount)}) '
-                    'geri alınacak; fatura tekrar açık görünecek.'
-                    '${linkedCount > 0 ? ' SAP’a yazılmışsa Wolvox tahsilatı da silinmeye çalışılır.' : ''}'
-                    '\n\nKarttan otomatik iade yapılmaz.'
-              : '${selected.length} faturanın CRM tahsilatı '
-                    '(${money.format(totalPaid)}) geri alınacak.'
-                    '${linkedCount > 0 ? ' $linkedCount fatura için SAP kaydı da silinmeye çalışılır.' : ''}'
-                    '\n\nKarttan otomatik iade yapılmaz.',
+    if (confirm) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Tahsilatı geri al'),
+          content: Text(
+            selected.length == 1
+                ? '${selected.first.invoiceNumberDisplay} faturasındaki '
+                      'CRM tahsilatı (${money.format(selected.first.paidAmount)}) '
+                      'geri alınacak; fatura tekrar açık görünecek.'
+                      '${linkedCount > 0 ? ' SAP’a yazılmışsa Wolvox tahsilatı da silinmeye çalışılır.' : ''}'
+                      '\n\nKarttan otomatik iade yapılmaz.'
+                : '${selected.length} faturanın CRM tahsilatı '
+                      '(${money.format(totalPaid)}) geri alınacak.'
+                      '${linkedCount > 0 ? ' $linkedCount fatura için SAP kaydı da silinmeye çalışılır.' : ''}'
+                      '\n\nKarttan otomatik iade yapılmaz.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Geri al'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Vazgeç'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Geri al'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
+      );
+      if (confirmed != true || !mounted) return false;
+    }
 
     final apiClient = ref.read(apiClientProvider);
-    if (apiClient == null) return;
-    setState(() => _bulkProcessing = true);
+    if (apiClient == null) return false;
+    if (manageBusy) setState(() => _bulkProcessing = true);
     var crmOk = 0;
     var sapOk = 0;
     var sapFail = 0;
     String? lastSapError;
     try {
       for (final invoice in selected) {
+        if (invoice.isLinkedToAkinsoft) {
+          try {
+            await _postAkinsoftFinance('finance/collection', {
+              'action': 'reverse',
+              'invoiceSourceId': invoice.akinsoftSourceId,
+              'invoiceNumber': invoice.invoiceNumber,
+              'invoiceType': invoice.invoiceType,
+            });
+            sapOk += 1;
+          } catch (error) {
+            sapFail += 1;
+            lastSapError = _akinsoftBridgeError(error);
+            if (requireSap) continue;
+          }
+        }
         await apiClient.postJson(
           '/mutate',
           body: {
@@ -3994,55 +4123,144 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           },
         );
         crmOk += 1;
-        if (!invoice.isLinkedToAkinsoft) continue;
-        try {
-          await _postAkinsoftFinance('finance/collection', {
-            'action': 'reverse',
-            'invoiceSourceId': invoice.akinsoftSourceId,
-            'invoiceNumber': invoice.invoiceNumber,
-            'invoiceType': invoice.invoiceType,
-          });
-          sapOk += 1;
-        } catch (error) {
-          sapFail += 1;
-          lastSapError = _akinsoftBridgeError(error);
-        }
       }
-      _selectedInvoiceIds.clear();
-      ref.invalidate(invoicesProvider);
-      ref.invalidate(accountBalancesProvider);
-      if (!mounted) return;
-      final sapPart = linkedCount == 0
-          ? ''
-          : (sapFail == 0
-                ? ' SAP: $sapOk geri alındı.'
-                : ' SAP: $sapOk geri alındı, $sapFail hata${lastSapError == null ? '.' : ': $lastSapError'}');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$crmOk fatura CRM’de açıldı.$sapPart')),
-      );
+      if (notify) {
+        _selectedInvoiceIds.clear();
+        ref.invalidate(invoicesProvider);
+        ref.invalidate(accountBalancesProvider);
+      }
+      if (!mounted) return crmOk == selected.length;
+      if (notify) {
+        final sapPart = linkedCount == 0
+            ? ''
+            : (sapFail == 0
+                  ? ' SAP: $sapOk geri alındı.'
+                  : ' SAP: $sapOk geri alındı, $sapFail hata${lastSapError == null ? '.' : ': $lastSapError'}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$crmOk fatura CRM’de açıldı.$sapPart')),
+        );
+      }
+      return crmOk == selected.length;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Tahsilat geri alınamadı: $error')),
       );
+      return false;
     } finally {
-      if (mounted) setState(() => _bulkProcessing = false);
+      if (manageBusy && mounted) setState(() => _bulkProcessing = false);
     }
   }
 
-  Future<void> _collectInvoices(List<Invoice> selected) async {
+  _CollectionSeed _seedFromInvoice(Invoice invoice) {
+    final amount = invoice.paidAmount > 0.009
+        ? invoice.paidAmount
+        : invoice.remainingAmount;
+    final rate = invoice.exchangeRate > 1.5 ? invoice.exchangeRate : 1.0;
+    return _CollectionSeed(
+      method: invoice.lastPaymentMethod,
+      amount: amount,
+      kpbAmount: amount * rate,
+      commission: _parseCommissionFromDescription(invoice.lastPaymentDescription),
+      description: _stripCommissionFromDescription(invoice.lastPaymentDescription),
+    );
+  }
+
+  Future<_CollectionSeed> _loadCollectionSeed(Invoice invoice) async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return _seedFromInvoice(invoice);
+    try {
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'transactions_list',
+          'invoiceId': invoice.id,
+        },
+      );
+      final items = (response['items'] as List?) ?? const [];
+      for (final item in items) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        if (map['is_active'] == false) continue;
+        final type = map['transaction_type']?.toString();
+        if (type != 'collection' && type != 'payment') continue;
+        final txn = Transaction.fromJson(map);
+        final amount = txn.amount > 0 ? txn.amount : invoice.paidAmount;
+        final rate = txn.exchangeRate > 0
+            ? txn.exchangeRate
+            : (invoice.exchangeRate > 1.5 ? invoice.exchangeRate : 1.0);
+        return _CollectionSeed(
+          method: txn.paymentMethod,
+          amount: amount,
+          kpbAmount: amount * rate,
+          commission: _parseCommissionFromDescription(txn.description),
+          description: _stripCommissionFromDescription(txn.description),
+        );
+      }
+    } catch (_) {}
+    return _seedFromInvoice(invoice);
+  }
+
+  Future<void> _correctCollections(List<Invoice> selected) async {
     final total = selected.fold<double>(
       0,
-      (sum, invoice) => sum + invoice.remainingAmount,
+      (sum, invoice) => sum + invoice.remainingAmount + invoice.paidAmount,
     );
-    final currencies = selected.map((invoice) => invoice.currency).toSet();
-    final linked = selected.where((invoice) => invoice.isLinkedToAkinsoft).length;
     final details = await _askCollectionDetails(
       invoices: selected,
       total: total,
-      currencies: currencies,
-      linkedCount: linked,
+      currencies: selected.map((invoice) => invoice.currency).toSet(),
+      linkedCount: selected.where((invoice) => invoice.isLinkedToAkinsoft).length,
+      correcting: true,
+      seed: selected.length == 1
+          ? await _loadCollectionSeed(selected.first)
+          : null,
     );
+    if (details == null) return;
+    final reversed = await _reverseCollections(
+      selected,
+      confirm: false,
+      notify: false,
+      manageBusy: false,
+      requireSap: true,
+    );
+    if (!reversed || !mounted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Tahsilat düzeltilemedi. SAP tahsilatı geri alınamadıysa '
+              'Wolvox kaydını kontrol edip tekrar deneyin.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    await _collectInvoices(selected, replacing: true, preset: details);
+  }
+
+  Future<void> _collectInvoices(
+    List<Invoice> selected, {
+    bool replacing = false,
+    _CollectionDetails? preset,
+  }) async {
+    final total = selected.fold<double>(
+      0,
+      (sum, invoice) =>
+          sum +
+          invoice.remainingAmount +
+          (replacing ? invoice.paidAmount : 0),
+    );
+    final currencies = selected.map((invoice) => invoice.currency).toSet();
+    final linked = selected.where((invoice) => invoice.isLinkedToAkinsoft).length;
+    final details = preset ??
+        await _askCollectionDetails(
+          invoices: selected,
+          total: total,
+          currencies: currencies,
+          linkedCount: linked,
+        );
     if (details == null) return;
 
     final apiClient = ref.read(apiClientProvider);
@@ -4054,12 +4272,14 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     String? lastSapError;
     try {
       for (final invoice in selected) {
+        final remaining = invoice.remainingAmount +
+            (replacing ? invoice.paidAmount : 0);
         final closeInvoice = details.closeInvoice;
         final amount = selected.length == 1
             ? (closeInvoice
-                  ? invoice.remainingAmount
-                  : details.amount.clamp(0.01, invoice.remainingAmount).toDouble())
-            : invoice.remainingAmount;
+                  ? remaining
+                  : details.amount.clamp(0.01, remaining).toDouble())
+            : remaining;
         if (amount <= 0) continue;
         final kpbAmount = selected.length == 1
             ? details.kpbAmount
@@ -4119,7 +4339,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             'description': description,
             'invoiceType': invoice.invoiceType,
             'closeInvoice':
-                closeInvoice || amount >= invoice.remainingAmount - 0.02,
+                closeInvoice || amount >= remaining - 0.02,
           });
           sapOk += 1;
         } catch (error) {
@@ -4137,7 +4357,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 : ' SAP: $sapOk kapandı, $sapFail hata${lastSapError == null ? '.' : ': $lastSapError'}')
           : '';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$crmOk fatura CRM’de işlendi.$sapPart')),
+        SnackBar(
+          content: Text(
+            replacing
+                ? '$crmOk faturanın tahsilatı düzeltildi.$sapPart'
+                : '$crmOk fatura CRM’de işlendi.$sapPart',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
@@ -4154,6 +4380,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     required double total,
     required Set<String> currencies,
     required int linkedCount,
+    bool correcting = false,
+    _CollectionSeed? seed,
   }) {
     return showDialog<_CollectionDetails>(
       context: context,
@@ -4162,6 +4390,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         total: total,
         currencies: currencies,
         linkedCount: linkedCount,
+        correcting: correcting,
+        seed: seed,
       ),
     );
   }
@@ -5408,6 +5638,7 @@ class _EInvoiceRow extends ConsumerStatefulWidget {
     this.onSelectedChanged,
     this.onCollect,
     this.onReverseCollect,
+    this.onCorrectCollect,
     this.index = 0,
   });
 
@@ -5416,6 +5647,7 @@ class _EInvoiceRow extends ConsumerStatefulWidget {
   final ValueChanged<bool>? onSelectedChanged;
   final VoidCallback? onCollect;
   final VoidCallback? onReverseCollect;
+  final VoidCallback? onCorrectCollect;
   final int index;
 
   @override
@@ -5455,7 +5687,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       final canPosRefund =
           invoice.invoiceType == 'sales' &&
           invoice.isActive &&
-          invoice.isPaidViaPos;
+          invoice.isSanalPosCollection;
       final canReverseCollect = widget.onReverseCollect != null;
       final actions = <Widget>[
         if (canPaymentLink)
@@ -5485,6 +5717,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             icon: AppPhosphorIcons.arrowUUpLeft,
             tone: _InvoiceActionTone.danger,
             onPressed: _busy ? null : _refundPosPayment,
+          ),
+        if (canReverseCollect)
+          _InvoiceIconAction(
+            tooltip: 'Tahsilatı düzelt',
+            icon: AppPhosphorIcons.notePencil,
+            tone: _InvoiceActionTone.purple,
+            onPressed: _busy ? null : widget.onCorrectCollect,
           ),
         if (canReverseCollect)
           _InvoiceIconAction(
@@ -5548,10 +5787,12 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         _InvoiceIconAction(
           tooltip: invoice.canEditRecord
               ? 'Düzenle'
-              : 'Kilitli: ${invoice.recordProtectionReason}',
-          icon: Icons.edit_outlined,
+              : 'Görüntüle: ${invoice.recordProtectionReason}',
+          icon: invoice.canEditRecord
+              ? Icons.edit_outlined
+              : Icons.visibility_outlined,
           tone: _InvoiceActionTone.purple,
-          onPressed: _busy || !invoice.canEditRecord ? null : _edit,
+          onPressed: _busy ? null : _edit,
         ),
         PopupMenuButton<String>(
           tooltip: 'Diğer işlemler',
@@ -5570,6 +5811,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 _toggleCustomerSent();
               case 'pos_refund':
                 _refundPosPayment();
+              case 'correct_collect':
+                widget.onCorrectCollect?.call();
               case 'reverse_collect':
                 widget.onReverseCollect?.call();
               case 'manual':
@@ -5593,6 +5836,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               const PopupMenuItem(
                 value: 'collect',
                 child: Text('Tahsilat (CRM + Akınsoft)'),
+              ),
+            if (widget.onCorrectCollect != null)
+              const PopupMenuItem(
+                value: 'correct_collect',
+                child: Text('Tahsilatı düzelt'),
               ),
             if (widget.onReverseCollect != null)
               const PopupMenuItem(
@@ -5627,7 +5875,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               ),
             if (invoice.invoiceType == 'sales' &&
                 invoice.isActive &&
-                invoice.isPaidViaPos)
+                invoice.isSanalPosCollection)
               const PopupMenuItem(
                 value: 'pos_refund',
                 child: Text('Sanal POS iade'),
@@ -5742,10 +5990,12 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       _InvoiceIconAction(
         tooltip: invoice.canEditRecord
             ? 'Düzenle'
-            : 'Kilitli: ${invoice.recordProtectionReason}',
-        icon: Icons.edit_outlined,
+            : 'Görüntüle: ${invoice.recordProtectionReason}',
+        icon: invoice.canEditRecord
+            ? Icons.edit_outlined
+            : Icons.visibility_outlined,
         tone: _InvoiceActionTone.purple,
-        onPressed: _busy || !invoice.canEditRecord ? null : _edit,
+        onPressed: _busy ? null : _edit,
       ),
       PopupMenuButton<String>(
         tooltip: 'Diğer işlemler',
@@ -5764,6 +6014,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               _toggleCustomerSent();
             case 'pos_refund':
               _refundPosPayment();
+            case 'correct_collect':
+              widget.onCorrectCollect?.call();
             case 'collect':
               widget.onCollect?.call();
             case 'reverse_collect':
@@ -5787,6 +6039,11 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             const PopupMenuItem(
               value: 'collect',
               child: Text('Tahsilat (CRM + Akınsoft)'),
+            ),
+          if (widget.onCorrectCollect != null)
+            const PopupMenuItem(
+              value: 'correct_collect',
+              child: Text('Tahsilatı düzelt'),
             ),
           if (widget.onReverseCollect != null)
             const PopupMenuItem(
@@ -5821,7 +6078,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             ),
           if (invoice.invoiceType == 'sales' &&
               invoice.isActive &&
-              invoice.isPaidViaPos)
+              invoice.isSanalPosCollection)
             const PopupMenuItem(
               value: 'pos_refund',
               child: Text('Sanal POS iade'),
@@ -6446,17 +6703,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
   }
 
   Future<void> _edit() async {
-    if (!widget.invoice.canEditRecord) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Bu fatura kilitli (${widget.invoice.recordProtectionReason}). '
-            'Yanlışlıkla kaybolmasın diye düzenlenemez.',
-          ),
-        ),
-      );
-      return;
-    }
     final apiClient = ref.read(apiClientProvider);
     Invoice invoice = widget.invoice;
     if (apiClient != null) {
@@ -6470,7 +6716,19 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           },
         );
         if (response.isNotEmpty) {
-          invoice = Invoice.fromJson(response);
+          final merged = Map<String, dynamic>.from(response);
+          if ((merged['akinsoft_source_id']?.toString().trim().isEmpty ??
+                  true) &&
+              (widget.invoice.akinsoftSourceId?.trim().isNotEmpty ?? false)) {
+            merged['akinsoft_source_id'] = widget.invoice.akinsoftSourceId;
+            merged['akinsoft_source_code'] = widget.invoice.akinsoftSourceCode;
+          }
+          if ((merged['akinsoft_sync_status']?.toString().trim().isEmpty ??
+                  true) &&
+              (widget.invoice.akinsoftSyncStatus?.trim().isNotEmpty ?? false)) {
+            merged['akinsoft_sync_status'] = widget.invoice.akinsoftSyncStatus;
+          }
+          invoice = Invoice.fromJson(merged);
         }
       } catch (error) {
         if (mounted) {
@@ -7052,9 +7310,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     String pdfUrl, {
     String? pdfBase64,
   }) async {
-    // Electron/web: open-pdf köprüsü shell.openPath ile açar. Mobilde bu URL
-    // geçersizdir; pdfBase64 / https ile devam et.
-    if (kIsWeb && isLocalOpenPdfUrl(pdfUrl)) {
+    // Electron: open-pdf köprüsü dosyayı açar. Bulut web'de Vercel 404 olur.
+    if (kIsWeb &&
+        isLocalOpenPdfUrl(pdfUrl) &&
+        canUseLocalOpenPdfBridge()) {
       return openExternalUrl(pdfUrl);
     }
 
@@ -7305,34 +7564,35 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     setState(() => _busy = true);
     try {
       final settings = await ref.read(eInvoiceSettingsProvider.future);
-      final decoded = syncNumber
-          ? await () async {
-              final response = await http
-                  .post(
-                    _akinsoftUri('push-invoice-numbers'),
-                    headers: {
-                      'Content-Type': 'application/json; charset=utf-8',
-                    },
-                    body: jsonEncode({
-                      ...settings,
-                      'invoiceIds': [invoice.id],
-                    }),
-                  )
-                  .timeout(const Duration(minutes: 5));
-              final body = jsonDecode(response.body);
-              if (body is! Map) {
-                throw Exception('Beklenmeyen SAP yanıtı.');
-              }
-              if (response.statusCode < 200 || response.statusCode >= 300) {
-                throw Exception(body['error'] ?? 'SAP gönderimi başarısız.');
-              }
-              return Map<String, dynamic>.from(body);
-            }()
-          : await postAkinsoftPushInvoices(
-              settings: settings,
-              invoiceIds: [invoice.id],
-              forceUpdate: updateExisting,
-            );
+      final Map<String, dynamic> decoded;
+      if (syncNumber) {
+        final response = await http
+            .post(
+              _akinsoftUri('push-invoice-numbers'),
+              headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+              },
+              body: jsonEncode({
+                ...settings,
+                'invoiceIds': [invoice.id],
+              }),
+            )
+            .timeout(const Duration(minutes: 5));
+        final body = jsonDecode(response.body);
+        if (body is! Map) {
+          throw Exception('Beklenmeyen SAP yanıtı.');
+        }
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw Exception(body['error'] ?? 'SAP gönderimi başarısız.');
+        }
+        decoded = Map<String, dynamic>.from(body);
+      } else {
+        decoded = await postAkinsoftPushInvoices(
+          settings: settings,
+          invoiceIds: [invoice.id],
+          forceUpdate: updateExisting,
+        );
+      }
       ref.invalidate(invoicesProvider);
       if (!mounted) return;
       final items = decoded['items'];

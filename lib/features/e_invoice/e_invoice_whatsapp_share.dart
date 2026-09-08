@@ -10,6 +10,7 @@ import '../../core/platform/open_external_url.dart';
 import '../customers/customer_detail_screen.dart';
 import '../invoices/invoice_model.dart';
 import 'e_invoice_pdf_share.dart';
+import 'local_pdf_bridge.dart';
 
 String _phoneLabel(String? title, String fallback) {
   final trimmed = (title ?? '').trim();
@@ -153,9 +154,8 @@ Future<void> shareEInvoicePdfWithWhatsApp({
       : '${customerName}_$number.pdf';
 
   var sharedOrOpened = false;
-  // Electron/web open-pdf: dosyayı doğrudan aç. Mobilde _local/open-pdf geçersiz;
-  // pdfBase64 veya https URL ile paylaş.
-  if (kIsWeb && isLocalOpenPdfUrl(pdfUrl)) {
+  // Electron: open-pdf köprüsü dosyayı açar. Bulut web'de bu URL Vercel 404'tür.
+  if (kIsWeb && isLocalOpenPdfUrl(pdfUrl) && canUseLocalOpenPdfBridge()) {
     sharedOrOpened = await openExternalUrl(pdfUrl);
   } else {
     final shareUrl = isLocalOpenPdfUrl(pdfUrl) ? '' : pdfUrl;
@@ -175,7 +175,7 @@ Future<void> shareEInvoicePdfWithWhatsApp({
   }
 
   // Electron: Finder’da göster ki kullanıcı sohbete sürükleyebilsin.
-  if (kIsWeb) {
+  if (kIsWeb && canUseLocalOpenPdfBridge()) {
     final revealUrl = revealLocalFileUrlFromOpenPdf(pdfUrl);
     if (revealUrl != null) {
       await openExternalUrl(revealUrl);
@@ -398,7 +398,9 @@ Future<bool> shareInvoicePaymentLinkWithWhatsApp({
     }
     if (!sharedPdf) {
       for (final pdf in pdfs) {
-        if (kIsWeb && isLocalOpenPdfUrl(pdf.url)) {
+        if (kIsWeb &&
+            isLocalOpenPdfUrl(pdf.url) &&
+            canUseLocalOpenPdfBridge()) {
           sharedPdf = await openExternalUrl(pdf.url) || sharedPdf;
           continue;
         }
@@ -407,7 +409,7 @@ Future<bool> shareInvoicePaymentLinkWithWhatsApp({
         }
       }
     }
-    if (kIsWeb) {
+    if (kIsWeb && canUseLocalOpenPdfBridge()) {
       for (final pdf in pdfs) {
         final revealUrl = revealLocalFileUrlFromOpenPdf(pdf.url);
         if (revealUrl != null) {

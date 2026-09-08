@@ -154,8 +154,7 @@ class Invoice {
   double get remainingAmount => grandTotal - paidAmount;
   bool get isPaid => status == 'paid';
   bool get isOpen => status == 'open' || status == 'partial';
-  bool get isHatLisansBilling =>
-      (billingSource ?? '').trim() == 'hat_lisans';
+  bool get isHatLisansBilling => (billingSource ?? '').trim() == 'hat_lisans';
   bool get isHatLisansPayable =>
       isHatLisansBilling &&
       isActive &&
@@ -163,24 +162,29 @@ class Invoice {
       remainingAmount > 0.009 &&
       (status == 'draft' || status == 'open' || status == 'partial');
   bool get isHatLisansMutable =>
-      isHatLisansPayable &&
-      !isEInvoiceClosed &&
-      eInvoiceStatus != 'prepared';
-  bool get isPaidViaPos {
-    final method = (lastPaymentMethod ?? '').trim().toLowerCase();
-    if (method == 'pos') return true;
+      isHatLisansPayable && !isEInvoiceClosed && eInvoiceStatus != 'prepared';
+  bool get isSanalPosCollection {
     if ((paymentLinkStatus ?? '').toLowerCase() == 'paid') return true;
     final desc = (lastPaymentDescription ?? '').toLowerCase();
     return desc.contains('sanal pos') || desc.contains('ödeme linki');
   }
 
-  /// CRM tahsilatı (nakit/havale/çek) geri alınabilir. Sanal POS iadesi ayrı.
+  bool get isPaidViaPos {
+    if (isSanalPosCollection) return true;
+    final method = (lastPaymentMethod ?? '').trim().toLowerCase();
+    return method == 'pos';
+  }
+
+  /// CRM tahsilatı (nakit/havale/çek/POS tahsilat ekranı) geri alınabilir.
+  /// Sanal POS ödeme linki iadesi ayrı.
   bool get canReverseCollection {
     if (!isActive || status == 'cancelled') return false;
     if (paidAmount <= 0.009) return false;
-    if (isPaidViaPos) return false;
+    if (isSanalPosCollection) return false;
     return true;
   }
+
+  bool get canCorrectCollection => canReverseCollection;
 
   bool get isPaymentLinkAwaiting {
     final status = (paymentLinkStatus ?? '').trim().toLowerCase();
@@ -206,6 +210,7 @@ class Invoice {
     if (isPaid || isEInvoiceClosed) return false;
     return remainingAmount <= 0.009 && grandTotal > 0;
   }
+
   bool get isEInvoiceSent => eInvoiceStatus == 'sent';
   bool get isEInvoiceManual => eInvoiceStatus == 'manual';
   bool get isEInvoiceReceived => eInvoiceStatus == 'received';
@@ -217,7 +222,10 @@ class Invoice {
       (eInvoiceStatus == 'sent' && eInvoiceEnvironment == 'test') ||
       (eInvoiceStatus == 'manual' && eInvoiceEnvironment == 'test');
   bool get isEInvoiceClosed =>
-      isEInvoiceSent || isEInvoiceManual || isEInvoiceReceived || eInvoiceStatus == 'manual_sent';
+      isEInvoiceSent ||
+      isEInvoiceManual ||
+      isEInvoiceReceived ||
+      eInvoiceStatus == 'manual_sent';
   bool get hasOfficialEInvoice =>
       (eInvoiceNumber?.trim().isNotEmpty ?? false) ||
       (eInvoiceUuid?.trim().isNotEmpty ?? false);
@@ -247,16 +255,25 @@ class Invoice {
           (eInvoiceUuid?.trim().isNotEmpty ?? false));
   bool get isLinkedToAkinsoft {
     if (akinsoftSourceId?.trim().isNotEmpty ?? false) return true;
+    if ((akinsoftSyncStatus ?? '').trim().toLowerCase() == 'synced') {
+      return true;
+    }
     // Yalnızca SAP tarzı fatura no "bağlı" sayılır.
     // erp_invoice_number CRM taslak (STŞ-...) tutabilir; onu bağlı sanma.
     return Invoice._looksLikeAkinsoftInvoiceNumber(invoiceNumber);
   }
 
-  /// Maliye e-faturası veya tahsilat varsa içerik kilitlenir.
-  /// Yalnızca SAP’a gitmiş açık fatura CRM’den düzeltilip tekrar yazılabilir.
-  bool get isContentLocked {
+  /// Maliye’ye gitmiş resmi e-fatura içeriği kilitlenir (görüntüleme açık).
+  /// SAP’a yazılmış fatura, tahsilat olsa da CRM’den düzeltilip tekrar yazılabilir.
+  bool get isMaliyeContentLocked {
     if (isEInvoiceClosed || hasOfficialEInvoice) return true;
     if (eInvoiceStatus == 'prepared') return true;
+    return false;
+  }
+
+  bool get isContentLocked {
+    if (isMaliyeContentLocked) return true;
+    if (isLinkedToAkinsoft) return false;
     if (paidAmount > 0.009) return true;
     if (isPaidViaPos) return true;
     if (status == 'paid' || status == 'partial') return true;
@@ -273,17 +290,17 @@ class Invoice {
     return false;
   }
 
-  bool get canDeactivate =>
-      isActive && !isRecordProtected && !isSentToCustomer;
+  bool get canDeactivate => isActive && !isRecordProtected && !isSentToCustomer;
 
   bool get canEditRecord =>
       isActive && !isContentLocked && status != 'cancelled';
 
-  bool get canReplaceAkinsoftRecord =>
-      canEditRecord && isLinkedToAkinsoft;
+  bool get canReplaceAkinsoftRecord => canEditRecord && isLinkedToAkinsoft;
 
   String get recordProtectionReason {
-    if (isEInvoiceClosed || hasOfficialEInvoice || eInvoiceStatus == 'prepared') {
+    if (isEInvoiceClosed ||
+        hasOfficialEInvoice ||
+        eInvoiceStatus == 'prepared') {
       return 'Maliye / e-fatura kaydı var';
     }
     if (isLinkedToAkinsoft ||
@@ -360,14 +377,12 @@ class Invoice {
       invoiceNumber: _localInvoiceNumber(json['invoice_number']),
       invoiceType: json['invoice_type']?.toString() ?? 'sales',
       customerId: json['customer_id'].toString(),
-      customerName:
-          customers is Map
-              ? customers['name']?.toString()
-              : json['customer_name']?.toString(),
-      customerEmail:
-          customers is Map
-              ? customers['email']?.toString()
-              : json['customer_email']?.toString(),
+      customerName: customers is Map
+          ? customers['name']?.toString()
+          : json['customer_name']?.toString(),
+      customerEmail: customers is Map
+          ? customers['email']?.toString()
+          : json['customer_email']?.toString(),
       invoiceDate:
           parseAppDateTime(json['invoice_date']?.toString()) ?? appNow(),
       dueDate: json['due_date'] != null
@@ -447,8 +462,7 @@ class Invoice {
       paymentLinkSettledAt: json['payment_link_settled_at'] != null
           ? parseAppDateTime(json['payment_link_settled_at'].toString())
           : null,
-      customerSentAt:
-          json['customer_sent_at'] != null
+      customerSentAt: json['customer_sent_at'] != null
           ? parseAppDateTime(json['customer_sent_at'].toString())
           : json['payment_link_emailed_at'] != null
           ? parseAppDateTime(json['payment_link_emailed_at'].toString())

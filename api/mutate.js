@@ -3990,7 +3990,9 @@ module.exports = async (req, res) => {
       }
     }
     if (op === 'reverseInvoiceCollection') {
-      if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) {
+      if (
+        !requireAnyPage(req, user, ['faturalama', 'e_fatura', 'finans'], res)
+      ) {
         return;
       }
       try {
@@ -3999,7 +4001,9 @@ module.exports = async (req, res) => {
           res,
           await reverseInvoiceCollection({
             invoiceId: body.invoiceId,
+            transactionId: body.transactionId || null,
             createdBy: user?.id || null,
+            allowPos: body.allowPos === true || body.allowPos === 'true',
           }),
         );
       } catch (error) {

@@ -408,6 +408,12 @@ class _AkinsoftFinanceShortcuts extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = const [
       (
+        label: 'Kapatılan Ödemeler',
+        subtitle: 'Nakit, çek, POS, havale, döviz',
+        path: '/finans/odemeler',
+        icon: LucideIcons.banknote,
+      ),
+      (
         label: 'Bankalar / Hesaplar',
         subtitle: 'Wolvox BANKA_ADI + BANKA_HESAP',
         path: '/finans/akinsoft/bankalar',
@@ -437,7 +443,7 @@ class _AkinsoftFinanceShortcuts extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'SAP Finans (canlı senkron)',
+          'Finans sayfaları',
           style: Theme.of(
             context,
           ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),

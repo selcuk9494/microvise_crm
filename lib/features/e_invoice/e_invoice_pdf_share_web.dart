@@ -5,6 +5,9 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/format/safe_filename.dart';
+import 'local_pdf_bridge.dart';
+
 class EInvoicePdfDownload {
   const EInvoicePdfDownload({
     required this.url,
@@ -88,11 +91,14 @@ Future<bool> downloadEInvoicePdfs({
       final safeName = _uniqueFilename(_safeFilename(item.fileName), usedNames);
       usedNames.add(safeName.toLowerCase());
 
-      final local = (item.localPath?.trim().isNotEmpty ?? false)
-          ? item.localPath!.trim()
-          : _localPathFromOpenPdfUrl(item.url);
+      final local = canUseLocalOpenPdfBridge()
+          ? ((item.localPath?.trim().isNotEmpty ?? false)
+                ? item.localPath!.trim()
+                : _localPathFromOpenPdfUrl(item.url))
+          : null;
 
       // Electron: yerel PDF'i Downloads'a kopyala (download=1).
+      // Bulut web'de /api/_local/open-pdf Vercel 404 açar; base64/blob kullanılır.
       if (local != null && local.isNotEmpty) {
         final downloadUri = Uri.base
             .resolve('/api/_local/open-pdf')
@@ -128,10 +134,11 @@ Future<bool> downloadEInvoicePdfs({
         if (response.statusCode < 200 || response.statusCode >= 300) continue;
         bytes = response.bodyBytes;
       }
-      final savedLocal = await _saveExportViaLocalApi(
-        bytes: bytes,
-        fileName: safeName,
-      );
+      final savedLocal = canUseLocalOpenPdfBridge() &&
+          await _saveExportViaLocalApi(
+            bytes: bytes,
+            fileName: safeName,
+          );
       if (savedLocal) {
         saved += 1;
       } else if (_triggerBlobDownload(bytes, safeName, 'application/pdf')) {
@@ -192,9 +199,7 @@ bool _triggerBlobDownload(Uint8List bytes, String fileName, String mimeType) {
 }
 
 String _safeFilename(String input) {
-  final trimmed = input.trim().isEmpty ? 'e_fatura.pdf' : input.trim();
-  final cleaned = trimmed.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
-  return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : '$cleaned.pdf';
+  return safeDownloadFilename(input, fallback: 'e_fatura.pdf');
 }
 
 String _uniqueFilename(String name, Set<String> usedLower) {

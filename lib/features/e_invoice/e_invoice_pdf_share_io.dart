@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/format/safe_filename.dart';
+
 class EInvoicePdfDownload {
   const EInvoicePdfDownload({
     required this.url,
@@ -120,9 +122,7 @@ Future<void> _shareFiles(List<XFile> attachments, String shareText) async {
 }
 
 String _safeFilename(String input) {
-  final trimmed = input.trim().isEmpty ? 'e_fatura.pdf' : input.trim();
-  final cleaned = trimmed.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
-  return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : '$cleaned.pdf';
+  return safeDownloadFilename(input, fallback: 'e_fatura.pdf');
 }
 
 String _uniqueFilename(String name, Set<String> usedLower) {

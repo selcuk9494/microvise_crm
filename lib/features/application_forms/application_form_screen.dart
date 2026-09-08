@@ -33,6 +33,7 @@ import 'application_document_scan.dart';
 import 'application_form_model.dart';
 import '../customers/customer_form_dialog.dart';
 import '../customers/customer_model.dart';
+import '../customers/customers_providers.dart';
 import '../definitions/definitions_screen.dart';
 import 'application_form_print.dart';
 import '../work_orders/work_orders_providers.dart';
@@ -1214,58 +1215,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
   Future<void> _approveRecord(ApplicationFormRecord record) async {
     if (record.isApproved) return;
 
-    final registryController = TextEditingController(
-      text: record.stockRegistryNumber?.trim() ?? '',
-    );
-    final registryNumber = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final current = registryController.text.trim();
-          return AlertDialog(
-            title: const Text('Başvuruyu onayla'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '"${record.customerName}" başvurusu onaylanmış başvurulara taşınacak.',
-                ),
-                const Gap(14),
-                TextField(
-                  controller: registryController,
-                  textCapitalization: TextCapitalization.characters,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9-]')),
-                  ],
-                  onChanged: (_) => setDialogState(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'Cihaz sicil numarası',
-                    hintText: 'Onaylanan sicil no',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Vazgeç'),
-              ),
-              FilledButton(
-                onPressed: current.isEmpty
-                    ? null
-                    : () => Navigator.of(context).pop(current.toUpperCase()),
-                child: const Text('Onayla'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-    registryController.dispose();
-    if (registryNumber == null) return;
-    final approvedRegistry = registryNumber.trim().toUpperCase();
+    final confirmed = await _confirmApplicationApproval(record);
+    if (confirmed == null) return;
+    final approvedRegistry = confirmed.registry.trim().toUpperCase();
     if (approvedRegistry.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1273,8 +1225,163 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       );
       return;
     }
+    if (confirmed.address.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İşyeri adresi teyit edilmeden onaylanamaz.')),
+      );
+      return;
+    }
 
-    await _persistInternalApproval(record, approvedRegistry);
+    await _persistInternalApproval(
+      record,
+      approvedRegistry,
+      workAddress: confirmed.address,
+    );
+    final customerId = (record.customerId ?? '').trim();
+    if (customerId.isNotEmpty) {
+      await _persistCustomerWorkAddress(
+        ref: ref,
+        customerId: customerId,
+        address: confirmed.address,
+      );
+    }
+  }
+
+  Future<_ApprovalConfirmResult?> _confirmApplicationApproval(
+    ApplicationFormRecord record,
+  ) async {
+    final customers = ref.read(applicationFormCustomersProvider).asData?.value;
+    final customer = customers
+        ?.where((item) => item.id == record.customerId)
+        .firstOrNull;
+    final firmAddresses = await _loadFirmAddressesForCustomer(
+      ref: ref,
+      customerId: record.customerId,
+      primaryAddress: customer?.address,
+      extraAddress: record.workAddress,
+    );
+    if (!mounted) return null;
+
+    final registryController = TextEditingController(
+      text: record.stockRegistryNumber?.trim() ?? '',
+    );
+    final addressController = TextEditingController(
+      text: (record.workAddress ?? '').trim().isNotEmpty
+          ? record.workAddress!.trim()
+          : (firmAddresses.isNotEmpty ? firmAddresses.first.address : ''),
+    );
+    final result = await showDialog<_ApprovalConfirmResult>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final currentRegistry = registryController.text.trim();
+          final currentAddress = addressController.text.trim();
+          final selectedKey = _addressMatchKey(currentAddress);
+          final matched = firmAddresses
+              .where((item) => _addressMatchKey(item.address) == selectedKey)
+              .firstOrNull;
+          return AlertDialog(
+            title: const Text('Başvuruyu onayla'),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '"${record.customerName}" başvurusu onaylanmış başvurulara taşınacak.',
+                    ),
+                    const Gap(14),
+                    TextField(
+                      controller: registryController,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[a-zA-Z0-9-]'),
+                        ),
+                      ],
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Cihaz sicil numarası',
+                        hintText: 'Onaylanan sicil no',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const Gap(16),
+                    Text(
+                      'İşyeri adresi teyidi',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const Gap(8),
+                    if (firmAddresses.length > 1) ...[
+                      DropdownButtonFormField<String>(
+                        key: ValueKey('approve-addr-$selectedKey'),
+                        initialValue: matched?.address,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Kayıtlı adres',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          for (final item in firmAddresses)
+                            DropdownMenuItem(
+                              value: item.address,
+                              child: Text(
+                                '${item.label}: ${item.address}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          addressController.text = value;
+                          setDialogState(() {});
+                        },
+                      ),
+                      const Gap(10),
+                    ],
+                    TextField(
+                      controller: addressController,
+                      minLines: 2,
+                      maxLines: 3,
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Onaylanan işyeri adresi',
+                        hintText: 'Adresi kontrol edin veya düzeltin',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                onPressed: currentRegistry.isEmpty || currentAddress.isEmpty
+                    ? null
+                    : () => Navigator.of(context).pop(
+                        _ApprovalConfirmResult(
+                          registry: currentRegistry.toUpperCase(),
+                          address: currentAddress,
+                        ),
+                      ),
+                child: const Text('Adresi teyit et ve onayla'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    registryController.dispose();
+    addressController.dispose();
+    return result;
   }
 
   Future<void> _bankApproveRecord(ApplicationFormRecord record) async {
@@ -1421,8 +1528,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
   Future<void> _persistInternalApproval(
     ApplicationFormRecord record,
-    String approvedRegistry,
-  ) async {
+    String approvedRegistry, {
+    String? workAddress,
+  }) async {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
     final profile = await ref.read(currentUserProfileProvider.future);
@@ -1435,6 +1543,8 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         'approval_status': 'approved',
         'approved_at': nowIso,
         'approved_by': approverId.isEmpty ? null : approverId,
+        if ((workAddress ?? '').trim().isNotEmpty)
+          'work_address': workAddress!.trim(),
       };
       if (apiClient != null) {
         await apiClient.postJson(
@@ -1526,7 +1636,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           final allFilled = pendingRecords.every(
-            (record) => controllers[record.id]!.text.trim().isNotEmpty,
+            (record) =>
+                controllers[record.id]!.text.trim().isNotEmpty &&
+                (record.workAddress ?? '').trim().isNotEmpty,
           );
           return AlertDialog(
             title: const Text('Toplu Onayla'),
@@ -1536,6 +1648,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Her kayıt için sicil girin ve işyeri adresini teyit edin.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    const Gap(12),
                     for (final record in pendingRecords) ...[
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1543,11 +1663,35 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.only(top: 12),
-                              child: Text(
-                                record.customerName,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.labelLarge,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    record.customerName,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelLarge,
+                                  ),
+                                  const Gap(4),
+                                  Text(
+                                    (record.workAddress ?? '').trim().isEmpty
+                                        ? 'İşyeri adresi yok — önce forma girin'
+                                        : record.workAddress!.trim(),
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color:
+                                              (record.workAddress ?? '')
+                                                  .trim()
+                                                  .isEmpty
+                                              ? AppTheme.error
+                                              : AppTheme.textMuted,
+                                        ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -1668,6 +1812,17 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               'released_at': null,
             });
           }
+        }
+        final customerId = (record.customerId ?? '').trim();
+        final workAddress = (record.workAddress ?? '').trim();
+        if (customerId.isNotEmpty && workAddress.isNotEmpty) {
+          try {
+            await _persistCustomerWorkAddress(
+              ref: ref,
+              customerId: customerId,
+              address: workAddress,
+            );
+          } catch (_) {}
         }
       }
       if (!mounted) return;
@@ -5408,6 +5563,7 @@ class _ApplicationFormDialogState
   List<String> _selectedBusinessActivityIds = [];
   bool _saving = false;
   String? _autoFilledProductForSerial;
+  List<_FirmAddress> _firmAddresses = const [];
 
   @override
   void initState() {
@@ -5509,6 +5665,127 @@ class _ApplicationFormDialogState
             .toList(growable: false);
       }
     });
+    await _reloadFirmAddresses(fillIfEmpty: true);
+  }
+
+  Future<void> _reloadFirmAddresses({bool fillIfEmpty = false}) async {
+    final customers = ref.read(applicationFormCustomersProvider).asData?.value;
+    final customer = customers
+        ?.where((item) => item.id == _selectedCustomerId)
+        .firstOrNull;
+    final list = await _loadFirmAddressesForCustomer(
+      ref: ref,
+      customerId: _selectedCustomerId,
+      primaryAddress: customer?.address,
+      extraAddress: _workAddressController.text,
+    );
+    if (!mounted) return;
+    setState(() {
+      _firmAddresses = list;
+      if (fillIfEmpty &&
+          _workAddressController.text.trim().isEmpty &&
+          list.isNotEmpty) {
+        _workAddressController.text = list.first.address;
+      }
+    });
+  }
+
+  Future<void> _addFirmAddress() async {
+    final customerId = (_selectedCustomerId ?? '').trim();
+    if (customerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Adres eklemek için önce müşteri seçin.')),
+      );
+      return;
+    }
+
+    final titleController = TextEditingController(text: 'İşyeri');
+    final addressController = TextEditingController(
+      text: _workAddressController.text.trim(),
+    );
+    final result = await showDialog<({String title, String address})>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Firma adresi ekle'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(
+                  labelText: 'Adres başlığı',
+                  hintText: 'İşyeri, Şube, Depo...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const Gap(12),
+              TextField(
+                controller: addressController,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Adres',
+                  hintText: 'Firma adresini girin',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final address = addressController.text.trim();
+              if (address.isEmpty) return;
+              Navigator.of(context).pop((
+                title: titleController.text.trim(),
+                address: address,
+              ));
+            },
+            child: const Text('Kaydet'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+    addressController.dispose();
+    if (result == null || !mounted) return;
+
+    try {
+      await _persistCustomerWorkAddress(
+        ref: ref,
+        customerId: customerId,
+        address: result.address,
+        title: result.title,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Adres kaydedilemedi: $e')));
+    }
+    if (!mounted) return;
+    _workAddressController.text = result.address;
+    await _reloadFirmAddresses();
+  }
+
+  Future<void> _persistTypedWorkAddress(String? customerId) async {
+    final id = (customerId ?? '').trim();
+    final address = _workAddressController.text.trim();
+    if (id.isEmpty || address.isEmpty) return;
+    try {
+      await _persistCustomerWorkAddress(
+        ref: ref,
+        customerId: id,
+        address: address,
+      );
+    } catch (_) {}
   }
 
   @override
@@ -5556,10 +5833,13 @@ class _ApplicationFormDialogState
   void _applyCustomerSelection(
     _CustomerOption customer, {
     bool preserveFileRegistryIfFilled = false,
+    bool resetWorkAddress = true,
   }) {
     _selectedCustomerId = customer.id;
     _customerController.text = customer.name;
-    _workAddressController.text = (customer.address ?? '').trim();
+    if (resetWorkAddress) {
+      _workAddressController.text = (customer.address ?? '').trim();
+    }
     _directorController.text = (customer.directorName ?? '').trim();
     if (!preserveFileRegistryIfFilled ||
         _fileRegistryController.text.trim().isEmpty) {
@@ -5575,6 +5855,10 @@ class _ApplicationFormDialogState
     if (city != null) {
       _selectedCityId = city.id;
     }
+    _reloadFirmAddresses(
+      fillIfEmpty:
+          resetWorkAddress || _workAddressController.text.trim().isEmpty,
+    );
   }
 
   Future<CustomerFormData?> _loadCustomerFormData(String customerId) async {
@@ -5695,7 +5979,7 @@ class _ApplicationFormDialogState
           .firstOrNull;
       if (refreshed == null || !mounted) return;
       setState(() {
-        _applyCustomerSelection(refreshed);
+        _applyCustomerSelection(refreshed, resetWorkAddress: false);
       });
     } catch (e) {
       if (!mounted) return;
@@ -6100,6 +6384,8 @@ class _ApplicationFormDialogState
           await showApplicationFormInvoiceError(context, invoiceLinkError);
           if (!mounted) return;
         }
+        await _persistTypedWorkAddress(customer?.id);
+        if (!mounted) return;
         Navigator.of(context).pop([ApplicationFormRecord.fromJson(inserted)]);
         return;
       }
@@ -6393,6 +6679,8 @@ class _ApplicationFormDialogState
         await showApplicationFormInvoiceError(context, invoiceLinkError);
         if (!mounted) return;
       }
+      await _persistTypedWorkAddress(customer?.id);
+      if (!mounted) return;
       Navigator.of(context).pop(insertedRecords);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -6446,14 +6734,76 @@ class _ApplicationFormDialogState
       ),
       _FormRow(
         label: 'İşyeri Adresi',
-        child: _ApplicationTextField(
-          controller: _workAddressController,
-          hintText: 'İşyeri adresini girin',
-          minLines: 1,
-          maxLines: 2,
-          validator: (value) => value == null || value.trim().isEmpty
-              ? 'İş adresi zorunlu.'
-              : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_firmAddresses.length > 1) ...[
+              KeyedSubtree(
+                key: ValueKey(
+                  'form-addr-${_firmAddresses.length}-${_addressMatchKey(_workAddressController.text)}',
+                ),
+                child: _ApplicationDropdown<String>(
+                  value: _firmAddresses
+                      .where(
+                        (item) =>
+                            _addressMatchKey(item.address) ==
+                            _addressMatchKey(_workAddressController.text),
+                      )
+                      .map((item) => item.address)
+                      .firstOrNull,
+                  hintText: 'Kayıtlı adres seçin',
+                  items: [
+                    for (final item in _firmAddresses)
+                      DropdownMenuItem<String>(
+                        value: item.address,
+                        child: Text(
+                          '${item.label}: ${item.address}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _workAddressController.text = value);
+                  },
+                ),
+              ),
+              const Gap(8),
+            ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _ApplicationTextField(
+                    controller: _workAddressController,
+                    hintText: 'İşyeri adresini girin',
+                    minLines: 1,
+                    maxLines: 2,
+                    onChanged: (_) => setState(() {}),
+                    validator: (value) =>
+                        value == null || value.trim().isEmpty
+                        ? 'İş adresi zorunlu.'
+                        : null,
+                  ),
+                ),
+                const Gap(8),
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : _addFirmAddress,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                  icon: const Icon(LucideIcons.mapPinPlus, size: 16),
+                  label: const Text('+ Adres'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
       _FormRow(
@@ -8930,6 +9280,7 @@ class _ApplicationTextField extends StatelessWidget {
     this.readOnly = false,
     this.enabled = true,
     this.hintText,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -8939,6 +9290,7 @@ class _ApplicationTextField extends StatelessWidget {
   final bool readOnly;
   final bool enabled;
   final String? hintText;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -8949,6 +9301,7 @@ class _ApplicationTextField extends StatelessWidget {
       validator: validator,
       readOnly: readOnly,
       enabled: enabled,
+      onChanged: onChanged,
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: AppTheme.text,
         fontWeight: FontWeight.w600,
@@ -9675,6 +10028,147 @@ class _CustomerOption {
       isActive: json['is_active'] as bool? ?? true,
     );
   }
+}
+
+String _addressMatchKey(String? value) =>
+    (value ?? '').trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+
+class _FirmAddress {
+  const _FirmAddress({required this.label, required this.address});
+
+  final String label;
+  final String address;
+}
+
+class _ApprovalConfirmResult {
+  const _ApprovalConfirmResult({
+    required this.registry,
+    required this.address,
+  });
+
+  final String registry;
+  final String address;
+}
+
+Future<List<_FirmAddress>> _loadFirmAddressesForCustomer({
+  required WidgetRef ref,
+  String? customerId,
+  String? primaryAddress,
+  String? extraAddress,
+  String? extraTitle,
+}) async {
+  final items = <_FirmAddress>[];
+  final seen = <String>{};
+
+  void add(String label, String? raw) {
+    final address = (raw ?? '').trim();
+    if (address.isEmpty) return;
+    final key = _addressMatchKey(address);
+    if (seen.contains(key)) return;
+    seen.add(key);
+    items.add(_FirmAddress(label: label, address: address));
+  }
+
+  add('Merkez', primaryAddress);
+
+  final id = (customerId ?? '').trim();
+  if (id.isNotEmpty) {
+    try {
+      final locations = await ref.read(customerLocationsProvider(id).future);
+      for (final loc in locations) {
+        if (!loc.isActive) continue;
+        final title = loc.title.trim().isEmpty ? 'Konum' : loc.title.trim();
+        add(title, loc.address);
+      }
+    } catch (_) {}
+  }
+
+  final extraLabel = (extraTitle ?? '').trim().isNotEmpty
+      ? extraTitle!.trim()
+      : 'Formdaki adres';
+  add(extraLabel, extraAddress);
+  return items;
+}
+
+Future<void> _persistCustomerWorkAddress({
+  required WidgetRef ref,
+  required String customerId,
+  required String address,
+  String title = 'İşyeri',
+}) async {
+  final id = customerId.trim();
+  final trimmed = address.trim();
+  if (id.isEmpty || trimmed.isEmpty) return;
+
+  List<_CustomerOption> customers;
+  try {
+    customers = await ref.read(applicationFormCustomersProvider.future);
+  } catch (_) {
+    customers = ref.read(applicationFormCustomersProvider).asData?.value ??
+        const [];
+  }
+  final customer = customers.where((item) => item.id == id).firstOrNull;
+  final existing = await _loadFirmAddressesForCustomer(
+    ref: ref,
+    customerId: id,
+    primaryAddress: customer?.address,
+  );
+  if (existing.any(
+    (item) => _addressMatchKey(item.address) == _addressMatchKey(trimmed),
+  )) {
+    return;
+  }
+
+  final apiClient = ref.read(apiClientProvider);
+  final client = ref.read(supabaseClientProvider);
+  final primaryEmpty = (customer?.address ?? '').trim().isEmpty;
+  final locationTitle = title.trim().isEmpty ? 'İşyeri' : title.trim();
+
+  if (primaryEmpty) {
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'customers',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': id},
+          ],
+          'values': {'address': trimmed},
+        },
+      );
+    } else if (client != null) {
+      await client.from('customers').update({'address': trimmed}).eq('id', id);
+    } else {
+      return;
+    }
+  } else {
+    final profile = await ref.read(currentUserProfileProvider.future);
+    final row = {
+      'customer_id': id,
+      'title': locationTitle,
+      'address': trimmed,
+      'is_active': true,
+      if ((profile?.id ?? '').trim().isNotEmpty) 'created_by': profile!.id,
+    };
+    if (apiClient != null) {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'insertMany',
+          'table': 'customer_locations',
+          'rows': [row],
+        },
+      );
+    } else if (client != null) {
+      await client.from('customer_locations').insert(row);
+    } else {
+      return;
+    }
+  }
+
+  ref.invalidate(customerLocationsProvider(id));
+  ref.invalidate(applicationFormCustomersProvider);
 }
 
 String _sortKey(String value) {

@@ -48,6 +48,41 @@ test('yalnızca SAP kaydı içerik düzenlemeyi kilitlemez', () => {
   );
 });
 
+test('SAP’a gitmiş kapalı fatura içerik olarak düzenlenebilir', () => {
+  assert.equal(
+    invoiceContentLockReason({
+      akinsoft_sync_status: 'synced',
+      status: 'paid',
+      paid_amount: 100,
+    }),
+    null,
+  );
+  assert.equal(
+    invoiceContentLockReason({
+      akinsoft_source_id: '12',
+      status: 'partial',
+      paid_amount: 40,
+    }),
+    null,
+  );
+  assert.equal(
+    invoiceContentLockReason({
+      e_invoice_status: 'sent',
+      akinsoft_sync_status: 'synced',
+      paid_amount: 100,
+    }),
+    'Maliye / e-fatura kaydı var',
+  );
+  assert.equal(
+    invoiceProtectionReason({
+      akinsoft_sync_status: 'synced',
+      status: 'paid',
+      paid_amount: 100,
+    }),
+    'SAP kaydı var',
+  );
+});
+
 test('korunan faturada yalnızca izinli alanlar güncellenir', () => {
   assert.deepEqual(
     blockedProtectedUpdateKeys({
