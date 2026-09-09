@@ -431,11 +431,28 @@ class _ReportRow extends StatelessWidget {
                   : null,
             ),
           ),
-          AppBadge(
-            label: record.bankFacingStatusLabel,
-            tone: record.isBankApproved
-                ? AppBadgeTone.success
-                : AppBadgeTone.warning,
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            alignment: WrapAlignment.end,
+            children: [
+              AppBadge(
+                label: record.bankFacingStatusLabel,
+                tone: record.isBankApproved
+                    ? AppBadgeTone.success
+                    : AppBadgeTone.warning,
+              ),
+              if (record.hasApprovalDocument)
+                const AppBadge(
+                  label: 'Onay belgesi',
+                  tone: AppBadgeTone.primary,
+                ),
+              if (record.hasWorkplaceSlip)
+                const AppBadge(
+                  label: 'İşyeri slip',
+                  tone: AppBadgeTone.success,
+                ),
+            ],
           ),
         ],
       ),

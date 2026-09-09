@@ -197,7 +197,7 @@ final applicationFormsProvider = FutureProvider<List<ApplicationFormRecord>>((
   final rows = await client
       .from('application_forms')
       .select(
-        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,taxpayer_registration_document_storage_bucket,taxpayer_registration_document_storage_path,taxpayer_registration_document_url,approval_document_name,approval_document_mime_type,approval_document_storage_bucket,approval_document_storage_path,approval_document_url,approval_document_uploaded_at,approval_status,approved_at,approved_by,created_by,is_active,created_at',
+        'id,application_date,customer_id,customer_name,customer_tckn_ms,work_address,tax_office_city_name,document_type,file_registry_number,director,brand_name,model_name,fiscal_symbol_name,stock_product_id,stock_product_name,stock_registry_number,accounting_office,okc_start_date,business_activity_name,invoice_number,customer_phone,customer_email,taxpayer_registration_document_name,taxpayer_registration_document_mime_type,taxpayer_registration_document_data,taxpayer_registration_document_storage_bucket,taxpayer_registration_document_storage_path,taxpayer_registration_document_url,approval_document_name,approval_document_mime_type,approval_document_storage_bucket,approval_document_storage_path,approval_document_url,approval_document_uploaded_at,workplace_slip_name,workplace_slip_mime_type,workplace_slip_storage_bucket,workplace_slip_storage_path,workplace_slip_url,workplace_slip_uploaded_at,approval_status,approved_at,approved_by,created_by,is_active,created_at',
       )
       .order('created_at', ascending: false)
       .limit(1200);
@@ -296,6 +296,74 @@ class ApplicationFormLogChange {
       oldValue: json['old']?.toString(),
       newValue: json['new']?.toString(),
     );
+  }
+}
+
+enum _StoredApplicationDoc { approval, workplaceSlip }
+
+extension on _StoredApplicationDoc {
+  String get label => switch (this) {
+    _StoredApplicationDoc.approval => 'Onay belgesi',
+    _StoredApplicationDoc.workplaceSlip => 'İşyeri işlem slipi',
+  };
+
+  String get pdfTitle => switch (this) {
+    _StoredApplicationDoc.approval => 'Onay Belgesi',
+    _StoredApplicationDoc.workplaceSlip => 'İşyeri İşlem Slip',
+  };
+
+  String get filenamePrefix => switch (this) {
+    _StoredApplicationDoc.approval => 'onay-belgesi',
+    _StoredApplicationDoc.workplaceSlip => 'isyeri-islem-slip',
+  };
+
+  String get uploadOp => switch (this) {
+    _StoredApplicationDoc.approval => 'uploadApplicationApprovalDocument',
+    _StoredApplicationDoc.workplaceSlip => 'uploadApplicationWorkplaceSlip',
+  };
+
+  String? urlOf(ApplicationFormRecord record) => switch (this) {
+    _StoredApplicationDoc.approval => record.approvalDocumentUrl,
+    _StoredApplicationDoc.workplaceSlip => record.workplaceSlipUrl,
+  };
+
+  String? nameOf(ApplicationFormRecord record) => switch (this) {
+    _StoredApplicationDoc.approval => record.approvalDocumentName,
+    _StoredApplicationDoc.workplaceSlip => record.workplaceSlipName,
+  };
+
+  Map<String, Object?> metadataValues({
+    required String filename,
+    required Map uploaded,
+    required String nowIso,
+  }) {
+    final prefix = switch (this) {
+      _StoredApplicationDoc.approval => 'approval_document',
+      _StoredApplicationDoc.workplaceSlip => 'workplace_slip',
+    };
+    return {
+      '${prefix}_name': filename,
+      '${prefix}_mime_type': 'application/pdf',
+      '${prefix}_storage_bucket': uploaded['bucket'],
+      '${prefix}_storage_path': uploaded['path'],
+      '${prefix}_url': uploaded['url'],
+      '${prefix}_uploaded_at': nowIso,
+    };
+  }
+
+  Map<String, Object?> get clearValues {
+    final prefix = switch (this) {
+      _StoredApplicationDoc.approval => 'approval_document',
+      _StoredApplicationDoc.workplaceSlip => 'workplace_slip',
+    };
+    return {
+      '${prefix}_name': null,
+      '${prefix}_mime_type': null,
+      '${prefix}_storage_bucket': null,
+      '${prefix}_storage_path': null,
+      '${prefix}_url': null,
+      '${prefix}_uploaded_at': null,
+    };
   }
 }
 
@@ -448,25 +516,29 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     }
   }
 
-  String _approvalDocumentFilename(ApplicationFormRecord record) {
+  String _storedDocumentFilename(
+    ApplicationFormRecord record,
+    _StoredApplicationDoc kind,
+  ) {
     final customer = record.customerName
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9ğüşöçıİĞÜŞÖÇ]+', unicode: true), '-')
         .replaceAll(RegExp(r'-+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
     final suffix = DateTime.now().toIso8601String().substring(0, 10);
-    final name = customer.isEmpty ? 'onay-belgesi' : 'onay-belgesi-$customer';
+    final name = customer.isEmpty
+        ? kind.filenamePrefix
+        : '${kind.filenamePrefix}-$customer';
     return '$name-$suffix.pdf';
   }
 
-  Future<void> _uploadApprovalDocumentFromCamera(
+  Future<void> _uploadStoredDocumentFromCamera(
     ApplicationFormRecord record,
+    _StoredApplicationDoc kind,
   ) async {
     if (!record.isApproved) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Onay belgesi yalnızca onaylı kayda yüklenir.'),
-        ),
+        SnackBar(content: Text('${kind.label} yalnızca onaylı kayda yüklenir.')),
       );
       return;
     }
@@ -494,14 +566,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
 
       final pdfBytes = await _buildDocumentPdfFromImages(
         imagePages: [imageBytes],
-        title: 'Onay Belgesi',
+        title: kind.pdfTitle,
         subtitle: record.customerName,
       );
-      final filename = _approvalDocumentFilename(record);
+      final filename = _storedDocumentFilename(record, kind);
       final uploaded = await apiClient.postJson(
         '/mutate',
         body: {
-          'op': 'uploadApplicationApprovalDocument',
+          'op': kind.uploadOp,
           'applicationFormId': record.id,
           'filename': filename,
           'contentType': 'application/pdf',
@@ -517,34 +589,34 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
           'filters': [
             {'col': 'id', 'op': 'eq', 'value': record.id},
           ],
-          'values': {
-            'approval_document_name': filename,
-            'approval_document_mime_type': 'application/pdf',
-            'approval_document_storage_bucket': uploaded['bucket'],
-            'approval_document_storage_path': uploaded['path'],
-            'approval_document_url': uploaded['url'],
-            'approval_document_uploaded_at': nowIso,
-          },
+          'values': kind.metadataValues(
+            filename: filename,
+            uploaded: uploaded,
+            nowIso: nowIso,
+          ),
         },
       );
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Onay belgesi yüklendi.')));
+      ).showSnackBar(SnackBar(content: Text('${kind.label} yüklendi.')));
       await reloadCurrentPage();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Onay belgesi yüklenemedi: $e')));
+      ).showSnackBar(SnackBar(content: Text('${kind.label} yüklenemedi: $e')));
     }
   }
 
-  Future<void> _shareApprovalDocument(ApplicationFormRecord record) async {
-    final url = (record.approvalDocumentUrl ?? '').trim();
+  Future<void> _shareStoredDocument(
+    ApplicationFormRecord record,
+    _StoredApplicationDoc kind,
+  ) async {
+    final url = (kind.urlOf(record) ?? '').trim();
     if (url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bu kayıtta onay belgesi yok.')),
+        SnackBar(content: Text('Bu kayıtta ${kind.label.toLowerCase()} yok.')),
       );
       return;
     }
@@ -553,7 +625,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         if (response.statusCode == 404 || response.statusCode == 410) {
-          await _clearApprovalDocumentMetadata(record, showSuccess: false);
+          await _clearStoredDocumentMetadata(
+            record,
+            kind,
+            showSuccess: false,
+          );
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -566,9 +642,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
         }
         throw Exception('Belge indirilemedi (${response.statusCode}).');
       }
-      final filename = (record.approvalDocumentName ?? '').trim().isEmpty
-          ? _approvalDocumentFilename(record)
-          : record.approvalDocumentName!.trim();
+      final filename = (kind.nameOf(record) ?? '').trim().isEmpty
+          ? _storedDocumentFilename(record, kind)
+          : kind.nameOf(record)!.trim();
       if (!mounted) return;
       final box = context.findRenderObject() as RenderBox?;
       final origin = box == null
@@ -582,32 +658,26 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             name: filename,
           ),
         ],
-        text: '${record.customerName} onay belgesi',
-        subject: '${record.customerName} onay belgesi',
+        text: '${record.customerName} ${kind.label.toLowerCase()}',
+        subject: '${record.customerName} ${kind.label}',
         sharePositionOrigin: origin,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Belge paylaşılamadı: $e')));
+      ).showSnackBar(SnackBar(content: Text('Belge açılamadı: $e')));
     }
   }
 
-  Future<void> _clearApprovalDocumentMetadata(
-    ApplicationFormRecord record, {
+  Future<void> _clearStoredDocumentMetadata(
+    ApplicationFormRecord record,
+    _StoredApplicationDoc kind, {
     bool showSuccess = true,
   }) async {
     final apiClient = ref.read(apiClientProvider);
     final client = ref.read(supabaseClientProvider);
-    final values = {
-      'approval_document_name': null,
-      'approval_document_mime_type': null,
-      'approval_document_storage_bucket': null,
-      'approval_document_storage_path': null,
-      'approval_document_url': null,
-      'approval_document_uploaded_at': null,
-    };
+    final values = kind.clearValues;
     try {
       if (apiClient != null) {
         await apiClient.postJson(
@@ -630,7 +700,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       if (!mounted) return;
       if (showSuccess) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Onay belgesi kaydı temizlendi.')),
+          SnackBar(content: Text('${kind.label} kaydı temizlendi.')),
         );
       }
       await reloadCurrentPage();
@@ -2628,7 +2698,9 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     return AppPageLayout(
       title: isBankUser ? 'Capital Bank ÖKC Talep' : 'Başvuru Formları',
       subtitle: isBankUser
-          ? 'ÖKC taleplerinizi oluşturun ve KDV4 çıktısını alın.'
+          ? ((profile?.isBankAuthorizedLike ?? false)
+                ? 'Tüm Capital Bank başvurularını görüntüleyin.'
+                : 'Kendi girdiğiniz ÖKC taleplerini oluşturun ve takip edin.')
           : 'Başvuru kayıtlarını filtreleyin, listeleyin ve yazdırın.',
       actions: [
         OutlinedButton.icon(
@@ -3480,10 +3552,31 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   onPrintKdv: () => _print(r, kind: ApplicationPrintKind.kdv),
                   onViewDocument: () => _downloadTaxpayerDocument(r),
                   onUploadApprovalDocument: () =>
-                      _uploadApprovalDocumentFromCamera(r),
-                  onShareApprovalDocument: () => _shareApprovalDocument(r),
+                      _uploadStoredDocumentFromCamera(
+                        r,
+                        _StoredApplicationDoc.approval,
+                      ),
+                  onShareApprovalDocument: () => _shareStoredDocument(
+                    r,
+                    _StoredApplicationDoc.approval,
+                  ),
                   onClearApprovalDocument: () =>
-                      _clearApprovalDocumentMetadata(r),
+                      _clearStoredDocumentMetadata(
+                        r,
+                        _StoredApplicationDoc.approval,
+                      ),
+                  onUploadWorkplaceSlip: () => _uploadStoredDocumentFromCamera(
+                    r,
+                    _StoredApplicationDoc.workplaceSlip,
+                  ),
+                  onShareWorkplaceSlip: () => _shareStoredDocument(
+                    r,
+                    _StoredApplicationDoc.workplaceSlip,
+                  ),
+                  onClearWorkplaceSlip: () => _clearStoredDocumentMetadata(
+                    r,
+                    _StoredApplicationDoc.workplaceSlip,
+                  ),
                   onViewLogs: () => _openRecordLogs(r),
                   onPrintKdv4a: () =>
                       _print(r, kind: ApplicationPrintKind.kdv4a),
@@ -3545,10 +3638,30 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 onPrintKdv: () => _print(r, kind: ApplicationPrintKind.kdv),
                 onViewDocument: () => _downloadTaxpayerDocument(r),
                 onUploadApprovalDocument: () =>
-                    _uploadApprovalDocumentFromCamera(r),
-                onShareApprovalDocument: () => _shareApprovalDocument(r),
-                onClearApprovalDocument: () =>
-                    _clearApprovalDocumentMetadata(r),
+                    _uploadStoredDocumentFromCamera(
+                      r,
+                      _StoredApplicationDoc.approval,
+                    ),
+                onShareApprovalDocument: () => _shareStoredDocument(
+                  r,
+                  _StoredApplicationDoc.approval,
+                ),
+                onClearApprovalDocument: () => _clearStoredDocumentMetadata(
+                  r,
+                  _StoredApplicationDoc.approval,
+                ),
+                onUploadWorkplaceSlip: () => _uploadStoredDocumentFromCamera(
+                  r,
+                  _StoredApplicationDoc.workplaceSlip,
+                ),
+                onShareWorkplaceSlip: () => _shareStoredDocument(
+                  r,
+                  _StoredApplicationDoc.workplaceSlip,
+                ),
+                onClearWorkplaceSlip: () => _clearStoredDocumentMetadata(
+                  r,
+                  _StoredApplicationDoc.workplaceSlip,
+                ),
                 onViewLogs: () => _openRecordLogs(r),
                 onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
                 onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
@@ -3660,9 +3773,7 @@ List<ApplicationFormRecord> bankVisibleApplicationRecords({
   required bool isBankUser,
 }) {
   if (!isBankUser) return records;
-  // API already scopes bank users; keep all returned rows so approved
-  // applications remain visible (do not re-filter away by id mismatch).
-  if (profile?.isBankAdminLike ?? false) {
+  if (profile?.isBankAuthorizedLike ?? false) {
     return records;
   }
   final userId = (profile?.id ?? '').trim();
@@ -7693,6 +7804,9 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onUploadApprovalDocument,
     required this.onShareApprovalDocument,
     required this.onClearApprovalDocument,
+    required this.onUploadWorkplaceSlip,
+    required this.onShareWorkplaceSlip,
+    required this.onClearWorkplaceSlip,
     required this.onViewLogs,
     required this.onPrintKdv4a,
     required this.onCreateWorkOrder,
@@ -7721,6 +7835,9 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onUploadApprovalDocument;
   final VoidCallback onShareApprovalDocument;
   final VoidCallback onClearApprovalDocument;
+  final VoidCallback onUploadWorkplaceSlip;
+  final VoidCallback onShareWorkplaceSlip;
+  final VoidCallback onClearWorkplaceSlip;
   final VoidCallback onViewLogs;
   final VoidCallback onPrintKdv4a;
   final VoidCallback onCreateWorkOrder;
@@ -7731,6 +7848,35 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onDuplicate;
   final VoidCallback onToggleActive;
   final VoidCallback onDeletePermanently;
+
+  List<Widget> _documentStatusBadges({required bool dense}) {
+    return [
+      if (record.hasApprovalDocument)
+        AppBadge(
+          dense: dense,
+          label: 'Onay belgesi',
+          tone: AppBadgeTone.primary,
+        ),
+      if (record.hasWorkplaceSlip)
+        AppBadge(
+          dense: dense,
+          label: 'İşyeri slip',
+          tone: AppBadgeTone.success,
+        ),
+      if (!isBankViewer && record.isApproved && !record.hasApprovalDocument)
+        AppBadge(
+          dense: dense,
+          label: 'Onay belgesi yok',
+          tone: AppBadgeTone.warning,
+        ),
+      if (!isBankViewer && record.isApproved && !record.hasWorkplaceSlip)
+        AppBadge(
+          dense: dense,
+          label: 'Slip yok',
+          tone: AppBadgeTone.warning,
+        ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -7796,14 +7942,41 @@ class _ApplicationRecordCard extends StatelessWidget {
           ),
         ),
       if (record.hasApprovalDocument)
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'share_approval_document',
-          child: Text('Onay Belgesini Paylaş'),
+          child: Text(
+            isBankViewer
+                ? 'Onay Belgesini Görüntüle'
+                : 'Onay Belgesini Paylaş',
+          ),
         ),
-      if (record.hasApprovalDocument)
+      if (canApprove && record.hasApprovalDocument)
         const PopupMenuItem(
           value: 'clear_approval_document',
           child: Text('Onay Belgesi Kaydını Temizle'),
+        ),
+      if (canApprove && record.isApproved)
+        PopupMenuItem(
+          value: 'upload_workplace_slip',
+          child: Text(
+            record.hasWorkplaceSlip
+                ? 'İşyeri Slipini Yenile'
+                : 'İşyeri İşlem Slip Yükle',
+          ),
+        ),
+      if (record.hasWorkplaceSlip)
+        PopupMenuItem(
+          value: 'share_workplace_slip',
+          child: Text(
+            isBankViewer
+                ? 'İşyeri Slipini Görüntüle'
+                : 'İşyeri Slipini Paylaş',
+          ),
+        ),
+      if (canApprove && record.hasWorkplaceSlip)
+        const PopupMenuItem(
+          value: 'clear_workplace_slip',
+          child: Text('İşyeri Slip Kaydını Temizle'),
         ),
       const PopupMenuItem(value: 'logs', child: Text('Loglar')),
       if (canBankApprove)
@@ -7857,6 +8030,15 @@ class _ApplicationRecordCard extends StatelessWidget {
           break;
         case 'clear_approval_document':
           onClearApprovalDocument();
+          break;
+        case 'upload_workplace_slip':
+          onUploadWorkplaceSlip();
+          break;
+        case 'share_workplace_slip':
+          onShareWorkplaceSlip();
+          break;
+        case 'clear_workplace_slip':
+          onClearWorkplaceSlip();
           break;
         case 'logs':
           onViewLogs();
@@ -7958,6 +8140,22 @@ class _ApplicationRecordCard extends StatelessWidget {
                                 icon: LucideIcons.cpu,
                                 text: record.brandModel,
                               ),
+                            if (record.hasApprovalDocument) ...[
+                              const Gap(4),
+                              const _InfoChip(
+                                icon: LucideIcons.fileCheck,
+                                text: 'Onay belgesi',
+                                highlighted: true,
+                              ),
+                            ],
+                            if (record.hasWorkplaceSlip) ...[
+                              const Gap(4),
+                              const _InfoChip(
+                                icon: LucideIcons.receipt,
+                                text: 'İşyeri slip',
+                                highlighted: true,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -7997,7 +8195,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: 154,
+                width: 210,
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: AppDenseBadgeRow(
@@ -8023,17 +8221,8 @@ class _ApplicationRecordCard extends StatelessWidget {
                           dense: true,
                           label: 'Sicil: $approvedRegistry',
                           tone: AppBadgeTone.success,
-                        )
-                      else if (record.isApproved)
-                        AppBadge(
-                          dense: true,
-                          label: record.hasApprovalDocument
-                              ? 'Belge Var'
-                              : 'Belge Yok',
-                          tone: record.hasApprovalDocument
-                              ? AppBadgeTone.primary
-                              : AppBadgeTone.warning,
                         ),
+                      ..._documentStatusBadges(dense: true),
                     ],
                   ),
                 ),
@@ -8170,14 +8359,10 @@ class _ApplicationRecordCard extends StatelessWidget {
                   label: 'Sicil: $approvedRegistry',
                   tone: AppBadgeTone.success,
                 ),
-              ] else if (record.isApproved) ...[
+              ],
+              for (final badge in _documentStatusBadges(dense: false)) ...[
                 const Gap(4),
-                AppBadge(
-                  label: record.hasApprovalDocument ? 'Belge Var' : 'Belge Yok',
-                  tone: record.hasApprovalDocument
-                      ? AppBadgeTone.primary
-                      : AppBadgeTone.warning,
-                ),
+                badge,
               ],
               const Gap(6),
               if (isMobile)
@@ -8225,16 +8410,35 @@ class _ApplicationRecordCard extends StatelessWidget {
                   _ActionButton(
                     onPressed: onUploadApprovalDocument,
                     icon: LucideIcons.scanLine,
-                    label: record.hasApprovalDocument ? 'Yenile' : 'Yükle',
+                    label: record.hasApprovalDocument ? 'Onay Yenile' : 'Onay Yükle',
                     primary: !record.hasApprovalDocument,
+                  ),
+                  const Gap(4),
+                  _ActionButton(
+                    onPressed: onUploadWorkplaceSlip,
+                    icon: LucideIcons.receipt,
+                    label: record.hasWorkplaceSlip ? 'Slip Yenile' : 'Slip Yükle',
+                    primary: !record.hasWorkplaceSlip,
                   ),
                   const Gap(4),
                 ],
                 if (record.hasApprovalDocument) ...[
                   _ActionButton(
                     onPressed: onShareApprovalDocument,
-                    icon: LucideIcons.share2,
-                    label: 'Paylaş',
+                    icon: isBankViewer
+                        ? LucideIcons.eye
+                        : LucideIcons.share2,
+                    label: isBankViewer ? 'Onay' : 'Onay Paylaş',
+                  ),
+                  const Gap(4),
+                ],
+                if (record.hasWorkplaceSlip) ...[
+                  _ActionButton(
+                    onPressed: onShareWorkplaceSlip,
+                    icon: isBankViewer
+                        ? LucideIcons.eye
+                        : LucideIcons.share2,
+                    label: isBankViewer ? 'Slip' : 'Slip Paylaş',
                   ),
                   const Gap(4),
                 ],
@@ -8341,15 +8545,27 @@ class _ApplicationRecordCard extends StatelessWidget {
                   icon: LucideIcons.store,
                   text: record.businessActivityName!,
                 ),
-              if (record.isApproved)
-                _InfoChip(
-                  icon: record.hasApprovalDocument
-                      ? LucideIcons.fileType2
-                      : LucideIcons.upload,
-                  text: record.hasApprovalDocument
-                      ? 'Onay belgesi var'
-                      : 'Onay belgesi yok',
-                  highlighted: record.hasApprovalDocument,
+              if (record.hasApprovalDocument)
+                const _InfoChip(
+                  icon: LucideIcons.fileCheck,
+                  text: 'Onay belgesi',
+                  highlighted: true,
+                )
+              else if (!isBankViewer && record.isApproved)
+                const _InfoChip(
+                  icon: LucideIcons.upload,
+                  text: 'Onay belgesi yok',
+                ),
+              if (record.hasWorkplaceSlip)
+                const _InfoChip(
+                  icon: LucideIcons.receipt,
+                  text: 'İşyeri slip',
+                  highlighted: true,
+                )
+              else if (!isBankViewer && record.isApproved)
+                const _InfoChip(
+                  icon: LucideIcons.upload,
+                  text: 'Slip yok',
                 ),
             ],
           ),

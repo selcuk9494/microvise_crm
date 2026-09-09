@@ -417,22 +417,38 @@ async function uploadQuoteLogo(body) {
   });
 }
 
-async function uploadApplicationApprovalDocument(body) {
+async function uploadApplicationPdfDocument(body, { folderPrefix, fallbackName, label }) {
   const contentType = String(body.contentType || '').trim().toLowerCase();
   if (contentType !== 'application/pdf') {
-    const error = new Error('Onay belgesi PDF olarak yüklenmelidir.');
+    const error = new Error(`${label} PDF olarak yüklenmelidir.`);
     error.statusCode = 400;
     throw error;
   }
 
   return uploadStorageObject({
-    folder: `application-approval-documents/${safeStorageSegment(body.applicationFormId, 'form')}`,
-    filename: safeStorageSegment(body.filename, 'onay-belgesi.pdf'),
+    folder: `${folderPrefix}/${safeStorageSegment(body.applicationFormId, 'form')}`,
+    filename: safeStorageSegment(body.filename, fallbackName),
     contentType,
     data: body.data,
     maxBytes: approvalDocumentMaxBytes,
     emptyMessage: 'PDF verisi eksik.',
     tooLargeMessage: 'PDF 10 MB sınırını aşıyor.',
+  });
+}
+
+async function uploadApplicationApprovalDocument(body) {
+  return uploadApplicationPdfDocument(body, {
+    folderPrefix: 'application-approval-documents',
+    fallbackName: 'onay-belgesi.pdf',
+    label: 'Onay belgesi',
+  });
+}
+
+async function uploadApplicationWorkplaceSlip(body) {
+  return uploadApplicationPdfDocument(body, {
+    folderPrefix: 'application-workplace-slips',
+    fallbackName: 'isyeri-islem-slip.pdf',
+    label: 'İşyeri işlem slipi',
   });
 }
 
@@ -2709,6 +2725,12 @@ const applicationFormAuditLabels = {
   approval_document_storage_path: 'Onay belge yolu',
   approval_document_url: 'Onay belge URL',
   approval_document_uploaded_at: 'Onay belge yükleme tarihi',
+  workplace_slip_name: 'İşyeri işlem slipi',
+  workplace_slip_mime_type: 'İşyeri slip tipi',
+  workplace_slip_storage_bucket: 'İşyeri slip bucket',
+  workplace_slip_storage_path: 'İşyeri slip yolu',
+  workplace_slip_url: 'İşyeri slip URL',
+  workplace_slip_uploaded_at: 'İşyeri slip yükleme tarihi',
   approval_status: 'Onay durumu',
   approved_at: 'Onay tarihi',
   approved_by: 'Onaylayan',
@@ -2724,7 +2746,8 @@ function normalizeAuditValue(key, value) {
   if (
     key === 'taxpayer_registration_document_data' ||
     key === 'taxpayer_registration_document_url' ||
-    key === 'approval_document_url'
+    key === 'approval_document_url' ||
+    key === 'workplace_slip_url'
   ) {
     return String(value || '').trim() ? '[belge var]' : null;
   }
@@ -3377,6 +3400,12 @@ async function assertApplicationFormsMutable({ op, values, filters, id }) {
         'approval_document_storage_path',
         'approval_document_url',
         'approval_document_uploaded_at',
+        'workplace_slip_name',
+        'workplace_slip_mime_type',
+        'workplace_slip_storage_bucket',
+        'workplace_slip_storage_path',
+        'workplace_slip_url',
+        'workplace_slip_uploaded_at',
       ].includes(key),
     );
   if (
@@ -3693,6 +3722,15 @@ module.exports = async (req, res) => {
       if (!hasPageAccess(user, 'formlar')) return forbidden(req, res);
       try {
         return ok(req, res, await uploadApplicationApprovalDocument(body));
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'uploadApplicationWorkplaceSlip') {
+      if (!hasPageAccess(user, 'formlar')) return forbidden(req, res);
+      try {
+        return ok(req, res, await uploadApplicationWorkplaceSlip(body));
       } catch (error) {
         if (error?.statusCode === 400) return badRequest(req, res, error.message);
         throw error;

@@ -36,6 +36,12 @@ class ApplicationFormRecord {
     required this.approvalDocumentStoragePath,
     required this.approvalDocumentUrl,
     required this.approvalDocumentUploadedAt,
+    required this.workplaceSlipName,
+    required this.workplaceSlipMimeType,
+    required this.workplaceSlipStorageBucket,
+    required this.workplaceSlipStoragePath,
+    required this.workplaceSlipUrl,
+    required this.workplaceSlipUploadedAt,
     required this.approvalStatus,
     required this.approvedAt,
     required this.approvedBy,
@@ -82,6 +88,12 @@ class ApplicationFormRecord {
   final String? approvalDocumentStoragePath;
   final String? approvalDocumentUrl;
   final DateTime? approvalDocumentUploadedAt;
+  final String? workplaceSlipName;
+  final String? workplaceSlipMimeType;
+  final String? workplaceSlipStorageBucket;
+  final String? workplaceSlipStoragePath;
+  final String? workplaceSlipUrl;
+  final DateTime? workplaceSlipUploadedAt;
   final String approvalStatus;
   final DateTime? approvedAt;
   final String? approvedBy;
@@ -126,6 +138,7 @@ class ApplicationFormRecord {
       (taxpayerRegistrationDocumentUrl?.trim().isNotEmpty ?? false);
   bool get hasApprovalDocument =>
       approvalDocumentUrl?.trim().isNotEmpty ?? false;
+  bool get hasWorkplaceSlip => workplaceSlipUrl?.trim().isNotEmpty ?? false;
 
   String get brandModel {
     final parts = [
@@ -191,6 +204,16 @@ class ApplicationFormRecord {
       approvalDocumentUrl: json['approval_document_url']?.toString(),
       approvalDocumentUploadedAt: parseAppDateTime(
         json['approval_document_uploaded_at']?.toString(),
+      ),
+      workplaceSlipName: json['workplace_slip_name']?.toString(),
+      workplaceSlipMimeType: json['workplace_slip_mime_type']?.toString(),
+      workplaceSlipStorageBucket: json['workplace_slip_storage_bucket']
+          ?.toString(),
+      workplaceSlipStoragePath: json['workplace_slip_storage_path']
+          ?.toString(),
+      workplaceSlipUrl: json['workplace_slip_url']?.toString(),
+      workplaceSlipUploadedAt: parseAppDateTime(
+        json['workplace_slip_uploaded_at']?.toString(),
       ),
       approvalStatus: json['approval_status']?.toString() ?? 'pending',
       approvedAt: parseAppDateTime(json['approved_at']?.toString()),

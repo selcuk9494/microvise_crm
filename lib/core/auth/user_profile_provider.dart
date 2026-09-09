@@ -25,6 +25,7 @@ const kActionEditRecords = 'duzenleme';
 const kActionArchiveRecords = 'pasife_alma';
 const kActionDeleteRecords = 'kalici_silme';
 const kActionBankAdmin = 'banka_admin';
+const kActionBankAuthorized = 'banka_yetkili';
 const kActionDashboardTotalCustomers = 'dashboard_toplam_musteri';
 const kActionDashboardOpenWorkOrders = 'dashboard_acik_is_emirleri';
 const kActionDashboardInProgressWorkOrders = 'dashboard_devam_eden';
@@ -120,6 +121,7 @@ const allActionPermissions = <String>{
   kActionArchiveRecords,
   kActionDeleteRecords,
   kActionBankAdmin,
+  kActionBankAuthorized,
   kActionDashboardTotalCustomers,
   kActionDashboardOpenWorkOrders,
   kActionDashboardInProgressWorkOrders,
@@ -136,6 +138,7 @@ const actionPermissionLabels = <String, String>{
   kActionArchiveRecords: 'Pasife Alma',
   kActionDeleteRecords: 'Kalıcı Silme',
   kActionBankAdmin: 'Banka Admin',
+  kActionBankAuthorized: 'Banka Yetkili',
   kActionDashboardTotalCustomers: 'Panel - Toplam Müşteri',
   kActionDashboardOpenWorkOrders: 'Panel - Açık İş Emirleri',
   kActionDashboardInProgressWorkOrders: 'Panel - Devam Eden',
@@ -266,15 +269,24 @@ class UserProfile {
     if (role == 'bank') return true;
     if (role != 'personel') return false;
     final pages = pagePermissions.toSet();
+    final actions = actionPermissions.toSet();
     return pages.length == 1 &&
         pages.contains(kPageForms) &&
-        (actionPermissions.isEmpty ||
-            actionPermissions.toSet().contains(kActionBankAdmin));
+        (actions.isEmpty ||
+            actions.contains(kActionBankAdmin) ||
+            actions.contains(kActionBankAuthorized));
   }
 
   bool get isBankAdminLike {
     if (!isBankLike) return false;
     return actionPermissions.toSet().contains(kActionBankAdmin);
+  }
+
+  bool get isBankAuthorizedLike {
+    if (!isBankLike) return false;
+    final actions = actionPermissions.toSet();
+    return actions.contains(kActionBankAuthorized) ||
+        actions.contains(kActionBankAdmin);
   }
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {

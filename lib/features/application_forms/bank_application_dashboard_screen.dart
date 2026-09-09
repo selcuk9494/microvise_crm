@@ -63,7 +63,7 @@ class BankApplicationDashboardScreen extends ConsumerWidget {
     final personnelNames =
         ref.watch(bankPersonnelNamesProvider).asData?.value ?? const {};
     final profile = ref.watch(currentUserProfileProvider).value;
-    final isAdmin = profile?.isBankAdminLike ?? false;
+    final isAdmin = profile?.isBankAuthorizedLike ?? false;
 
     return AppPageLayout(
       title: 'Capital Bank ÖKC Panel',
@@ -846,11 +846,28 @@ class _RecentRow extends StatelessWidget {
               ],
             ),
           ),
-          AppBadge(
-            label: record.bankFacingStatusLabel,
-            tone: record.isBankApproved
-                ? AppBadgeTone.success
-                : AppBadgeTone.warning,
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            alignment: WrapAlignment.end,
+            children: [
+              AppBadge(
+                label: record.bankFacingStatusLabel,
+                tone: record.isBankApproved
+                    ? AppBadgeTone.success
+                    : AppBadgeTone.warning,
+              ),
+              if (record.hasApprovalDocument)
+                const AppBadge(
+                  label: 'Onay belgesi',
+                  tone: AppBadgeTone.primary,
+                ),
+              if (record.hasWorkplaceSlip)
+                const AppBadge(
+                  label: 'İşyeri slip',
+                  tone: AppBadgeTone.success,
+                ),
+            ],
           ),
         ],
       ),
@@ -887,7 +904,9 @@ bool _isBankPersonnelRow(Map<String, dynamic> row) {
   final actions = _stringList(row['action_permissions']);
   return pages.length == 1 &&
       pages.contains(kPageForms) &&
-      (actions.isEmpty || actions.contains(kActionBankAdmin));
+      (actions.isEmpty ||
+          actions.contains(kActionBankAdmin) ||
+          actions.contains(kActionBankAuthorized));
 }
 
 List<String> _stringList(Object? value) {

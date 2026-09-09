@@ -173,8 +173,9 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                         items: const {
                           'all': 'Tüm Belgeler',
                           'taxpayer': 'Yükümlü Belgesi',
-                          'approval': 'Onay Belgesi',
-                          'scrap': 'Hurda Formu',
+          'approval': 'Onay Belgesi',
+          'workplace_slip': 'İşyeri İşlem Slip',
+          'scrap': 'Hurda Formu',
                           'fault': 'Arıza Formu',
                           'transfer': 'Devir Formu',
                         },
@@ -512,6 +513,32 @@ class _DocumentItem {
         },
       );
     }
+    final slipUrl = (record.workplaceSlipUrl ?? '').trim();
+    if (slipUrl.isNotEmpty) {
+      yield _DocumentItem(
+        key: '${record.id}:workplace_slip',
+        sourceTable: 'application_forms',
+        recordId: record.id,
+        customerName: record.customerName,
+        registryNumber: record.fileRegistryNumber ?? '',
+        typeKey: 'workplace_slip',
+        typeLabel: 'İşyeri İşlem Slip',
+        fileName: record.workplaceSlipName ?? 'isyeri-islem-slip.pdf',
+        mimeType: record.workplaceSlipMimeType ?? 'application/pdf',
+        bucket: record.workplaceSlipStorageBucket ?? '',
+        path: record.workplaceSlipStoragePath ?? '',
+        url: slipUrl,
+        base64Data: '',
+        clearValues: const {
+          'workplace_slip_name': null,
+          'workplace_slip_mime_type': null,
+          'workplace_slip_storage_bucket': null,
+          'workplace_slip_storage_path': null,
+          'workplace_slip_url': null,
+          'workplace_slip_uploaded_at': null,
+        },
+      );
+    }
   }
 
   static Iterable<_DocumentItem> fromScrapForm(ScrapFormRecord record) sync* {
@@ -709,7 +736,7 @@ class _DocumentRow extends StatelessWidget {
       children: [
         AppBadge(
           label: item.typeLabel,
-          tone: item.typeKey == 'approval'
+          tone: item.typeKey == 'approval' || item.typeKey == 'workplace_slip'
               ? AppBadgeTone.success
               : AppBadgeTone.primary,
         ),

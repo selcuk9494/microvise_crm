@@ -161,6 +161,11 @@ const defaultPersonnelPagePermissions = new Set([
 
 const defaultBankPagePermissions = new Set(['formlar']);
 
+function hasBankViewAllAction(actions) {
+  const list = Array.isArray(actions) ? actions : [];
+  return list.includes('banka_yetkili') || list.includes('banka_admin');
+}
+
 function isBankLikeUser(user) {
   if (!user) return false;
   if (user.role === 'bank') return true;
@@ -174,7 +179,7 @@ function isBankLikeUser(user) {
   return (
     permissions.length === 1 &&
     permissions[0] === 'formlar' &&
-    (actions.length === 0 || actions.includes('banka_admin'))
+    (actions.length === 0 || hasBankViewAllAction(actions))
   );
 }
 
@@ -184,6 +189,14 @@ function isBankAdminLikeUser(user) {
     ? user.action_permissions
     : [];
   return actions.includes('banka_admin');
+}
+
+function isBankAuthorizedLikeUser(user) {
+  if (!isBankLikeUser(user)) return false;
+  const actions = Array.isArray(user.action_permissions)
+    ? user.action_permissions
+    : [];
+  return hasBankViewAllAction(actions);
 }
 
 function hasPageAccess(user, pageKey) {
@@ -209,6 +222,7 @@ module.exports = {
   getAuthenticatedUser,
   hasPageAccess,
   isBankAdminLikeUser,
+  isBankAuthorizedLikeUser,
   isBankLikeUser,
   resolveAuthUserId,
   resolvePublicUserAuthId,

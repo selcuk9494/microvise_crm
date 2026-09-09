@@ -1868,7 +1868,13 @@ async function ensureApplicationFormsApprovalColumns() {
         add column if not exists approval_document_storage_bucket text,
         add column if not exists approval_document_storage_path text,
         add column if not exists approval_document_url text,
-        add column if not exists approval_document_uploaded_at timestamptz
+        add column if not exists approval_document_uploaded_at timestamptz,
+        add column if not exists workplace_slip_name text,
+        add column if not exists workplace_slip_mime_type text,
+        add column if not exists workplace_slip_storage_bucket text,
+        add column if not exists workplace_slip_storage_path text,
+        add column if not exists workplace_slip_url text,
+        add column if not exists workplace_slip_uploaded_at timestamptz
     `,
   );
   await query(
@@ -1945,6 +1951,7 @@ async function ensureApplicationFormsApprovalColumns() {
               and (
                 coalesce(action_permissions, '{}'::text[]) = '{}'::text[]
                 or 'banka_admin' = any(coalesce(action_permissions, '{}'::text[]))
+                or 'banka_yetkili' = any(coalesce(action_permissions, '{}'::text[]))
               )
             )
         )

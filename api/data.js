@@ -1,7 +1,7 @@
 const {
   getAuthenticatedUser,
   hasPageAccess,
-  isBankAdminLikeUser,
+  isBankAuthorizedLikeUser,
   isBankLikeUser,
 } = require('./_lib/auth');
 const { query } = require('./_lib/db');
@@ -1302,7 +1302,7 @@ module.exports = async (req, res) => {
           values.push(true);
           whereSql += ` and is_active = $${values.length}`;
         }
-        if (isBankAdminLikeUser(user)) {
+        if (isBankAuthorizedLikeUser(user)) {
           whereSql += `
             and created_by in (
               select id
@@ -1315,6 +1315,7 @@ module.exports = async (req, res) => {
                   and (
                     coalesce(action_permissions, '{}'::text[]) = '{}'::text[]
                     or 'banka_admin' = any(coalesce(action_permissions, '{}'::text[]))
+                    or 'banka_yetkili' = any(coalesce(action_permissions, '{}'::text[]))
                   )
                 )
             )
@@ -1368,6 +1369,12 @@ module.exports = async (req, res) => {
               approval_document_storage_path,
               approval_document_url,
               approval_document_uploaded_at,
+              workplace_slip_name,
+              workplace_slip_mime_type,
+              workplace_slip_storage_bucket,
+              workplace_slip_storage_path,
+              workplace_slip_url,
+              workplace_slip_uploaded_at,
               coalesce(approval_status, 'pending') as approval_status,
               approved_at,
               approved_by,
@@ -1387,6 +1394,7 @@ module.exports = async (req, res) => {
                       and (
                         coalesce(u.action_permissions, '{}'::text[]) = '{}'::text[]
                         or 'banka_admin' = any(coalesce(u.action_permissions, '{}'::text[]))
+                    or 'banka_yetkili' = any(coalesce(u.action_permissions, '{}'::text[]))
                       )
                     )
                   )

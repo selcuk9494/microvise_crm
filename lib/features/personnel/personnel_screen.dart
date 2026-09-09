@@ -109,7 +109,11 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                 final filtered = users
                     .where((u) {
                       if (_roleFilter == 'bank' &&
-                          (!u.isBankLike || u.isBankAdminLike)) {
+                          (!u.isBankLike || u.isBankAuthorizedLike)) {
+                        return false;
+                      }
+                      if (_roleFilter == 'bank_authorized' &&
+                          !u.isBankAuthorizedLike) {
                         return false;
                       }
                       if (_roleFilter == 'bank_admin' && !u.isBankAdminLike) {
@@ -117,6 +121,7 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                       }
                       if (_roleFilter != 'all' &&
                           _roleFilter != 'bank' &&
+                          _roleFilter != 'bank_authorized' &&
                           _roleFilter != 'bank_admin' &&
                           u.role != _roleFilter) {
                         return false;
@@ -188,6 +193,10 @@ class _PersonnelScreenState extends ConsumerState<PersonnelScreen> {
                                                 _RoleSheetItem(
                                                   value: 'bank',
                                                   label: 'Banka',
+                                                ),
+                                                _RoleSheetItem(
+                                                  value: 'bank_authorized',
+                                                  label: 'Banka Yetkili',
                                                 ),
                                                 _RoleSheetItem(
                                                   value: 'bank_admin',
@@ -480,6 +489,8 @@ String _roleLabel(String value) {
       return 'Personel';
     case 'bank':
       return 'Banka';
+    case 'bank_authorized':
+      return 'Banka Yetkili';
     case 'bank_admin':
       return 'Banka Admin';
     default:
@@ -677,6 +688,15 @@ class _UserRowState extends ConsumerState<_UserRow> {
                                   ? null
                                   : (v) => toggleAction(key, v ?? false),
                               title: Text(actionPermissionLabels[key] ?? key),
+                              subtitle: key == kActionBankAuthorized
+                                  ? const Text(
+                                      'Capital Bank’ın tüm başvurularını görür',
+                                    )
+                                  : key == kActionBankAdmin
+                                  ? const Text(
+                                      'Banka ekibi yönetimi ve tüm başvurular',
+                                    )
+                                  : null,
                               dense: true,
                               contentPadding: EdgeInsets.zero,
                             ),
@@ -1057,24 +1077,50 @@ class _UserRowState extends ConsumerState<_UserRow> {
     final client = ref.read(supabaseClientProvider);
     if (apiClient == null && client == null) return;
 
+    final isBankUiRole =
+        role == 'bank' || role == 'bank_authorized' || role == 'bank_admin';
+    final backendRole = isBankUiRole
+        ? 'personel'
+        : role == 'admin'
+        ? 'admin'
+        : 'personel';
+    final pagePermissions = isBankUiRole
+        ? defaultBankPagePermissions.toList(growable: false)
+        : role == 'admin'
+        ? allPagePermissions.toList(growable: false)
+        : defaultPersonnelPagePermissions.toList(growable: false);
+    final actionPermissions = role == 'bank'
+        ? const <String>[]
+        : role == 'bank_authorized'
+        ? const [kActionBankAuthorized]
+        : role == 'bank_admin'
+        ? const [kActionBankAdmin]
+        : role == 'admin'
+        ? allActionPermissions.toList(growable: false)
+        : const ['duzenleme', 'pasife_alma'];
+
     setState(() => _saving = true);
     try {
       if (apiClient != null) {
-        await apiClient.postJson(
-          '/mutate',
+        await apiClient.patchJson(
+          '/personnel/users',
           body: {
-            'op': 'updateWhere',
-            'table': 'users',
-            'filters': [
-              {'col': 'id', 'op': 'eq', 'value': widget.user.id},
-            ],
-            'values': {'role': role},
+            'id': widget.user.id,
+            'email': widget.user.email ?? '',
+            'full_name': widget.user.fullName ?? '',
+            'role': backendRole,
+            'page_permissions': pagePermissions,
+            'action_permissions': actionPermissions,
           },
         );
       } else {
         await client!
             .from('users')
-            .update({'role': role})
+            .update({
+              'role': backendRole,
+              'page_permissions': pagePermissions,
+              'action_permissions': actionPermissions,
+            })
             .eq('id', widget.user.id);
       }
       ref.invalidate(personnelUsersProvider);
@@ -1100,6 +1146,8 @@ class _UserRowState extends ConsumerState<_UserRow> {
         : AppBadgeTone.neutral;
     final label = user.isBankAdminLike
         ? 'Banka Admin'
+        : user.isBankAuthorizedLike
+        ? 'Banka Yetkili'
         : isBankLike
         ? 'Banka'
         : _roleLabel(user.role);
@@ -1159,6 +1207,14 @@ class _UserRowState extends ConsumerState<_UserRow> {
                   MenuItemButton(
                     onPressed: () => _setRole('bank'),
                     child: const Text('Banka'),
+                  ),
+                  MenuItemButton(
+                    onPressed: () => _setRole('bank_authorized'),
+                    child: const Text('Banka Yetkili'),
+                  ),
+                  MenuItemButton(
+                    onPressed: () => _setRole('bank_admin'),
+                    child: const Text('Banka Admin'),
                   ),
                   MenuItemButton(
                     onPressed: () => _setRole('admin'),
@@ -1244,14 +1300,21 @@ class _CreatePersonnelDialogState
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final fullName = _fullNameController.text.trim();
-      final backendRole = _role == 'bank' || _role == 'bank_admin'
+      final backendRole = _role == 'bank' ||
+              _role == 'bank_authorized' ||
+              _role == 'bank_admin'
           ? 'personel'
           : _role;
-      final pagePermissions = _role == 'bank' || _role == 'bank_admin'
+      final pagePermissions =
+          _role == 'bank' ||
+              _role == 'bank_authorized' ||
+              _role == 'bank_admin'
           ? defaultBankPagePermissions.toList(growable: false)
           : defaultPersonnelPagePermissions.toList(growable: false);
       final actionPermissions = _role == 'bank'
           ? const <String>[]
+          : _role == 'bank_authorized'
+          ? const [kActionBankAuthorized]
           : _role == 'bank_admin'
           ? const [kActionBankAdmin]
           : const ['duzenleme', 'pasife_alma'];
@@ -1372,6 +1435,10 @@ class _CreatePersonnelDialogState
                     ),
                     DropdownMenuItem(value: 'bank', child: Text('Banka')),
                     DropdownMenuItem(
+                      value: 'bank_authorized',
+                      child: Text('Banka Yetkili'),
+                    ),
+                    DropdownMenuItem(
                       value: 'bank_admin',
                       child: Text('Banka Admin'),
                     ),
@@ -1455,15 +1522,24 @@ class PersonnelUser {
     if (role == 'bank') return true;
     if (role != 'personel') return false;
     final pages = pagePermissions.toSet();
+    final actions = actionPermissions.toSet();
     return pages.length == 1 &&
         pages.contains(kPageForms) &&
-        (actionPermissions.isEmpty ||
-            actionPermissions.toSet().contains(kActionBankAdmin));
+        (actions.isEmpty ||
+            actions.contains(kActionBankAdmin) ||
+            actions.contains(kActionBankAuthorized));
   }
 
   bool get isBankAdminLike {
     if (!isBankLike) return false;
     return actionPermissions.toSet().contains(kActionBankAdmin);
+  }
+
+  bool get isBankAuthorizedLike {
+    if (!isBankLike) return false;
+    final actions = actionPermissions.toSet();
+    return actions.contains(kActionBankAuthorized) ||
+        actions.contains(kActionBankAdmin);
   }
 
   factory PersonnelUser.fromJson(Map<String, dynamic> json) {
