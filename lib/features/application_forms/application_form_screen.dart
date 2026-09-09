@@ -8195,10 +8195,16 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: 210,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: AppDenseBadgeRow(
+                width: 268,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 6,
+                  ),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       if (!isBankViewer && isBankSubmission)
                         AppBadge(
@@ -8340,30 +8346,39 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               const Gap(8),
-              if (!isBankViewer && isBankSubmission) ...[
-                AppBadge(
-                  label: record.staffBankApprovalLabel,
-                  tone: record.isBankApproved
-                      ? AppBadgeTone.success
-                      : AppBadgeTone.warning,
+              Flexible(
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 4,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (!isBankViewer && isBankSubmission)
+                      AppBadge(
+                        dense: true,
+                        label: record.staffBankApprovalLabel,
+                        tone: record.isBankApproved
+                            ? AppBadgeTone.success
+                            : AppBadgeTone.warning,
+                      ),
+                    AppBadge(
+                      dense: true,
+                      label: approvalLabel,
+                      tone: approvalTone,
+                    ),
+                    if ((isBankViewer
+                            ? record.isBankApproved
+                            : record.isApproved) &&
+                        approvedRegistry != null)
+                      AppBadge(
+                        dense: true,
+                        label: 'Sicil: $approvedRegistry',
+                        tone: AppBadgeTone.success,
+                      ),
+                    ..._documentStatusBadges(dense: true),
+                  ],
                 ),
-                const Gap(4),
-              ],
-              AppBadge(label: approvalLabel, tone: approvalTone),
-              if ((isBankViewer
-                      ? record.isBankApproved
-                      : record.isApproved) &&
-                  approvedRegistry != null) ...[
-                const Gap(4),
-                AppBadge(
-                  label: 'Sicil: $approvedRegistry',
-                  tone: AppBadgeTone.success,
-                ),
-              ],
-              for (final badge in _documentStatusBadges(dense: false)) ...[
-                const Gap(4),
-                badge,
-              ],
+              ),
               const Gap(6),
               if (isMobile)
                 PopupMenuButton<String>(
