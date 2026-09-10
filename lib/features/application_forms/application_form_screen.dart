@@ -536,7 +536,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     ApplicationFormRecord record,
     _StoredApplicationDoc kind,
   ) async {
-    if (!record.isApproved) {
+    if (kind == _StoredApplicationDoc.approval && !record.isApproved) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${kind.label} yalnızca onaylı kayda yüklenir.')),
       );
@@ -7955,7 +7955,7 @@ class _ApplicationRecordCard extends StatelessWidget {
           value: 'clear_approval_document',
           child: Text('Onay Belgesi Kaydını Temizle'),
         ),
-      if (canApprove && record.isApproved)
+      if (canApprove && !isBankViewer)
         PopupMenuItem(
           value: 'upload_workplace_slip',
           child: Text(
@@ -8429,6 +8429,8 @@ class _ApplicationRecordCard extends StatelessWidget {
                     primary: !record.hasApprovalDocument,
                   ),
                   const Gap(4),
+                ],
+                if (canApprove && !isBankViewer) ...[
                   _ActionButton(
                     onPressed: onUploadWorkplaceSlip,
                     icon: LucideIcons.receipt,
