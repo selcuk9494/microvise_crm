@@ -73,6 +73,13 @@ function createAkinsoftFinanceHandlers(ctx) {
     return t.slice(0, 3) || 'TRY';
   }
 
+  function transferMasrafAmount(body) {
+    return Math.max(
+      0,
+      Number(numberOrZero(body.masraf ?? body.fee ?? body.expense).toFixed(2)),
+    );
+  }
+
   async function nextEvrakNo(pool, tableName, prefix) {
     const safe = String(tableName).replace(/[^A-Za-z0-9_]/g, '');
     const result = await pool
@@ -218,7 +225,18 @@ function createAkinsoftFinanceHandlers(ctx) {
         convert(nvarchar(80), a.ACIKLAMA) as aciklama,
         cast(a.BLHSKODU as nvarchar(32)) as fromAccountId,
         cast(b.BLHSKODU as nvarchar(32)) as toAccountId,
-        cast(isnull(a.TUTAR_ALACAK, a.KPB_TUTARI) as float) as amount
+        cast(isnull(a.TUTAR_ALACAK, a.KPB_TUTARI) as float) as amount,
+        cast(isnull((
+          select sum(isnull(m.TUTAR_ALACAK, m.KPB_TUTARI))
+          from dbo.BANKAHR m
+          where m.EVRAK_NO = a.EVRAK_NO
+            and coalesce(m.SILINDI, 0) = 0
+            and m.BLKODU not in (a.BLKODU, b.BLKODU)
+            and (
+              m.OZEL_KODU = N'Masraf'
+              or upper(isnull(m.ACIKLAMA, '')) like N'%TRANSFER MASRAF%'
+            )
+        ), 0) as float) as masraf
       from dbo.BANKAHR a
       join dbo.BANKAHR b on b.BLKODU = a.BLTRSKODU
       where coalesce(a.SILINDI, 0) = 0
@@ -240,7 +258,32 @@ function createAkinsoftFinanceHandlers(ctx) {
         cast(isnull(k.KPB_GDTUT, 0) as float) as kasaOut,
         cast(isnull(k.KPB_GLTUT, 0) as float) as kasaIn,
         cast(isnull(b.TUTAR_BORC, 0) as float) as bankIn,
-        cast(isnull(b.TUTAR_ALACAK, 0) as float) as bankOut
+        cast(isnull(b.TUTAR_ALACAK, 0) as float) as bankOut,
+        cast(
+          isnull((
+            select sum(isnull(km.KPB_GDTUT, 0))
+            from dbo.KASAHR km
+            where km.EVRAK_NO = k.EVRAK_NO
+              and coalesce(km.SILINDI, 0) = 0
+              and km.BLKODU <> k.BLKODU
+              and (
+                km.OZEL_KODU = N'Masraf'
+                or upper(isnull(km.ACIKLAMA, '')) like N'%TRANSFER MASRAF%'
+              )
+          ), 0)
+          +
+          isnull((
+            select sum(isnull(bm.TUTAR_ALACAK, 0))
+            from dbo.BANKAHR bm
+            where bm.EVRAK_NO = k.EVRAK_NO
+              and coalesce(bm.SILINDI, 0) = 0
+              and bm.BLKODU <> b.BLKODU
+              and (
+                bm.OZEL_KODU = N'Masraf'
+                or upper(isnull(bm.ACIKLAMA, '')) like N'%TRANSFER MASRAF%'
+              )
+          ), 0)
+        as float) as masraf
       from dbo.KASAHR k
       join dbo.BANKAHR b on b.EVRAK_NO = k.EVRAK_NO and coalesce(b.SILINDI, 0) = 0
       where coalesce(k.SILINDI, 0) = 0
@@ -268,6 +311,7 @@ function createAkinsoftFinanceHandlers(ctx) {
         evrakNo: textOrNull(row.evrakNo),
         date: row.tarihi || null,
         amount: numberOrZero(row.amount),
+        masraf: numberOrZero(row.masraf),
         description: textOrNull(row.aciklama),
         fromLabel: from?.label || `Hesap #${row.fromAccountId}`,
         toLabel: to?.label || `Hesap #${row.toAccountId}`,
@@ -288,6 +332,7 @@ function createAkinsoftFinanceHandlers(ctx) {
         evrakNo: textOrNull(row.evrakNo),
         date: row.tarihi || null,
         amount: isKasaToBank ? kasaOut : kasaIn || numberOrZero(row.bankOut),
+        masraf: numberOrZero(row.masraf),
         description: textOrNull(row.aciklama),
         fromLabel: isKasaToBank
           ? textOrNull(row.kasaAdi) || 'Kasa'
@@ -721,10 +766,32 @@ function createAkinsoftFinanceHandlers(ctx) {
 
     await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'BANKAHR', columns, outRow);
     await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'BANKAHR', columns, inRow);
+
+    const masraf = transferMasrafAmount(body);
+    let masrafSourceId = null;
+    if (masraf > 0) {
+      const masrafId = await akinsoftNextBlkoduSafe(pool, 'BANKAHR');
+      const masrafDesc = `Transfer masrafı${descFrom ? ` · ${descFrom}` : ''}`.slice(0, 50);
+      const masrafRow = {
+        ...base,
+        BLKODU: masrafId,
+        BLHSKODU: fromId,
+        BLTRSKODU: null,
+        OZEL_KODU: 'Masraf',
+        ACIKLAMA: masrafDesc,
+        TUTAR_ALACAK: masraf,
+        KPB_TUTARI: masraf,
+      };
+      await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'BANKAHR', columns, masrafRow);
+      masrafSourceId = String(masrafId);
+    }
+
     return {
       type: 'bank_bank',
       evrakNo,
       amount,
+      masraf,
+      masrafSourceId,
       fromSourceId: String(outId),
       toSourceId: String(inId),
       fromAccountId: String(fromId),
@@ -815,10 +882,44 @@ function createAkinsoftFinanceHandlers(ctx) {
     await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'KASAHR', kasaHrColumns, kasaRow);
     await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'BANKAHR', bankHrColumns, bankRow);
 
+    const masraf = transferMasrafAmount(body);
+    let masrafSourceId = null;
+    if (masraf > 0) {
+      const masrafDesc = `Transfer masrafı${aciklama ? ` · ${aciklama}` : ''}`.slice(0, 50);
+      if (isKasaToBank) {
+        const masrafId = await akinsoftNextBlkoduSafe(pool, 'KASAHR');
+        const masrafRow = {
+          ...kasaRow,
+          BLKODU: masrafId,
+          OZEL_KODU: 'Masraf',
+          ACIKLAMA: masrafDesc,
+          KPB_GLTUT: null,
+          KPB_GDTUT: masraf,
+        };
+        await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'KASAHR', kasaHrColumns, masrafRow);
+        masrafSourceId = String(masrafId);
+      } else {
+        const masrafId = await akinsoftNextBlkoduSafe(pool, 'BANKAHR');
+        const masrafRow = {
+          ...bankRow,
+          BLKODU: masrafId,
+          OZEL_KODU: 'Masraf',
+          ACIKLAMA: masrafDesc,
+          TUTAR_BORC: null,
+          TUTAR_ALACAK: masraf,
+          KPB_TUTARI: masraf,
+        };
+        await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'BANKAHR', bankHrColumns, masrafRow);
+        masrafSourceId = String(masrafId);
+      }
+    }
+
     return {
       type: isKasaToBank ? 'kasa_bank' : 'bank_kasa',
       evrakNo,
       amount,
+      masraf,
+      masrafSourceId,
       kasaHrId: String(kasaHrId),
       bankHrId: String(bankHrId),
       accountId: String(accountId),
@@ -923,6 +1024,50 @@ function createAkinsoftFinanceHandlers(ctx) {
     };
   }
 
+  async function softDeleteTransferMasraf(pool, evrakNo) {
+    const evrak = textOrNull(evrakNo);
+    if (!evrak) return;
+    await pool
+      .request()
+      .input('evrak', sql.NVarChar(32), evrak)
+      .query(`
+        update dbo.BANKAHR
+        set SILINDI=1, DEGISTIREN=N'MICROVISE', DEGISTIRME_TARIHI=getdate()
+        where EVRAK_NO=@evrak
+          and coalesce(SILINDI, 0)=0
+          and (
+            OZEL_KODU = N'Masraf'
+            or upper(isnull(ACIKLAMA, '')) like N'%TRANSFER MASRAF%'
+          )
+      `);
+    if (await akinsoftTableExists(pool, 'KASAHR')) {
+      await pool
+        .request()
+        .input('evrak', sql.NVarChar(32), evrak)
+        .query(`
+          update dbo.KASAHR
+          set SILINDI=1, DEGISTIREN=N'MICROVISE', DEGISTIRME_TARIHI=getdate()
+          where EVRAK_NO=@evrak
+            and coalesce(SILINDI, 0)=0
+            and (
+              OZEL_KODU = N'Masraf'
+              or upper(isnull(ACIKLAMA, '')) like N'%TRANSFER MASRAF%'
+            )
+        `);
+    }
+  }
+
+  async function lookupHrEvrakNo(pool, table, blkodu) {
+    if (!Number.isFinite(blkodu) || (table !== 'BANKAHR' && table !== 'KASAHR')) {
+      return null;
+    }
+    const res = await pool
+      .request()
+      .input('id', sql.BigInt, blkodu)
+      .query(`select convert(nvarchar(32), EVRAK_NO) as evrakNo from dbo.${table} where BLKODU=@id`);
+    return textOrNull(res.recordset?.[0]?.evrakNo);
+  }
+
   async function softDeleteTransfer(pool, body) {
     const type = String(body.type || '').toLowerCase();
     if (type === 'bank_bank') {
@@ -930,6 +1075,7 @@ function createAkinsoftFinanceHandlers(ctx) {
       const pairId = Number(body.pairSourceId);
       if (!Number.isFinite(id)) throw Object.assign(new Error('sourceId zorunlu.'), { statusCode: 400 });
       const ids = [id, pairId].filter((n) => Number.isFinite(n));
+      const evrakNo = textOrNull(body.evrakNo) || (await lookupHrEvrakNo(pool, 'BANKAHR', id));
       for (const blkodu of ids) {
         await pool
           .request()
@@ -940,11 +1086,16 @@ function createAkinsoftFinanceHandlers(ctx) {
             where BLKODU=@id
           `);
       }
-      return { action: 'soft_deleted', ids: ids.map(String) };
+      await softDeleteTransferMasraf(pool, evrakNo);
+      return { action: 'soft_deleted', ids: ids.map(String), evrakNo };
     }
     if (type === 'kasa_bank' || type === 'bank_kasa') {
       const kasaHrId = Number(String(body.sourceId || '').replace(/^kasa:/, ''));
       const bankHrId = Number(body.pairSourceId);
+      const evrakNo =
+        textOrNull(body.evrakNo) ||
+        (await lookupHrEvrakNo(pool, 'KASAHR', kasaHrId)) ||
+        (await lookupHrEvrakNo(pool, 'BANKAHR', bankHrId));
       if (Number.isFinite(kasaHrId)) {
         await pool
           .request()
@@ -965,7 +1116,8 @@ function createAkinsoftFinanceHandlers(ctx) {
             where BLKODU=@id
           `);
       }
-      return { action: 'soft_deleted', kasaHrId, bankHrId };
+      await softDeleteTransferMasraf(pool, evrakNo);
+      return { action: 'soft_deleted', kasaHrId, bankHrId, evrakNo };
     }
     throw Object.assign(new Error('Desteklenmeyen transfer tipi.'), { statusCode: 400 });
   }

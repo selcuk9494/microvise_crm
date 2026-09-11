@@ -310,6 +310,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
               'type': row['type'],
               'sourceId': row['sourceId'],
               'pairSourceId': row['pairSourceId'],
+              'evrakNo': row['evrakNo'],
             },
             successMessage: 'Transfer SAP’ta silindi (SILINDI=1).',
           ),
@@ -575,6 +576,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     String? kasaAdi = _kasas.isEmpty ? null : _text(_kasas.first['kasaAdi']);
     DateTime date = DateTime.now();
     final amountCtrl = TextEditingController();
+    final feeCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -701,6 +703,18 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                         helperText: 'Wolvox BANKAHR / KASAHR çift kayıt yazar',
                       ),
                     ),
+                    const Gap(8),
+                    TextField(
+                      controller: feeCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Masraf ($currency)',
+                        helperText:
+                            'Kaynak hesaptan düşülür. Boş bırakılabilir.',
+                      ),
+                    ),
                     TextField(
                       controller: descCtrl,
                       decoration: const InputDecoration(labelText: 'Açıklama'),
@@ -726,9 +740,12 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     if (ok != true) return;
     final amount =
         double.tryParse(amountCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+    final masraf =
+        double.tryParse(feeCtrl.text.trim().replaceAll(',', '.')) ?? 0;
     final payload = <String, dynamic>{
       'type': type,
       'amount': amount,
+      'masraf': masraf,
       'description': descCtrl.text.trim(),
       'date': date.toIso8601String(),
       'currency': _text(
@@ -1191,8 +1208,13 @@ class _TransferList extends StatelessWidget {
         return _DenseRow(
           index: index,
           title: '${_text(row['fromLabel'])} → ${_text(row['toLabel'])}',
-          subtitle:
-              '${_date(row['date'])} · ${_text(row['evrakNo'])} · ${_money(row['amount'] as num? ?? 0)}',
+          subtitle: [
+            _date(row['date']),
+            _text(row['evrakNo']),
+            _money(row['amount'] as num? ?? 0),
+            if ((row['masraf'] as num? ?? 0) > 0)
+              'masraf ${_money(row['masraf'] as num)}',
+          ].where((part) => part.toString().trim().isNotEmpty).join(' · '),
           trailing: AppBadge(
             label: _text(row['typeLabel']),
             tone: tone,
