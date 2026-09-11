@@ -363,11 +363,37 @@ class Invoice {
   /// Purchase / Maliye-received invoices must never offer live or test send.
   bool canSendEInvoiceTo(String environment) {
     if (invoiceType == 'purchase' || isEInvoiceReceived) return false;
+    if (status == 'cancelled' || eInvoiceStatus == 'cancelled') return false;
     if (eInvoiceStatus == 'manual' || eInvoiceStatus == 'manual_sent') {
       return false;
     }
     if (eInvoiceStatus != 'sent') return true;
     return eInvoiceEnvironment == 'test' && environment == 'production';
+  }
+
+  bool get isEInvoiceCancelled =>
+      status == 'cancelled' || eInvoiceStatus == 'cancelled';
+
+  /// Maliye’ye gitmiş satış faturası; resmi iptal + CRM iptali.
+  bool get canCancelOnMaliye {
+    if (!isActive || isEInvoiceCancelled) return false;
+    if (invoiceType == 'purchase' || isEInvoiceReceived) return false;
+    if (!isEInvoiceSent) return false;
+    if (eInvoiceUuid?.trim().isEmpty ?? true) return false;
+    if (paidAmount > 0.009 || status == 'paid' || status == 'partial') {
+      return false;
+    }
+    return true;
+  }
+
+  /// Tahsilatsız satış; gönderilmişse Maliye iptali de yapılır.
+  bool get canCancelInCrm {
+    if (!isActive || isEInvoiceCancelled) return false;
+    if (invoiceType == 'purchase' || isEInvoiceReceived) return false;
+    if (paidAmount > 0.009 || status == 'paid' || status == 'partial') {
+      return false;
+    }
+    return true;
   }
 
   factory Invoice.fromJson(Map<String, dynamic> json) {

@@ -964,7 +964,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Future<void> _cancelInvoice() async {
     final messenger = ScaffoldMessenger.of(context);
     final invoice = ref.read(invoiceDetailProvider(widget.invoiceId)).value;
-    if (invoice?.isRecordProtected == true) {
+    if (invoice?.isRecordProtected == true && invoice?.canCancelOnMaliye != true) {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -977,9 +977,15 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Faturayı İptal Et'),
-        content: const Text(
-          'Bu faturayı iptal etmek istediğinizden emin misiniz?',
+        title: Text(
+          invoice?.canCancelOnMaliye == true
+              ? 'Maliye’den iptal'
+              : 'Faturayı İptal Et',
+        ),
+        content: Text(
+          invoice?.canCancelOnMaliye == true
+              ? 'Bu fatura Maliye e-fatura sisteminden iptal edilecek, ardından CRM’de İptal olacak. Bu işlem geri alınamaz.'
+              : 'Bu faturayı iptal etmek istediğinizden emin misiniz?',
         ),
         actions: [
           TextButton(
@@ -1002,14 +1008,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
     try {
       await apiClient.postJson(
-        '/mutate',
+        '/e-invoice',
         body: {
-          'op': 'updateWhere',
-          'table': 'invoices',
-          'filters': [
-            {'col': 'id', 'op': 'eq', 'value': widget.invoiceId},
-          ],
-          'values': {'status': 'cancelled'},
+          'action': 'cancel',
+          'invoiceId': widget.invoiceId,
         },
       );
       if (!mounted) return;

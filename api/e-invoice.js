@@ -1040,6 +1040,8 @@ function buildPayload({ settings, invoice, number: numberOverride }) {
 function canSendInvoiceToEnvironment(invoice, environment) {
   // Alış / Maliye’den gelen faturalar outbound gönderime uygun değil.
   if (invoice.invoice_type === 'purchase') return false;
+  if (String(invoice.status || '') === 'cancelled') return false;
+  if (invoice.e_invoice_status === 'cancelled') return false;
   if (invoice.e_invoice_status === 'received') return false;
   if (
     invoice.e_invoice_status === 'manual' ||
@@ -1052,6 +1054,41 @@ function canSendInvoiceToEnvironment(invoice, environment) {
     invoice.e_invoice_environment === 'test' &&
     environment === 'production'
   );
+}
+
+function invoiceHasCollection(invoice) {
+  if (Number(invoice?.paid_amount || 0) > 0.009) return true;
+  const status = String(invoice?.status || '').trim().toLowerCase();
+  return status === 'paid' || status === 'partial';
+}
+
+function looksLikeAlreadyCancelledError(error) {
+  const msg = String(error?.message || '').replace(/İ/g, 'I').toLowerCase();
+  return /iptal/.test(msg) && /(zaten|edilmi[sş]|edildi)/.test(msg);
+}
+
+function canCancelInvoiceOnMaliye(invoice) {
+  if (!invoice) return false;
+  if (invoice.is_active === false) return false;
+  if (String(invoice.status || '') === 'cancelled') return false;
+  if (String(invoice.e_invoice_status || '') === 'cancelled') return false;
+  if (invoice.invoice_type === 'purchase') return false;
+  if (invoice.e_invoice_status === 'received') return false;
+  if (String(invoice.e_invoice_status || '') !== 'sent') return false;
+  if (!cleanText(invoice.e_invoice_uuid)) return false;
+  if (invoiceHasCollection(invoice)) return false;
+  return true;
+}
+
+function canCancelInvoiceInCrm(invoice) {
+  if (!invoice) return false;
+  if (invoice.is_active === false) return false;
+  if (String(invoice.status || '') === 'cancelled') return false;
+  if (String(invoice.e_invoice_status || '') === 'cancelled') return false;
+  if (invoice.invoice_type === 'purchase') return false;
+  if (invoice.e_invoice_status === 'received') return false;
+  if (invoiceHasCollection(invoice)) return false;
+  return true;
 }
 
 async function preserveTransmission(invoice) {
@@ -1213,6 +1250,32 @@ async function apiGet({ base, path, token }) {
   if (!response.ok) {
     const error = new Error(
       maliyeErrorMessage(json, text, `${path} doğrulaması başarısız.`),
+    );
+    error.response = json;
+    error.status = response.status;
+    throw error;
+  }
+  return json;
+}
+
+async function apiDelete({ base, path, token }) {
+  const response = await fetch(`${base}${path}`, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: 'application/json',
+    },
+  });
+  const text = await response.text();
+  let json;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch (_) {
+    json = { raw: text };
+  }
+  if (!response.ok) {
+    const error = new Error(
+      maliyeErrorMessage(json, text, `${path} iptali başarısız.`),
     );
     error.response = json;
     error.status = response.status;
@@ -2455,6 +2518,122 @@ function clientError(message) {
   throw error;
 }
 
+async function isInvoiceCancelledOnMaliye({ settings, uuid, token }) {
+  try {
+    const { data } = await fetchOfficialInvoiceArchive({
+      settings,
+      verificationCode: uuid,
+      token,
+    });
+    const body = unwrapMaliyeInvoiceBody(data);
+    return Boolean(body?.iptalEdildigiTarih);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function cancelPendingInvoicePaymentLinks(invoiceId) {
+  try {
+    await query(
+      `
+        update public.invoice_payment_links
+        set status = 'cancelled'
+        where $1::uuid = any(invoice_ids)
+          and coalesce(status, '') not in ('paid', 'settled', 'cancelled')
+      `,
+      [invoiceId],
+    );
+  } catch (_) {}
+}
+
+async function markInvoiceCancelled(invoiceId, { maliyeCancelled }) {
+  const result = await query(
+    `
+      update public.invoices
+      set
+        status = 'cancelled',
+        e_invoice_status = case
+          when $2::boolean then 'cancelled'
+          when e_invoice_status in ('sent', 'prepared') then 'cancelled'
+          else e_invoice_status
+        end,
+        e_invoice_error = null,
+        updated_at = now()
+      where id = $1
+      returning id, status, e_invoice_status
+    `,
+    [invoiceId, maliyeCancelled],
+  );
+  await cancelPendingInvoicePaymentLinks(invoiceId);
+  return result.rows[0] || null;
+}
+
+async function cancelOutgoingInvoice({ invoiceId: rawInvoiceId }) {
+  const invoiceId = String(rawInvoiceId || '').trim();
+  if (!invoiceId) clientError('invoiceId zorunludur.');
+  const invoice = await fetchInvoice(invoiceId);
+  if (!invoice) clientError('Fatura bulunamadı.');
+  if (String(invoice.status || '') === 'cancelled' ||
+      String(invoice.e_invoice_status || '') === 'cancelled') {
+    return { ok: true, alreadyCancelled: true, maliyeCancelled: invoice.e_invoice_status === 'cancelled' };
+  }
+  if (!canCancelInvoiceInCrm(invoice)) {
+    if (invoiceHasCollection(invoice)) {
+      clientError('Tahsilatı olan fatura iptal edilemez. Önce tahsilatı geri alın.');
+    }
+    clientError('Bu fatura iptal edilemez.');
+  }
+
+  const needsMaliye = String(invoice.e_invoice_status || '') === 'sent';
+  if (needsMaliye && !canCancelInvoiceOnMaliye(invoice)) {
+    clientError('Maliye doğrulama kodu yok; e-fatura iptal edilemez.');
+  }
+
+  let maliyeCancelled = false;
+  if (needsMaliye) {
+    const current = await getSettings();
+    const environment =
+      invoice.e_invoice_environment === 'production' ? 'production' : 'test';
+    const settings = hydrateCredentialSettings({
+      ...current,
+      environment,
+    });
+    const token = await tokenFor(settings);
+    const uuid = cleanText(invoice.e_invoice_uuid);
+    const vkn = encodeURIComponent(requireApiVkn(settings.seller_vkn, 'Satıcı VKN'));
+    const base = urlsForEnvironment(environment).apiBaseUrl;
+    try {
+      await apiDelete({
+        base,
+        path: `/mukellefler/${vkn}/faturalar/${encodeURIComponent(uuid)}`,
+        token,
+      });
+      maliyeCancelled = true;
+    } catch (error) {
+      if (
+        looksLikeAlreadyCancelledError(error) ||
+        (await isInvoiceCancelledOnMaliye({ settings, uuid, token }))
+      ) {
+        maliyeCancelled = true;
+      } else {
+        if (error.statusCode === 400) throw error;
+        const wrapped = new Error(error.message || 'Maliye iptali başarısız.');
+        wrapped.statusCode = error.status === 400 ? 400 : error.statusCode || 400;
+        throw wrapped;
+      }
+    }
+  }
+
+  const updated = await markInvoiceCancelled(invoiceId, { maliyeCancelled: needsMaliye });
+  return {
+    ok: true,
+    maliyeCancelled: needsMaliye,
+    invoiceId,
+    status: updated?.status || 'cancelled',
+    eInvoiceStatus: updated?.e_invoice_status,
+  };
+}
+
 async function prepareOrSendInvoice({
   action,
   invoiceId: rawInvoiceId,
@@ -3254,6 +3433,18 @@ async function handler(req, res) {
       return ok(req, res, { ok: archive.archived, ...archive });
     }
 
+    if (action === 'cancel') {
+      try {
+        const result = await cancelOutgoingInvoice({
+          invoiceId: body.invoiceId,
+        });
+        return ok(req, res, result);
+      } catch (error) {
+        if (error.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+
     if (action === 'prepare' || action === 'send') {
       try {
         const result = await prepareOrSendInvoice({
@@ -3278,6 +3469,7 @@ async function handler(req, res) {
 module.exports = handler;
 module.exports.sendPaidInvoicesAfterPos = sendPaidInvoicesAfterPos;
 module.exports.prepareOrSendInvoice = prepareOrSendInvoice;
+module.exports.cancelOutgoingInvoice = cancelOutgoingInvoice;
 module.exports.testUtils = {
   syncIncomingFromMaliye,
   mapIncomingLines,
@@ -3291,6 +3483,10 @@ module.exports.testUtils = {
   createUuidV7,
   validateInvoiceForEInvoice,
   canSendInvoiceToEnvironment,
+  canCancelInvoiceOnMaliye,
+  canCancelInvoiceInCrm,
+  invoiceHasCollection,
+  looksLikeAlreadyCancelledError,
   buildPayload,
   assertSuccessfulMaliyeResponse,
   validatePayloadAgainstApi,

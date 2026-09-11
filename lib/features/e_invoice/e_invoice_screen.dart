@@ -2014,6 +2014,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               invoice.canSendEInvoiceTo(isProduction ? 'production' : 'test'),
         )
         .length;
+    final selectedMaliyeCancelCount = items
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.canCancelOnMaliye,
+        )
+        .length;
     final selectedMarkableCount = items
         .where(
           (invoice) =>
@@ -2590,6 +2597,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     ),
                                     label: const Text('Gönder'),
                                   ),
+                                  const Gap(8),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        selectedMaliyeCancelCount == 0 ||
+                                            _bulkDeleting ||
+                                            _bulkProcessing
+                                        ? null
+                                        : () => _cancelSelectedOnMaliye(items),
+                                    icon: const Icon(
+                                      Icons.cancel_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Maliye iptal'),
+                                  ),
                                 ],
                               ),
                             ),
@@ -2919,6 +2940,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                                 size: 14,
                                               ),
                                         label: Text(apiSendLabel),
+                                      ),
+                                      OutlinedButton.icon(
+                                        onPressed:
+                                            selectedMaliyeCancelCount == 0 ||
+                                                _bulkDeleting ||
+                                                _bulkProcessing
+                                            ? null
+                                            : () =>
+                                                  _cancelSelectedOnMaliye(items),
+                                        icon: const Icon(
+                                          Icons.cancel_outlined,
+                                          size: 14,
+                                        ),
+                                        label: const Text('Maliye iptal'),
                                       ),
                                       FilledButton.icon(
                                         onPressed:
@@ -4601,6 +4636,90 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     }
   }
 
+  Future<void> _cancelSelectedOnMaliye(List<Invoice> visibleInvoices) async {
+    final selected = visibleInvoices
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.canCancelOnMaliye,
+        )
+        .toList(growable: false);
+    if (selected.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Maliye’den iptal edilecek uygun fatura yok. '
+            'Yalnızca gönderilmiş ve tahsilatsız satış faturaları iptal edilir.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Maliye’den iptal'),
+        content: Text(
+          '${selected.length} fatura önce Maliye e-fatura sisteminden iptal edilecek, '
+          'sonra CRM’de İptal durumuna alınacak.\n\n'
+          'Bu işlem geri alınamaz. SAP’a gitmişse Wolvox’ta ayrıca iptal edin.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Maliye’den iptal et'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _bulkProcessing = true);
+    var success = 0;
+    var failed = 0;
+    String? lastError;
+    try {
+      for (final invoice in selected) {
+        try {
+          await apiClient.postJson(
+            '/e-invoice',
+            body: {
+              'action': 'cancel',
+              'invoiceId': invoice.id,
+            },
+          );
+          success += 1;
+        } catch (error) {
+          failed += 1;
+          lastError = error.toString();
+        }
+      }
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failed == 0
+                ? '$success fatura Maliye’den iptal edildi.'
+                : 'İptal: $success başarılı, $failed hatalı'
+                      '${lastError == null ? '.' : ': $lastError'}',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
+  }
+
   Future<void> _syncIncomingFromMaliye() async {
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
@@ -5823,6 +5942,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 _statement();
               case 'payload':
                 _prepare(send: false);
+              case 'cancel_invoice':
+                _cancelOnMaliye();
               case 'active':
                 _toggleActive();
               case 'collect':
@@ -5904,6 +6025,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               const PopupMenuItem(
                 value: 'payload',
                 child: Text('Gönderim verisini hazırla'),
+              ),
+            if (invoice.canCancelOnMaliye)
+              const PopupMenuItem(
+                value: 'cancel_invoice',
+                child: Text('Maliye’den iptal et'),
+              )
+            else if (invoice.canCancelInCrm)
+              const PopupMenuItem(
+                value: 'cancel_invoice',
+                child: Text('Faturayı iptal et'),
               ),
             PopupMenuItem(
               value: 'active',
@@ -6028,6 +6159,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               _statement();
             case 'payload':
               _prepare(send: false);
+            case 'cancel_invoice':
+              _cancelOnMaliye();
             case 'active':
               _toggleActive();
             case 'delete':
@@ -6107,6 +6240,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             const PopupMenuItem(
               value: 'payload',
               child: Text('Gönderim verisini hazırla'),
+            ),
+          if (invoice.canCancelOnMaliye)
+            const PopupMenuItem(
+              value: 'cancel_invoice',
+              child: Text('Maliye’den iptal et'),
+            )
+          else if (invoice.canCancelInCrm)
+            const PopupMenuItem(
+              value: 'cancel_invoice',
+              child: Text('Faturayı iptal et'),
             ),
           PopupMenuItem(
             value: 'active',
@@ -6755,6 +6898,80 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     );
     ref.invalidate(invoicesProvider);
     ref.invalidate(accountBalancesProvider);
+  }
+
+  Future<void> _cancelOnMaliye() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    final invoice = widget.invoice;
+    final onMaliye = invoice.canCancelOnMaliye;
+    if (!onMaliye && !invoice.canCancelInCrm) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            invoice.paidAmount > 0.009 ||
+                    invoice.status == 'paid' ||
+                    invoice.status == 'partial'
+                ? 'Tahsilatı olan fatura iptal edilemez. Önce tahsilatı geri alın.'
+                : '${invoice.invoiceNumberDisplay} iptal edilemez.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(onMaliye ? 'Maliye’den iptal' : 'Faturayı iptal et'),
+        content: Text(
+          onMaliye
+              ? '${invoice.invoiceNumberDisplay} Maliye e-fatura sisteminden iptal edilecek, ardından CRM’de İptal olacak.\n\nBu işlem geri alınamaz.'
+              : '${invoice.invoiceNumberDisplay} CRM’de iptal edilecek. Maliye’ye gönderilmemiş.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(onMaliye ? 'Maliye’den iptal et' : 'İptal et'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      await apiClient.postJson(
+        '/e-invoice',
+        body: {
+          'action': 'cancel',
+          'invoiceId': invoice.id,
+        },
+      );
+      if (!mounted) return;
+      ref.invalidate(invoicesProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            onMaliye
+                ? '${invoice.invoiceNumberDisplay} Maliye’den iptal edildi.'
+                : '${invoice.invoiceNumberDisplay} iptal edildi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İptal başarısız: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _toggleActive() async {
