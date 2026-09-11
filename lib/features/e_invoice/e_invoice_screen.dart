@@ -858,6 +858,53 @@ Future<void> _saveLocalEInvoiceSettings(Map<String, dynamic> settings) async {
   await prefs.setString(_localSettingsKey, jsonEncode(settings));
 }
 
+Future<Map<String, dynamic>> postAkinsoftCancelInvoices({
+  required Map<String, dynamic> settings,
+  required List<String> invoiceIds,
+  Duration timeout = const Duration(minutes: 2),
+}) async {
+  final response = await http
+      .post(
+        _akinsoftUri('cancel-invoice'),
+        headers: const {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode({
+          ...settings,
+          'invoiceIds': invoiceIds,
+        }),
+      )
+      .timeout(timeout);
+  final decoded = jsonDecode(response.body);
+  if (decoded is! Map) {
+    throw Exception('Beklenmeyen SAP yanıtı.');
+  }
+  final map = Map<String, dynamic>.from(decoded);
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(map['error'] ?? 'SAP iptali başarısız.');
+  }
+  return map;
+}
+
+Future<String> cancelLinkedAkinsoftInvoice({
+  required Map<String, dynamic> settings,
+  required Invoice invoice,
+}) async {
+  if (!invoice.isLinkedToAkinsoft) return '';
+  try {
+    final decoded = await postAkinsoftCancelInvoices(
+      settings: settings,
+      invoiceIds: [invoice.id],
+    );
+    final items = decoded['items'];
+    final first = items is List && items.isNotEmpty ? items.first : null;
+    if (first is Map && first['skipped'] == true) return '';
+    if (first is Map && first['ok'] == true) return ' SAP iptal edildi.';
+    final reason = first is Map ? first['reason']?.toString() : null;
+    return ' SAP iptal edilemedi${reason == null || reason.isEmpty ? '.' : ': $reason'}';
+  } catch (error) {
+    return ' ${_akinsoftBridgeError(error)}';
+  }
+}
+
 Future<Map<String, dynamic>> postAkinsoftPushInvoices({
   required Map<String, dynamic> settings,
   required List<String> invoiceIds,
@@ -4663,8 +4710,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         title: const Text('Maliye’den iptal'),
         content: Text(
           '${selected.length} fatura önce Maliye e-fatura sisteminden iptal edilecek, '
-          'sonra CRM’de İptal durumuna alınacak.\n\n'
-          'Bu işlem geri alınamaz. SAP’a gitmişse Wolvox’ta ayrıca iptal edin.',
+          'sonra CRM’de İptal durumuna alınacak.'
+          '${selected.any((invoice) => invoice.isLinkedToAkinsoft) ? ' SAP’ta kaydı olanlar Wolvox’ta da iptal işaretlenir.' : ''}\n\n'
+          'Bu işlem geri alınamaz.',
         ),
         actions: [
           TextButton(
@@ -4687,7 +4735,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     var success = 0;
     var failed = 0;
     String? lastError;
+    final sapNotes = <String>[];
     try {
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
       for (final invoice in selected) {
         try {
           await apiClient.postJson(
@@ -4698,6 +4748,11 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             },
           );
           success += 1;
+          final sapNote = await cancelLinkedAkinsoftInvoice(
+            settings: settings,
+            invoice: invoice,
+          );
+          if (sapNote.trim().isNotEmpty) sapNotes.add(sapNote.trim());
         } catch (error) {
           failed += 1;
           lastError = error.toString();
@@ -4705,13 +4760,14 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       }
       ref.invalidate(invoicesProvider);
       if (!mounted) return;
+      final sapPart = sapNotes.isEmpty ? '' : ' ${sapNotes.toSet().join(' ')}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             failed == 0
-                ? '$success fatura Maliye’den iptal edildi.'
+                ? '$success fatura Maliye’den iptal edildi.$sapPart'
                 : 'İptal: $success başarılı, $failed hatalı'
-                      '${lastError == null ? '.' : ': $lastError'}',
+                      '${lastError == null ? '.' : ': $lastError'}$sapPart',
           ),
         ),
       );
@@ -6926,8 +6982,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         title: Text(onMaliye ? 'Maliye’den iptal' : 'Faturayı iptal et'),
         content: Text(
           onMaliye
-              ? '${invoice.invoiceNumberDisplay} Maliye e-fatura sisteminden iptal edilecek, ardından CRM’de İptal olacak.\n\nBu işlem geri alınamaz.'
-              : '${invoice.invoiceNumberDisplay} CRM’de iptal edilecek. Maliye’ye gönderilmemiş.',
+              ? '${invoice.invoiceNumberDisplay} Maliye e-fatura sisteminden iptal edilecek, ardından CRM’de İptal olacak.'
+                    '${invoice.isLinkedToAkinsoft ? ' SAP kaydı da Wolvox’ta iptal işaretlenir.' : ''}\n\nBu işlem geri alınamaz.'
+              : '${invoice.invoiceNumberDisplay} CRM’de iptal edilecek. Maliye’ye gönderilmemiş.'
+                    '${invoice.isLinkedToAkinsoft ? ' SAP kaydı da Wolvox’ta iptal işaretlenir.' : ''}',
         ),
         actions: [
           TextButton(
@@ -6953,14 +7011,19 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           'invoiceId': invoice.id,
         },
       );
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
+      final sapNote = await cancelLinkedAkinsoftInvoice(
+        settings: settings,
+        invoice: invoice,
+      );
       if (!mounted) return;
       ref.invalidate(invoicesProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             onMaliye
-                ? '${invoice.invoiceNumberDisplay} Maliye’den iptal edildi.'
-                : '${invoice.invoiceNumberDisplay} iptal edildi.',
+                ? '${invoice.invoiceNumberDisplay} Maliye’den iptal edildi.$sapNote'
+                : '${invoice.invoiceNumberDisplay} iptal edildi.$sapNote',
           ),
         ),
       );

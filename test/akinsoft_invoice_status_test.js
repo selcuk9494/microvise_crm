@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
   akinsoftCariHrEvrakVariants,
   akinsoftInvoiceSerialCore,
+  buildAkinsoftInvoiceCancelAssignments,
   mapCariHrRowToInvoiceNumber,
   resolveAkinsoftCariHrInvoiceNumber,
   resolveAkinsoftCariHrPayment,
@@ -191,4 +192,17 @@ test('Wolvox FTK kapama tahsilatı faturaya bağlanır', () => {
     ),
     '2026-1-00000000069',
   );
+});
+
+test('SAP fatura iptali IPTAL ve durum kolonlarını doldurur', () => {
+  const sets = buildAkinsoftInvoiceCancelAssignments([
+    'IPTAL',
+    'FATURA_DURUMU',
+    'DEGISTIREN',
+    'DEGISTIRME_TARIHI',
+  ]);
+  assert.ok(sets.includes('IPTAL = 1'));
+  assert.ok(sets.includes(`FATURA_DURUMU = N'IPTAL'`));
+  assert.ok(sets.includes(`DEGISTIREN = N'MICROVISE'`));
+  assert.equal(buildAkinsoftInvoiceCancelAssignments(['CARIKODU']).length, 0);
 });

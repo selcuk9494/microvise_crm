@@ -389,6 +389,18 @@ function resolveAkinsoftCariHrPayment(
   return { paidAmount: 0, status: 'open', reliable: true, source: 'movement' };
 }
 
+function buildAkinsoftInvoiceCancelAssignments(columnSet) {
+  const columns = columnSet instanceof Set ? columnSet : new Set(columnSet || []);
+  const sets = [];
+  if (columns.has('IPTAL')) sets.push('IPTAL = 1');
+  if (columns.has('FATURA_IPTAL')) sets.push('FATURA_IPTAL = 1');
+  if (columns.has('IPTAL_MI')) sets.push('IPTAL_MI = 1');
+  if (columns.has('FATURA_DURUMU')) sets.push(`FATURA_DURUMU = N'IPTAL'`);
+  if (columns.has('DEGISTIREN')) sets.push(`DEGISTIREN = N'MICROVISE'`);
+  if (columns.has('DEGISTIRME_TARIHI')) sets.push('DEGISTIRME_TARIHI = getdate()');
+  return sets;
+}
+
 module.exports = {
   AKINSOFT_CARIHR_EVRAK_NO_MAX_LEN,
   AKINSOFT_CLOSED_FLAG_FIELDS,
@@ -402,4 +414,5 @@ module.exports = {
   resolveAkinsoftCariHrInvoiceNumber,
   resolveAkinsoftCariHrPayment,
   resolveAkinsoftInvoicePayment,
+  buildAkinsoftInvoiceCancelAssignments,
 };

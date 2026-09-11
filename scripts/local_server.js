@@ -12,6 +12,7 @@ const {
   mapCariHrRowToInvoiceNumber,
   resolveAkinsoftCariHrPayment,
   resolveAkinsoftInvoicePayment,
+  buildAkinsoftInvoiceCancelAssignments,
 } = require(path.join(rootDir, 'api', '_lib', 'akinsoft_invoice_status.js'));
 const akinsoftJobs = new Map();
 
@@ -6579,6 +6580,171 @@ async function retireAkinsoftInvoiceChildren(
   }
 }
 
+async function cancelAkinsoftInvoiceRecord(pool, sql, faturaBlkodu) {
+  const id = Number(faturaBlkodu);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, reason: 'SAP fatura kodu geçersiz.' };
+  }
+  if (await akinsoftInvoiceHasFtkCollections(pool, sql, id)) {
+    return {
+      ok: false,
+      reason:
+        'Tahsilatı olan SAP faturası iptal edilemez. Önce tahsilatı geri alın.',
+    };
+  }
+  if (!(await akinsoftTableExists(pool, 'FATURA'))) {
+    return { ok: false, reason: 'Akınsoft FATURA tablosu bulunamadı.' };
+  }
+  const faturaColumns = await akinsoftTableColumnSet(pool, 'FATURA');
+  const assignments = buildAkinsoftInvoiceCancelAssignments(faturaColumns);
+  if (!assignments.length) {
+    return { ok: false, reason: 'SAP FATURA tablosunda iptal kolonu yok.' };
+  }
+  const hasFaturaKdv = await akinsoftTableExists(pool, 'FATURA_KDV');
+  const hasFaturaKur = await akinsoftTableExists(pool, 'FATURA_KUR');
+  const hasCariHr = await akinsoftTableExists(pool, 'CARIHR');
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    const txRequest = () => new sql.Request(transaction);
+    await retireAkinsoftInvoiceChildren(txRequest, sql, id, {
+      hasFaturaKdv,
+      hasFaturaKur,
+      hasCariHr,
+    });
+    const req = txRequest();
+    req.input('id', sql.BigInt, id);
+    await req.query(`
+      update dbo.FATURA
+      set ${assignments.join(', ')}
+      where BLKODU = @id
+    `);
+    await transaction.commit();
+    return { ok: true, sourceId: String(id) };
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (_) {}
+    return {
+      ok: false,
+      reason: describeAkinsoftSqlError(error),
+    };
+  }
+}
+
+async function handleAkinsoftCancelInvoice(req, res) {
+  if (req.method !== 'POST') {
+    return send(
+      res,
+      405,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: false, error: 'POST gerekli.' }),
+    );
+  }
+  const body = await readJson(req);
+  const invoiceIds = Array.isArray(body.invoiceIds)
+    ? body.invoiceIds.map((id) => String(id || '').trim()).filter(Boolean)
+    : [];
+  const directSourceId = String(body.invoiceSourceId || '').trim();
+  if (!invoiceIds.length && !directSourceId) {
+    return send(
+      res,
+      400,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: false, error: 'invoiceIds gerekli.' }),
+    );
+  }
+
+  const { query } = require(path.join(rootDir, 'api', '_lib', 'db.js'));
+  await ensureAkinsoftSyncMap(query);
+  const mapped = invoiceIds.length
+    ? await query(
+        `
+          select
+            i.id,
+            i.invoice_number,
+            m.source_id as akinsoft_source_id
+          from public.invoices i
+          left join public.akinsoft_sync_map m
+            on m.source_system = 'akinsoft'
+           and m.source_type = 'invoice'
+           and m.local_id = i.id
+          where i.id = any($1::uuid[])
+        `,
+        [invoiceIds],
+      )
+    : { rows: [] };
+
+  const items = [];
+  const targets = [];
+  if (directSourceId && !invoiceIds.length) {
+    targets.push({
+      invoiceId: null,
+      invoiceNumber: textOrNull(body.invoiceNumber),
+      sourceId: directSourceId,
+    });
+  }
+  for (const invoiceId of invoiceIds) {
+    const row = (mapped.rows || []).find((item) => String(item.id) === invoiceId);
+    const sourceId = textOrNull(row?.akinsoft_source_id);
+    if (!sourceId) {
+      items.push({
+        invoiceId,
+        invoiceNumber: textOrNull(row?.invoice_number),
+        ok: true,
+        skipped: true,
+        reason: 'SAP kaydı yok.',
+      });
+      continue;
+    }
+    targets.push({
+      invoiceId,
+      invoiceNumber: textOrNull(row?.invoice_number),
+      sourceId,
+    });
+  }
+
+  if (!targets.length) {
+    return send(
+      res,
+      200,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ ok: true, items }),
+    );
+  }
+
+  const sql = require('mssql');
+  const { config } = await buildAkinsoftSqlConfig(body.settings || body);
+  const pool = await connectAkinsoftPool(config);
+  try {
+    for (const target of targets) {
+      const result = await cancelAkinsoftInvoiceRecord(pool, sql, target.sourceId);
+      items.push({
+        invoiceId: target.invoiceId,
+        invoiceNumber: target.invoiceNumber,
+        sourceId: target.sourceId,
+        ...result,
+      });
+    }
+  } finally {
+    try {
+      await pool.close();
+    } catch (_) {}
+  }
+
+  const failed = items.filter((item) => item.ok === false);
+  return send(
+    res,
+    failed.length && failed.length === items.length ? 400 : 200,
+    { 'Content-Type': 'application/json; charset=utf-8' },
+    JSON.stringify({
+      ok: failed.length === 0,
+      items,
+      error: failed[0]?.reason,
+    }),
+  );
+}
+
 async function attemptWriteAkinsoftInvoiceCreate(pool, sql, query, invoice) {
   const invoiceId = textOrNull(invoice.id);
   const maliyeNumber = localEInvoiceNumber(invoice.e_invoice_number);
@@ -8216,6 +8382,7 @@ async function handleAkinsoftRequest(req, res) {
     '/api/akinsoft/duplicate-customers': handleAkinsoftDuplicateCustomers,
     '/api/akinsoft/push-invoice-numbers': handleAkinsoftPushInvoiceNumbers,
     '/api/akinsoft/push-invoices': handleAkinsoftPushInvoices,
+    '/api/akinsoft/cancel-invoice': handleAkinsoftCancelInvoice,
     ...financeRoutes,
   };
   for (const [key, handler] of Object.entries(financeRoutes)) {
