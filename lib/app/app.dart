@@ -84,7 +84,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     return MaterialApp.router(
       key: ValueKey(AppTheme.brightness),
       debugShowCheckedModeBanner: false,
-      title: 'Microvise CRM',
+      title: 'Microvise ERP CRM',
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,

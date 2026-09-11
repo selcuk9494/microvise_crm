@@ -96,7 +96,7 @@ class NavFavoritesNotifier extends Notifier<List<String>> {
       navFavoritesCacheKey(profile?.id),
       decode: decodeNavFavoritePaths,
     );
-    if (stored == null) {
+    if (stored == null || stored.value.isEmpty) {
       return profile?.isBankLike == true
           ? const <String>[]
           : List<String>.of(kDefaultNavFavoritePaths);

@@ -8,14 +8,13 @@ import '../../app/theme/theme_mode_provider.dart';
 import '../../core/auth/auth_providers.dart';
 import '../../core/auth/user_profile_provider.dart';
 import '../../core/supabase/supabase_providers.dart';
-import '../../core/ui/app_breakpoints.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_phosphor_icons.dart';
 import 'nav_favorites.dart';
 
 class _FormsNavExpandedNotifier extends Notifier<bool> {
   @override
-  bool build() => false;
+  bool build() => true;
 
   void toggle() => state = !state;
 
@@ -139,42 +138,14 @@ class _DesktopShell extends ConsumerWidget {
 
   final Widget child;
 
-  static const _sidebarWidth = 260.0;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final location = GoRouterState.of(context).matchedLocation;
-    final allowedPages = ref.watch(currentUserPagePermissionsProvider);
-    final isBankUser =
-        ref.watch(currentUserProfileProvider).value?.isBankLike ?? false;
-    final items = _visibleNavItems(
-      allowedPages: allowedPages,
-      isBankUser: isBankUser,
-    );
-    final favoritePaths = ref.watch(navFavoritesProvider);
-    final favorites = resolveNavFavorites(
-      paths: favoritePaths,
-      catalog: _navFavoriteCatalog(
-        allowedPages: allowedPages,
-        isBankUser: isBankUser,
-      ),
-    );
-    final favoritePathSet = favorites.map((item) => item.path).toSet();
-    final mainItems = items
-        .where((item) {
-          final hasChildren = _mobileNavSubItems(
-            item,
-            allowedPages,
-          ).any((sub) => sub.path != item.path);
-          if (hasChildren) return true;
-          return !favoritePathSet.contains(item.path);
-        })
-        .toList(growable: false);
-
-    final isFormsExpanded = ref.watch(formsNavExpandedProvider);
-    final isEInvoiceExpanded = ref.watch(eInvoiceNavExpandedProvider);
-    final isFinanceExpanded = ref.watch(financeNavExpandedProvider);
-    final isMutakabatExpanded = ref.watch(mutakabatNavExpandedProvider);
+    Future<void> signOut() async {
+      ref.read(apiAccessTokenProvider.notifier).clear(persist: true);
+      final client = ref.read(supabaseClientProvider);
+      await client?.auth.signOut();
+      if (context.mounted) context.go('/giris');
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -182,277 +153,7 @@ class _DesktopShell extends ConsumerWidget {
         decoration: AppTheme.pageCanvas,
         child: Row(
           children: [
-            Container(
-              width: _sidebarWidth,
-              decoration: BoxDecoration(
-                color: AppTheme.sidebar,
-                border: Border(
-                  right: BorderSide(
-                    color: AppTheme.isDark
-                        ? AppTheme.borderStrong.withValues(alpha: 0.55)
-                        : AppTheme.border.withValues(alpha: 0.85),
-                  ),
-                ),
-              ),
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _BrandHeader(
-                        subtitle: isBankUser ? 'WebCR' : 'CRM',
-                        onTap: () =>
-                            context.go(isBankUser ? '/banka-panel' : '/panel'),
-                      ),
-                      const Gap(6),
-                      const _ExecutiveSearchField(),
-                      const Gap(6),
-                      Expanded(
-                        child: CustomScrollView(
-                          slivers: [
-                            const SliverToBoxAdapter(
-                              child: _ExecutiveSectionLabel(title: 'Favoriler'),
-                            ),
-                            const SliverToBoxAdapter(child: Gap(2)),
-                            if (favorites.isEmpty)
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    10,
-                                    2,
-                                    10,
-                                    8,
-                                  ),
-                                  child: Text(
-                                    'Menüdeki pin ile ekleyin, sürükleyerek sıralayın.',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(
-                                          color: AppTheme.sidebarTextMuted,
-                                          height: 1.35,
-                                        ),
-                                  ),
-                                ),
-                              )
-                            else
-                              SliverReorderableList(
-                                itemCount: favorites.length,
-                                onReorder: (oldIndex, newIndex) {
-                                  ref
-                                      .read(navFavoritesProvider.notifier)
-                                      .reorder(oldIndex, newIndex);
-                                },
-                                proxyDecorator: (child, index, animation) {
-                                  return AnimatedBuilder(
-                                    animation: animation,
-                                    builder: (context, _) {
-                                      final t = Curves.easeOut.transform(
-                                        animation.value,
-                                      );
-                                      return Material(
-                                        elevation: 1 + 5 * t,
-                                        color: AppTheme.sidebar,
-                                        shadowColor: Colors.black26,
-                                        borderRadius: BorderRadius.circular(
-                                          AppTheme.radiusXs,
-                                        ),
-                                        child: child,
-                                      );
-                                    },
-                                  );
-                                },
-                                itemBuilder: (context, index) {
-                                  final favorite = favorites[index];
-                                  return _ExecutiveFavoriteItem(
-                                    key: ValueKey(favorite.path),
-                                    favorite: favorite,
-                                    active: _isActive(location, favorite.path),
-                                    dragIndex: index,
-                                    onTap: () => context.go(favorite.path),
-                                    onUnpin: () => ref
-                                        .read(navFavoritesProvider.notifier)
-                                        .toggle(favorite.path),
-                                  );
-                                },
-                              ),
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.only(
-                                  top: 4,
-                                  bottom: 4,
-                                ),
-                                child: Divider(
-                                  height: 1,
-                                  color: AppTheme.border.withValues(alpha: 0.7),
-                                ),
-                              ),
-                            ),
-                            SliverList(
-                              delegate: SliverChildListDelegate([
-                                for (final item in mainItems) ...[
-                                  if (item.path == '/formlar' && !isBankUser)
-                                    _FormsNavGroup(
-                                      label: item.label,
-                                      icon: item.icon,
-                                      path: item.path,
-                                      active: _isActive(location, item.path),
-                                      accentColor: _navAccentColor(
-                                        item.pageKey,
-                                      ),
-                                      expanded: isFormsExpanded,
-                                      favoritePaths: favoritePathSet,
-                                      onToggleFavorite: (path) => ref
-                                          .read(navFavoritesProvider.notifier)
-                                          .toggle(path),
-                                      onHeaderTap: () {
-                                        ref
-                                            .read(
-                                              formsNavExpandedProvider.notifier,
-                                            )
-                                            .toggle();
-                                        if (!isFormsExpanded) {
-                                          context.go(item.path);
-                                        }
-                                      },
-                                      subItems: _formsNavSubItems(isBankUser),
-                                      matchedLocation: location,
-                                    )
-                                  else if (item.pageKey == 'e_fatura')
-                                    _FormsNavGroup(
-                                      label: 'Faturalar',
-                                      icon: item.icon,
-                                      path: item.path,
-                                      active:
-                                          _isActive(location, item.path) ||
-                                          _isActive(
-                                            location,
-                                            '/e-fatura/teklif',
-                                          ),
-                                      accentColor: _navAccentColor(
-                                        item.pageKey,
-                                      ),
-                                      expanded: isEInvoiceExpanded,
-                                      favoritePaths: favoritePathSet,
-                                      onToggleFavorite: (path) => ref
-                                          .read(navFavoritesProvider.notifier)
-                                          .toggle(path),
-                                      onHeaderTap: () {
-                                        ref
-                                            .read(
-                                              eInvoiceNavExpandedProvider
-                                                  .notifier,
-                                            )
-                                            .toggle();
-                                        context.go('/e-fatura/satis');
-                                      },
-                                      subItems: _eInvoiceNavSubItems(
-                                        allowedPages,
-                                      ),
-                                      matchedLocation: location,
-                                    )
-                                  else if (item.pageKey == 'finans')
-                                    _FormsNavGroup(
-                                      label: item.label,
-                                      icon: item.icon,
-                                      path: item.path,
-                                      active: _isActive(location, item.path),
-                                      accentColor: _navAccentColor(
-                                        item.pageKey,
-                                      ),
-                                      expanded: isFinanceExpanded,
-                                      favoritePaths: favoritePathSet,
-                                      onToggleFavorite: (path) => ref
-                                          .read(navFavoritesProvider.notifier)
-                                          .toggle(path),
-                                      onHeaderTap: () {
-                                        ref
-                                            .read(
-                                              financeNavExpandedProvider
-                                                  .notifier,
-                                            )
-                                            .toggle();
-                                        context.go(item.path);
-                                      },
-                                      subItems: _financeNavSubItems,
-                                      matchedLocation: location,
-                                    )
-                                  else if (item.pageKey == 'mutakabat')
-                                    _FormsNavGroup(
-                                      label: item.label,
-                                      icon: item.icon,
-                                      path: item.path,
-                                      active: _isActive(location, item.path),
-                                      accentColor: _navAccentColor(
-                                        item.pageKey,
-                                      ),
-                                      expanded: isMutakabatExpanded,
-                                      favoritePaths: favoritePathSet,
-                                      onToggleFavorite: (path) => ref
-                                          .read(navFavoritesProvider.notifier)
-                                          .toggle(path),
-                                      onHeaderTap: () {
-                                        ref
-                                            .read(
-                                              mutakabatNavExpandedProvider
-                                                  .notifier,
-                                            )
-                                            .toggle();
-                                        context.go(item.path);
-                                      },
-                                      subItems: const [
-                                        _FormsNavSubItem(
-                                          label: 'Aylık Kayıtlar',
-                                          path: '/mutakabat',
-                                        ),
-                                        _FormsNavSubItem(
-                                          label: 'Birim Fiyatlar',
-                                          path: '/mutakabat/fiyatlar',
-                                        ),
-                                      ],
-                                      matchedLocation: location,
-                                    )
-                                  else
-                                    _SidebarItem(
-                                      label: item.label,
-                                      icon: item.icon,
-                                      active: _isActive(location, item.path),
-                                      accentColor: _navAccentColor(
-                                        item.pageKey,
-                                      ),
-                                      pinned: favoritePathSet.contains(
-                                        item.path,
-                                      ),
-                                      onTap: () => context.go(item.path),
-                                      onToggleFavorite: () => ref
-                                          .read(navFavoritesProvider.notifier)
-                                          .toggle(item.path),
-                                    ),
-                                  const Gap(1),
-                                ],
-                              ]),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Gap(6),
-                      _AccountCard(
-                        profile: ref.watch(currentUserProfileProvider).value,
-                        onSignOut: () async {
-                          ref
-                              .read(apiAccessTokenProvider.notifier)
-                              .clear(persist: true);
-                          final client = ref.read(supabaseClientProvider);
-                          await client?.auth.signOut();
-                          if (context.mounted) context.go('/giris');
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            _DesktopCorporateSidebar(onSignOut: signOut),
             Expanded(
               child: Column(
                 children: [
@@ -470,64 +171,713 @@ class _DesktopShell extends ConsumerWidget {
   }
 }
 
-class _ExecutiveFavoriteItem extends StatelessWidget {
-  const _ExecutiveFavoriteItem({
-    super.key,
-    required this.favorite,
-    required this.active,
-    required this.dragIndex,
-    required this.onTap,
-    required this.onUnpin,
-  });
+String _desktopNavLabel(_NavItem item) {
+  if (item.pageKey == 'e_fatura') return 'Faturalar';
+  return item.label;
+}
 
-  final NavFavoriteTarget favorite;
-  final bool active;
-  final int dragIndex;
-  final VoidCallback onTap;
-  final VoidCallback onUnpin;
+class _CorporateNav {
+  static const width = 248.0;
+  static const background = Color(0xFF07111F);
+  static const selected = Color(0xFF163056);
+  static const hover = Color(0xFF10243F);
+  static const field = Color(0xFF0C1A2E);
+  static const line = Color(0xFF243656);
+  static const muted = Color(0xFF8AA0B8);
+  static const faint = Color(0xFF6B8199);
+  static const text = Color(0xFFE8EEF6);
+  static const accent = Color(0xFF3B82F6);
+}
+
+class _CorporateNavEntry {
+  const _CorporateNavEntry({required this.item, required this.subs});
+
+  final _NavItem item;
+  final List<_FormsNavSubItem> subs;
+}
+
+class _CorporateNavSection {
+  const _CorporateNavSection({required this.title, required this.entries});
+
+  final String title;
+  final List<_CorporateNavEntry> entries;
+}
+
+String _corporateSectionTitle(_NavItem item, {required bool isBankUser}) {
+  if (isBankUser) return 'GENEL';
+  switch (item.pageKey) {
+    case 'panel':
+    case 'musteriler':
+      return 'GENEL';
+    case 'formlar':
+    case 'tsm_log':
+    case 'is_emirleri':
+    case 'servis':
+    case 'urunler':
+      return 'OPERASYON';
+    case 'e_fatura':
+    case 'faturalama':
+      return 'SATIŞ';
+    case 'finans':
+    case 'mutakabat':
+    case 'kdv_analizi':
+    case 'raporlar':
+      return 'FİNANS';
+    default:
+      return 'YÖNETİM';
+  }
+}
+
+List<_CorporateNavSection> _corporateNavSections({
+  required List<_NavItem> items,
+  required Set<String> allowedPages,
+  required bool isBankUser,
+}) {
+  const order = ['GENEL', 'OPERASYON', 'SATIŞ', 'FİNANS', 'YÖNETİM'];
+  final buckets = {for (final title in order) title: <_CorporateNavEntry>[]};
+  for (final item in items) {
+    buckets[_corporateSectionTitle(item, isBankUser: isBankUser)]!.add(
+      _CorporateNavEntry(
+        item: item,
+        subs: _navSubItemsForItem(
+          item,
+          allowedPages: allowedPages,
+          isBankUser: isBankUser,
+        ),
+      ),
+    );
+  }
+  return [
+    for (final title in order)
+      if (buckets[title]!.isNotEmpty)
+        _CorporateNavSection(title: title, entries: buckets[title]!),
+  ];
+}
+
+bool _navQueryMatches(String query, String label) {
+  if (query.isEmpty) return true;
+  return label.toLowerCase().contains(query);
+}
+
+bool _corporateGroupExpanded(
+  WidgetRef ref,
+  _NavItem item, {
+  required bool force,
+}) {
+  if (force) return true;
+  switch (item.pageKey) {
+    case 'formlar':
+      if (item.path != '/formlar') return true;
+      return ref.watch(formsNavExpandedProvider);
+    case 'e_fatura':
+      return ref.watch(eInvoiceNavExpandedProvider);
+    case 'finans':
+      return ref.watch(financeNavExpandedProvider);
+    case 'mutakabat':
+      return ref.watch(mutakabatNavExpandedProvider);
+    default:
+      return true;
+  }
+}
+
+void _toggleCorporateGroup(WidgetRef ref, _NavItem item) {
+  if (item.pageKey == 'formlar' && item.path == '/formlar') {
+    ref.read(formsNavExpandedProvider.notifier).toggle();
+    return;
+  }
+  if (item.pageKey == 'e_fatura') {
+    ref.read(eInvoiceNavExpandedProvider.notifier).toggle();
+    return;
+  }
+  if (item.pageKey == 'finans') {
+    ref.read(financeNavExpandedProvider.notifier).toggle();
+    return;
+  }
+  if (item.pageKey == 'mutakabat') {
+    ref.read(mutakabatNavExpandedProvider.notifier).toggle();
+  }
+}
+
+class _DesktopCorporateSidebar extends ConsumerStatefulWidget {
+  const _DesktopCorporateSidebar({required this.onSignOut});
+
+  final VoidCallback onSignOut;
+
+  @override
+  ConsumerState<_DesktopCorporateSidebar> createState() =>
+      _DesktopCorporateSidebarState();
+}
+
+class _DesktopCorporateSidebarState
+    extends ConsumerState<_DesktopCorporateSidebar> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        height: 32,
-        decoration: AppTheme.sidebarNavDecoration(active: active),
-        padding: const EdgeInsets.fromLTRB(4, 0, 2, 0),
-        child: Row(
-          children: [
-            ReorderableDragStartListener(
-              index: dragIndex,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Icon(
-                  Icons.drag_indicator,
-                  size: 14,
-                  color: AppTheme.sidebarTextMuted,
-                ),
-              ),
-            ),
-            AppPhosphorIcon(
-              favorite.icon,
-              size: 15,
-              color: active ? AppTheme.primary : AppTheme.sidebarTextMuted,
-            ),
-            const Gap(6),
-            Expanded(
-              child: Text(
-                favorite.label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  color: AppTheme.sidebarNavFg(active: active),
-                  fontSize: 12.5,
-                ),
-              ),
-            ),
-            _NavPinButton(pinned: true, onPressed: onUnpin),
-          ],
+    final location = GoRouterState.of(context).matchedLocation;
+    final allowedPages = ref.watch(currentUserPagePermissionsProvider);
+    final profile = ref.watch(currentUserProfileProvider).value;
+    final isBankUser = profile?.isBankLike ?? false;
+    final items = _visibleNavItems(
+      allowedPages: allowedPages,
+      isBankUser: isBankUser,
+    );
+    final query = _query.toLowerCase().trim();
+    final searching = query.isNotEmpty;
+    final sections = _corporateNavSections(
+      items: items,
+      allowedPages: allowedPages,
+      isBankUser: isBankUser,
+    );
+    final homePath = isBankUser ? '/banka-panel' : '/panel';
+    final favoritePaths = ref.watch(navFavoritesProvider);
+    final favorites = resolveNavFavorites(
+      paths: favoritePaths,
+      catalog: _navFavoriteCatalog(
+        allowedPages: allowedPages,
+        isBankUser: isBankUser,
+      ),
+    );
+    final visibleFavorites = () {
+      final filtered = searching
+          ? favorites
+                .where((item) => _navQueryMatches(query, item.label))
+                .toList(growable: false)
+          : favorites;
+      if (filtered.isNotEmpty || searching || isBankUser) return filtered;
+      return resolveNavFavorites(
+        paths: kDefaultNavFavoritePaths,
+        catalog: _navFavoriteCatalog(
+          allowedPages: allowedPages,
+          isBankUser: isBankUser,
         ),
+      );
+    }();
+    final pinned = favoritePaths.toSet();
+
+    return Material(
+      color: _CorporateNav.background,
+      child: SizedBox(
+        width: _CorporateNav.width,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CorporateBrandHeader(
+                  onTap: () => context.go(homePath),
+                ),
+                const Gap(14),
+                _CorporateSearchField(
+                  controller: _searchController,
+                  onChanged: (value) => setState(() => _query = value),
+                  onClear: () {
+                    _searchController.clear();
+                    setState(() => _query = '');
+                  },
+                ),
+                const Gap(14),
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      if (visibleFavorites.isNotEmpty) ...[
+                        const _CorporateSectionLabel(title: 'FAVORİLER'),
+                        const Gap(4),
+                        for (final favorite in visibleFavorites) ...[
+                          _CorporateNavRow(
+                            label: favorite.label,
+                            icon: favorite.icon,
+                            active: _isActive(location, favorite.path),
+                            pinned: true,
+                            pinAlwaysVisible: true,
+                            onTap: () => context.go(favorite.path),
+                            onTogglePin: () => ref
+                                .read(navFavoritesProvider.notifier)
+                                .toggle(favorite.path),
+                          ),
+                          const Gap(2),
+                        ],
+                        const Gap(10),
+                      ],
+                      for (final section in sections)
+                        ..._sectionSlivers(
+                          section: section,
+                          location: location,
+                          query: query,
+                          searching: searching,
+                          pinned: pinned,
+                        ),
+                    ],
+                  ),
+                ),
+                const Gap(10),
+                _CorporateAccountFooter(
+                  profile: profile,
+                  onSignOut: widget.onSignOut,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _sectionSlivers({
+    required _CorporateNavSection section,
+    required String location,
+    required String query,
+    required bool searching,
+    required Set<String> pinned,
+  }) {
+    final visible = <_CorporateNavEntry>[];
+    final filteredSubs = <String, List<_FormsNavSubItem>>{};
+    for (final entry in section.entries) {
+      final parentMatch = _navQueryMatches(
+        query,
+        _desktopNavLabel(entry.item),
+      );
+      final matchingSubs = entry.subs
+          .where((sub) => _navQueryMatches(query, sub.label))
+          .toList(growable: false);
+      if (!parentMatch && matchingSubs.isEmpty) continue;
+      visible.add(entry);
+      filteredSubs[entry.item.path] = parentMatch || !searching
+          ? entry.subs
+          : matchingSubs;
+    }
+    if (visible.isEmpty) return const [];
+
+    return [
+      _CorporateSectionLabel(title: section.title),
+      const Gap(4),
+      for (final entry in visible) ...[
+        _corporateEntry(
+          entry: entry,
+          location: location,
+          subs: filteredSubs[entry.item.path] ?? entry.subs,
+          searching: searching,
+          pinned: pinned,
+        ),
+        const Gap(2),
+      ],
+      const Gap(10),
+    ];
+  }
+
+  Widget _corporateEntry({
+    required _CorporateNavEntry entry,
+    required String location,
+    required List<_FormsNavSubItem> subs,
+    required bool searching,
+    required Set<String> pinned,
+  }) {
+    final childActive = subs.any((sub) => _isActive(location, sub.path));
+    final parentActive =
+        _isActive(location, entry.item.path) && !childActive;
+    final expanded = subs.isEmpty
+        ? false
+        : _corporateGroupExpanded(ref, entry.item, force: searching);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _CorporateNavRow(
+          label: _desktopNavLabel(entry.item),
+          icon: entry.item.icon,
+          active: parentActive || (childActive && !expanded),
+          expandable: subs.isNotEmpty,
+          expanded: expanded,
+          pinned: pinned.contains(entry.item.path),
+          onTogglePin: () => ref
+              .read(navFavoritesProvider.notifier)
+              .toggle(entry.item.path),
+          onTap: () {
+            if (subs.isEmpty) {
+              context.go(entry.item.path);
+              return;
+            }
+            if (!expanded) {
+              if (!searching) _toggleCorporateGroup(ref, entry.item);
+              if (!childActive && !parentActive) {
+                context.go(subs.first.path);
+              }
+              return;
+            }
+            if (childActive || parentActive) {
+              if (!searching) _toggleCorporateGroup(ref, entry.item);
+              return;
+            }
+            context.go(subs.first.path);
+          },
+        ),
+        if (subs.isNotEmpty && expanded)
+          for (final sub in subs)
+            _CorporateNavRow(
+              label: sub.label,
+              icon: entry.item.icon,
+              active: _isActive(location, sub.path),
+              indent: true,
+              pinned: pinned.contains(sub.path),
+              onTogglePin: () =>
+                  ref.read(navFavoritesProvider.notifier).toggle(sub.path),
+              onTap: () => context.go(sub.path),
+            ),
+      ],
+    );
+  }
+}
+
+class _CorporateBrandHeader extends StatelessWidget {
+  const _CorporateBrandHeader({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Microvise ERP CRM',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _brandLogoImage(height: 24),
+              const Gap(4),
+              const Text(
+                'Microvise ERP CRM',
+                style: TextStyle(
+                  color: Color(0xFFC5D4E6),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.15,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CorporateSearchField extends StatelessWidget {
+  const _CorporateSearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasQuery = controller.text.isNotEmpty;
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      style: const TextStyle(color: _CorporateNav.text, fontSize: 13),
+      cursorColor: _CorporateNav.accent,
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Ara…',
+        hintStyle: const TextStyle(color: _CorporateNav.faint, fontSize: 13),
+        filled: true,
+        fillColor: _CorporateNav.field,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
+        ),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 34,
+          minHeight: 32,
+        ),
+        prefixIcon: const Icon(
+          AppPhosphorIcons.magnifyingGlass,
+          size: 16,
+          color: _CorporateNav.muted,
+        ),
+        suffixIcon: hasQuery
+            ? IconButton(
+                tooltip: 'Temizle',
+                onPressed: onClear,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  AppPhosphorIcons.x,
+                  size: 14,
+                  color: _CorporateNav.muted,
+                ),
+              )
+            : null,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _CorporateNav.line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _CorporateNav.accent),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _CorporateNav.line),
+        ),
+      ),
+    );
+  }
+}
+
+class _CorporateSectionLabel extends StatelessWidget {
+  const _CorporateSectionLabel({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: _CorporateNav.faint,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.7,
+          fontSize: 10.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _CorporateNavRow extends StatelessWidget {
+  const _CorporateNavRow({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.onTap,
+    this.indent = false,
+    this.expandable = false,
+    this.expanded = false,
+    this.pinned = false,
+    this.pinAlwaysVisible = false,
+    this.onTogglePin,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+  final bool indent;
+  final bool expandable;
+  final bool expanded;
+  final bool pinned;
+  final bool pinAlwaysVisible;
+  final VoidCallback? onTogglePin;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? Colors.white : _CorporateNav.muted;
+    return _CorporateHoverScope(
+      builder: (context, hovered) {
+        final showPin =
+            onTogglePin != null && (hovered || pinAlwaysVisible);
+        return InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          hoverColor: _CorporateNav.hover,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            constraints: const BoxConstraints(minHeight: 34),
+            padding: EdgeInsets.fromLTRB(indent ? 22 : 8, 6, 4, 6),
+            decoration: BoxDecoration(
+              color: active ? _CorporateNav.selected : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                if (indent)
+                  Container(
+                    width: 5,
+                    height: 5,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: AppPhosphorIcon(icon, size: 16, color: color),
+                  ),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                      fontSize: indent ? 13 : 13.5,
+                    ),
+                  ),
+                ),
+                if (onTogglePin != null)
+                  IgnorePointer(
+                    ignoring: !showPin,
+                    child: Opacity(
+                      opacity: showPin ? 1 : 0,
+                      child: IconButton(
+                        tooltip: pinned
+                            ? 'Kısayollardan çıkar'
+                            : 'Kısayollara ekle',
+                        onPressed: onTogglePin,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 28,
+                          minHeight: 28,
+                        ),
+                        icon: Icon(
+                          pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                          size: 13,
+                          color: pinned
+                              ? const Color(0xFF93C5FD)
+                              : _CorporateNav.faint,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (expandable)
+                  Icon(
+                    expanded
+                        ? AppPhosphorIcons.caretUp
+                        : AppPhosphorIcons.caretDown,
+                    size: 12,
+                    color: _CorporateNav.faint,
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CorporateHoverScope extends StatefulWidget {
+  const _CorporateHoverScope({required this.builder});
+
+  final Widget Function(BuildContext context, bool hovered) builder;
+
+  @override
+  State<_CorporateHoverScope> createState() => _CorporateHoverScopeState();
+}
+
+class _CorporateHoverScopeState extends State<_CorporateHoverScope> {
+  var _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) {
+        if (!_hovered) setState(() => _hovered = true);
+      },
+      onExit: (_) {
+        if (_hovered) setState(() => _hovered = false);
+      },
+      child: widget.builder(context, _hovered),
+    );
+  }
+}
+
+class _CorporateAccountFooter extends StatelessWidget {
+  const _CorporateAccountFooter({
+    required this.profile,
+    required this.onSignOut,
+  });
+
+  final UserProfile? profile;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (profile?.fullName ?? '').trim();
+    final role = profile?.role == 'admin'
+        ? 'Admin'
+        : (profile?.isBankLike ?? false)
+        ? 'Banka Personeli'
+        : 'Personel';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _CorporateNav.line),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 15,
+            backgroundColor: _CorporateNav.accent,
+            child: Text(
+              _accountInitial(name),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const Gap(8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name.isEmpty ? 'Hesap' : name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _CorporateNav.text,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  role,
+                  style: const TextStyle(
+                    color: _CorporateNav.faint,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Çıkış Yap',
+            onPressed: onSignOut,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(
+              AppPhosphorIcons.signOut,
+              size: 16,
+              color: _CorporateNav.muted,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -551,66 +901,6 @@ class _NavPinButton extends StatelessWidget {
         pinned ? Icons.push_pin : Icons.push_pin_outlined,
         size: 13,
         color: pinned ? AppTheme.primary : AppTheme.sidebarTextMuted,
-      ),
-    );
-  }
-}
-
-class _ExecutiveSectionLabel extends StatelessWidget {
-  const _ExecutiveSectionLabel({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
-      child: Text(
-        title.toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: AppTheme.sidebarTextMuted,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-        ),
-      ),
-    );
-  }
-}
-
-class _ExecutiveSearchField extends StatelessWidget {
-  const _ExecutiveSearchField();
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'Ara…',
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        prefixIconConstraints: const BoxConstraints(
-          minWidth: 32,
-          minHeight: 28,
-        ),
-        prefixIcon: const Icon(AppPhosphorIcons.magnifyingGlass, size: 16),
-        suffixIcon: Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceMuted,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Text(
-              '⌘K',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: AppTheme.textMuted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-        suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
       ),
     );
   }
@@ -1337,62 +1627,6 @@ Widget _brandLogoImage({
   );
 }
 
-class _BrandHeader extends StatelessWidget {
-  const _BrandHeader({required this.onTap, required this.subtitle});
-
-  final VoidCallback onTap;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    // Same horizontal inset as _SidebarItem (10) so wordmark lines up with nav icons.
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _brandLogoImage(height: 26),
-            const Gap(2),
-            Text(
-              subtitle,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.sidebarTextMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w400,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CompactBrandButton extends StatelessWidget {
-  const _CompactBrandButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Microvise CRM',
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: _brandLogoImage(height: 28, alignment: Alignment.center),
-        ),
-      ),
-    );
-  }
-}
-
 List<_FormsNavSubItem> _navSubItemsForItem(
   _NavItem item, {
   required Set<String> allowedPages,
@@ -1414,211 +1648,6 @@ List<_FormsNavSubItem> _navSubItemsForItem(
     ];
   }
   return const [];
-}
-
-bool _compactNavActive(
-  _NavItem item,
-  String location,
-  List<_FormsNavSubItem> subItems,
-) {
-  if (subItems.isNotEmpty) {
-    return subItems.any((s) => _isActive(location, s.path)) ||
-        _isActive(location, item.path);
-  }
-  return _isActive(location, item.path);
-}
-
-class _CompactSidebarNavItem extends StatelessWidget {
-  const _CompactSidebarNavItem({
-    required this.item,
-    required this.location,
-    required this.allowedPages,
-    required this.isBankUser,
-  });
-
-  final _NavItem item;
-  final String location;
-  final Set<String> allowedPages;
-  final bool isBankUser;
-
-  @override
-  Widget build(BuildContext context) {
-    final subItems = _navSubItemsForItem(
-      item,
-      allowedPages: allowedPages,
-      isBankUser: isBankUser,
-    );
-    final active = _compactNavActive(item, location, subItems);
-
-    Widget iconBox({required VoidCallback? onTap}) {
-      return Tooltip(
-        message: item.label,
-        preferBelow: false,
-        waitDuration: const Duration(milliseconds: 350),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: active ? AppTheme.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: AppPhosphorIcon(
-                item.icon,
-                size: 20,
-                color: active ? Colors.white : AppTheme.sidebarTextMuted,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (subItems.isEmpty) {
-      return iconBox(onTap: () => context.go(item.path));
-    }
-
-    return MenuAnchor(
-      alignmentOffset: const Offset(10, 0),
-      style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(AppTheme.surface),
-        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-            side: BorderSide(color: AppTheme.border.withValues(alpha: 0.7)),
-          ),
-        ),
-      ),
-      menuChildren: [
-        for (final sub in subItems)
-          MenuItemButton(
-            onPressed: () => context.go(sub.path),
-            child: Text(
-              sub.label,
-              style: TextStyle(
-                fontWeight: _isActive(location, sub.path)
-                    ? FontWeight.w700
-                    : FontWeight.w500,
-                color: _isActive(location, sub.path)
-                    ? AppTheme.primary
-                    : AppTheme.text,
-              ),
-            ),
-          ),
-      ],
-      builder: (context, controller, child) => iconBox(
-        onTap: () {
-          if (controller.isOpen) {
-            controller.close();
-          } else {
-            controller.open();
-          }
-        },
-      ),
-    );
-  }
-}
-
-class _SidebarIconItem extends StatelessWidget {
-  const _SidebarIconItem({
-    required this.label,
-    required this.icon,
-    required this.active,
-    required this.accentColor,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool active;
-  final Color accentColor;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          height: 44,
-          decoration: AppTheme.sidebarNavDecoration(active: active),
-          child: Center(
-            child: Container(
-              width: 31,
-              height: 31,
-              decoration: AppTheme.categoryIconWell(
-                accentColor,
-                radius: AppTheme.radiusXs,
-              ),
-              child: AppPhosphorIcon(
-                icon,
-                size: 18,
-                color: AppTheme.categoryIconFg(accentColor),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CompactAccountButton extends ConsumerWidget {
-  const _CompactAccountButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  static String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
-    final list = parts.toList(growable: false);
-    if (list.isEmpty) return '?';
-    if (list.length == 1) {
-      return list.first.characters.take(2).toString().toUpperCase();
-    }
-    return '${list.first.characters.first}${list.last.characters.first}'
-        .toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final name = (ref.watch(currentUserProfileProvider).value?.fullName ?? '')
-        .trim();
-    final initials = _initials(name);
-
-    return Tooltip(
-      message: name.isEmpty ? 'Hesap' : name,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: AppTheme.primary.withValues(alpha: 0.18),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            initials,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _TopBar extends StatelessWidget {
@@ -1900,262 +1929,11 @@ class _ProfileButton extends ConsumerWidget {
   }
 }
 
-class _SidebarItem extends StatelessWidget {
-  const _SidebarItem({
-    required this.label,
-    required this.icon,
-    required this.active,
-    required this.accentColor,
-    required this.onTap,
-    required this.pinned,
-    required this.onToggleFavorite,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool active;
-  final Color accentColor;
-  final VoidCallback onTap;
-  final bool pinned;
-  final VoidCallback onToggleFavorite;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = AppTheme.sidebarNavFg(active: active);
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOut,
-        height: 32,
-        decoration: AppTheme.sidebarNavDecoration(active: active),
-        padding: const EdgeInsets.only(left: 8, right: 2),
-        child: Row(
-          children: [
-            Container(
-              width: 22,
-              height: 22,
-              decoration: AppTheme.categoryIconWell(accentColor, radius: 6),
-              child: AppPhosphorIcon(
-                icon,
-                size: 14,
-                color: AppTheme.categoryIconFg(accentColor),
-              ),
-            ),
-            const Gap(8),
-            Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                  color: fg,
-                  fontSize: 12.5,
-                ),
-              ),
-            ),
-            _NavPinButton(pinned: pinned, onPressed: onToggleFavorite),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _FormsNavSubItem {
   const _FormsNavSubItem({required this.label, required this.path});
 
   final String label;
   final String path;
-}
-
-class _FormsNavGroup extends StatelessWidget {
-  const _FormsNavGroup({
-    required this.label,
-    required this.icon,
-    required this.path,
-    required this.active,
-    required this.accentColor,
-    required this.expanded,
-    required this.onHeaderTap,
-    required this.subItems,
-    required this.matchedLocation,
-    required this.favoritePaths,
-    required this.onToggleFavorite,
-  });
-
-  final String label;
-  final IconData icon;
-  final String path;
-  final bool active;
-  final Color accentColor;
-  final bool expanded;
-  final VoidCallback onHeaderTap;
-  final List<_FormsNavSubItem> subItems;
-  final String matchedLocation;
-  final Set<String> favoritePaths;
-  final ValueChanged<String> onToggleFavorite;
-
-  @override
-  Widget build(BuildContext context) {
-    final anySubActive = subItems.any(
-      (e) => _isActive(matchedLocation, e.path),
-    );
-    final isActive = active || anySubActive;
-    final fg = AppTheme.sidebarNavFg(active: isActive);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-          onTap: onHeaderTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            height: 32,
-            decoration: AppTheme.sidebarNavDecoration(active: isActive),
-            padding: const EdgeInsets.only(left: 8, right: 2),
-            child: Row(
-              children: [
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: AppTheme.categoryIconWell(accentColor, radius: 6),
-                  child: AppPhosphorIcon(
-                    icon,
-                    size: 14,
-                    color: AppTheme.categoryIconFg(accentColor),
-                  ),
-                ),
-                const Gap(8),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                      color: fg,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                ),
-                _NavPinButton(
-                  pinned: favoritePaths.contains(path),
-                  onPressed: () => onToggleFavorite(path),
-                ),
-                Icon(
-                  expanded
-                      ? AppPhosphorIcons.caretUp
-                      : AppPhosphorIcons.caretDown,
-                  size: 14,
-                  color: fg,
-                ),
-                const Gap(4),
-              ],
-            ),
-          ),
-        ),
-        AnimatedCrossFade(
-          firstChild: const SizedBox.shrink(),
-          secondChild: Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Container(
-              margin: const EdgeInsets.only(left: 8),
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.sidebarText.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-              ),
-              child: Column(
-                children: [
-                  for (final item in subItems) ...[
-                    _SidebarSubItem(
-                      label: item.label,
-                      active: _isActive(matchedLocation, item.path),
-                      accentColor: accentColor,
-                      pinned: favoritePaths.contains(item.path),
-                      onTap: () => context.go(item.path),
-                      onToggleFavorite: () => onToggleFavorite(item.path),
-                    ),
-                    if (item != subItems.last) const Gap(2),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          crossFadeState: expanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          duration: const Duration(milliseconds: 180),
-        ),
-      ],
-    );
-  }
-}
-
-class _SidebarSubItem extends StatelessWidget {
-  const _SidebarSubItem({
-    required this.label,
-    required this.active,
-    required this.accentColor,
-    required this.onTap,
-    required this.pinned,
-    required this.onToggleFavorite,
-  });
-
-  final String label;
-  final bool active;
-  // ignore: unused_field
-  final Color accentColor;
-  final VoidCallback onTap;
-  final bool pinned;
-  final VoidCallback onToggleFavorite;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = AppTheme.sidebarNavFg(active: active);
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOut,
-        height: 28,
-        margin: const EdgeInsets.only(left: 18),
-        padding: const EdgeInsets.only(left: 8, right: 2),
-        decoration: AppTheme.sidebarNavDecoration(active: active),
-        child: Row(
-          children: [
-            Container(
-              width: 5,
-              height: 5,
-              decoration: BoxDecoration(
-                color: active
-                    ? (AppTheme.isDark
-                          ? AppTheme.primaryDark
-                          : AppTheme.sidebarText)
-                    : AppTheme.sidebarTextMuted.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            const Gap(10),
-            Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                  color: fg,
-                  fontSize: 12.5,
-                ),
-              ),
-            ),
-            _NavPinButton(pinned: pinned, onPressed: onToggleFavorite),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _BottomItem extends StatelessWidget {
@@ -2220,88 +1998,11 @@ class _BottomItem extends StatelessWidget {
   }
 }
 
-class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.profile, required this.onSignOut});
 
-  final UserProfile? profile;
-  final VoidCallback onSignOut;
-
-  @override
-  Widget build(BuildContext context) {
-    final name = (profile?.fullName ?? '').trim();
-    final role = profile?.role == 'admin'
-        ? 'Admin'
-        : (profile?.isBankLike ?? false)
-        ? 'Banka Personeli'
-        : 'Personel';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.isDark
-            ? AppTheme.surfaceSoft
-            : AppTheme.sidebarText.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-        border: Border.all(
-          color: AppTheme.isDark
-              ? AppTheme.borderStrong.withValues(alpha: 0.7)
-              : AppTheme.sidebarText.withValues(alpha: 0.08),
-        ),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 13,
-            backgroundColor: AppTheme.isDark
-                ? AppTheme.primary.withValues(alpha: 0.22)
-                : AppTheme.primary.withValues(alpha: 0.18),
-            child: Icon(
-              AppPhosphorIcons.userCircle,
-              size: 15,
-              color: AppTheme.isDark
-                  ? AppTheme.primaryDark
-                  : AppTheme.sidebarText,
-            ),
-          ),
-          const Gap(8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  name.isEmpty ? 'Hesap' : name,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.sidebarText,
-                    fontSize: 12.5,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  role,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.sidebarTextMuted,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Çıkış Yap',
-            onPressed: onSignOut,
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              AppPhosphorIcons.signOut,
-              size: 17,
-              color: AppTheme.sidebarTextMuted,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+String _accountInitial(String name) {
+  final trimmed = name.trim();
+  if (trimmed.isEmpty) return 'H';
+  return String.fromCharCodes(trimmed.runes.take(1)).toUpperCase();
 }
 
 Color _navAccentColor(String pageKey) {
