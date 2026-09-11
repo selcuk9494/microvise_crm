@@ -214,7 +214,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       alignment: Alignment.centerLeft,
                                       filterQuality: FilterQuality.high,
                                     ),
-                                    const Gap(10),
+                                    const Gap(8),
+                                    Text(
+                                      'Microvise ERP CRM',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleSmall
+                                          ?.copyWith(
+                                            color: AppTheme.text,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const Gap(4),
                                     Text(
                                       'Güvenli çalışma alanı',
                                       maxLines: 1,

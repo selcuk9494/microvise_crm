@@ -542,6 +542,13 @@ class _CorporateBrandHeader extends StatelessWidget {
 
   final VoidCallback onTap;
 
+  static const _logoLift = ColorFilter.matrix(<double>[
+    1.25, 0, 0, 0, 22,
+    0, 1.25, 0, 0, 22,
+    0, 0, 1.25, 0, 22,
+    0, 0, 0, 1, 0,
+  ]);
+
   @override
   Widget build(BuildContext context) {
     return Tooltip(
@@ -550,19 +557,24 @@ class _CorporateBrandHeader extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _brandLogoImage(height: 24),
-              const Gap(4),
+              ColorFiltered(
+                colorFilter: _logoLift,
+                child: _brandLogoImage(height: 28),
+              ),
+              const Gap(6),
               const Text(
                 'Microvise ERP CRM',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Color(0xFFC5D4E6),
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.15,
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
                 ),
               ),
             ],
