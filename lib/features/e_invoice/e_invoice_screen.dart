@@ -6387,10 +6387,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         ),
         border: Border(bottom: AppDenseList.hairline),
       ),
-      child: SizedBox(
-        height: AppDenseList.rowHeight,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: AppDenseList.rowHeight),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppDenseList.rowH),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDenseList.rowH,
+            vertical: 6,
+          ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -6486,7 +6489,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               ),
               SizedBox(
                 width: AppInvoiceTableCols.status,
-                child: AppDenseBadgeRow(
+                child: Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     AppBadge(
                       dense: true,

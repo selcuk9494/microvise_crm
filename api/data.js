@@ -49,7 +49,12 @@ const {
 } = require('./_lib/schema');
 const { buildSystemReports } = require('./_lib/reports');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
-const { ensureInvoicePaymentLinksTable, loadPosValorDays, reconcilePosPaymentLinks } = require('./_lib/invoice_payment');
+const {
+  ensureInvoicePaymentLinksTable,
+  loadPosValorDays,
+  loadPosCommissionRate,
+  reconcilePosPaymentLinks,
+} = require('./_lib/invoice_payment');
 const {
   posListStatus,
   posCollectionVisible,
@@ -2334,6 +2339,7 @@ module.exports = async (req, res) => {
         await ensureInvoicePaymentLinksTable();
         await reconcilePosPaymentLinks();
         const valorDaysSetting = await loadPosValorDays();
+        const commissionRateSetting = await loadPosCommissionRate();
         const startDate = String(req.query.startDate || '').trim();
         const endDate = String(req.query.endDate || '').trim();
         const includeRefunded = parseBoolean(req.query.includeRefunded, false);
@@ -2386,6 +2392,9 @@ module.exports = async (req, res) => {
               l.emailed_at,
               l.emailed_to,
               l.settled_at,
+              l.settle_commission,
+              l.settle_bank_account_id,
+              l.sap_settled_at,
               l.dismissed_at,
               l.valor_days,
               l.reminded_at,
@@ -2400,9 +2409,19 @@ module.exports = async (req, res) => {
                     i.id,
                     i.invoice_number,
                     i.status,
+                    i.invoice_type,
                     i.grand_total,
                     i.paid_amount,
-                    i.currency
+                    i.currency,
+                    i.exchange_rate,
+                    (
+                      select asm.source_id
+                      from public.akinsoft_sync_map asm
+                      where asm.source_system = 'akinsoft'
+                        and asm.source_type = 'invoice'
+                        and asm.local_id = i.id
+                      limit 1
+                    ) as akinsoft_source_id
                   from public.invoices i
                   where i.id = any(l.invoice_ids)
                 ) inv
@@ -2468,6 +2487,7 @@ module.exports = async (req, res) => {
             activeCount: visible.length,
             totalAmount,
             valorDays: valorDaysSetting,
+            posCommissionRate: commissionRateSetting,
           },
         });
       }

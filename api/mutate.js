@@ -3903,6 +3903,10 @@ module.exports = async (req, res) => {
             linkId: body.linkId || body.id,
             settled: body.settled !== false && body.settled !== 'false',
             createdBy: user?.auth_user_id || user?.id || null,
+            commission: body.commission,
+            bankAccountId: body.bankAccountId,
+            sapPosted: body.sapPosted === true || body.sapPosted === 'true',
+            kpbAmount: body.kpbAmount,
           }),
         );
       } catch (error) {

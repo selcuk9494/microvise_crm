@@ -18,6 +18,9 @@ const {
   addCalendarDays,
   daysBetweenCalendar,
   posValorLabel,
+  normalizeCommissionRate,
+  commissionAmountFromRate,
+  commissionRateFromAmount,
 } = require('../api/_lib/pos_status');
 
 test('posListStatus maps paid / settled / pending', () => {
@@ -199,4 +202,14 @@ test('ödeme linki 7 gün sonra gecikmiş sayılır, hatırlatma bir kez otomati
     ),
     false,
   );
+});
+
+test('POS komisyon oranı ve tutarı birbirinden hesaplanır', () => {
+  assert.equal(normalizeCommissionRate(2.456), 2.46);
+  assert.equal(normalizeCommissionRate(-1), 0);
+  assert.equal(normalizeCommissionRate(99), 30);
+  assert.equal(commissionAmountFromRate(1000, 2.45), 24.5);
+  assert.equal(commissionAmountFromRate(1234.56, 2.45), 30.25);
+  assert.equal(commissionRateFromAmount(1000, 24.5), 2.45);
+  assert.equal(commissionAmountFromRate(100, 0), 0);
 });

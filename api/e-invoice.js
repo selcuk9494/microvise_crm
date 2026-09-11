@@ -30,7 +30,10 @@ const {
   redactCredentialSettings,
   syncActiveCredentialsFromEnvironment,
 } = require('./_lib/e_invoice_credentials');
-const { normalizeValorDays } = require('./_lib/pos_status');
+const {
+  normalizeValorDays,
+  normalizeCommissionRate,
+} = require('./_lib/pos_status');
 const { safeFilenamePart } = require('./_lib/safe_filename');
 
 async function readJson(req) {
@@ -134,7 +137,8 @@ async function ensureEInvoiceSchema() {
       add column if not exists test_password text,
       add column if not exists prod_username text,
       add column if not exists prod_password text,
-      add column if not exists pos_valor_days integer not null default 1
+      add column if not exists pos_valor_days integer not null default 1,
+      add column if not exists pos_commission_rate numeric not null default 0
   `);
   await query(`
     update public.e_invoice_settings
@@ -3149,6 +3153,7 @@ async function handler(req, res) {
         'smtp_pass',
         'smtp_from',
         'pos_valor_days',
+        'pos_commission_rate',
       ];
       const current = await getSettings();
       const picked = {};
@@ -3198,6 +3203,12 @@ async function handler(req, res) {
       if (Object.prototype.hasOwnProperty.call(picked, 'pos_valor_days')) {
         picked.pos_valor_days = normalizeValorDays(picked.pos_valor_days);
       }
+      if (Object.prototype.hasOwnProperty.call(picked, 'pos_commission_rate')) {
+        picked.pos_commission_rate = normalizeCommissionRate(
+          picked.pos_commission_rate,
+          0,
+        );
+      }
       picked.updated_at = new Date().toISOString();
       if (user.auth_user_id) picked.created_by = user.auth_user_id;
 
@@ -3234,6 +3245,34 @@ async function handler(req, res) {
         ok: true,
         posValorDays: Number(result.rows[0]?.pos_valor_days || days),
         message: `Valör ${days} gün olarak kaydedildi.`,
+      });
+    }
+
+    if (action === 'save_pos_commission_rate') {
+      const settings = await getSettings();
+      if (!settings?.id) {
+        return badRequest(req, res, 'E-fatura ayarları bulunamadı.');
+      }
+      const rate = normalizeCommissionRate(
+        body.rate ?? body.pos_commission_rate,
+        0,
+      );
+      const result = await query(
+        `
+          update public.e_invoice_settings
+          set pos_commission_rate = $2,
+              updated_at = now()
+          where id = $1
+          returning pos_commission_rate
+        `,
+        [settings.id, rate],
+      );
+      return ok(req, res, {
+        ok: true,
+        posCommissionRate: Number(
+          result.rows[0]?.pos_commission_rate ?? rate,
+        ),
+        message: `POS komisyon oranı %${rate.toFixed(2).replace('.', ',')} olarak kaydedildi.`,
       });
     }
 

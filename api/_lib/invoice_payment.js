@@ -1,7 +1,11 @@
 const crypto = require('crypto');
 const { query, withTransaction } = require('./db');
 const { ensureInvoicePaidCloseRule } = require('./invoice_paid_status');
-const { canDismissPosCollection, normalizeValorDays } = require('./pos_status');
+const {
+  canDismissPosCollection,
+  normalizeValorDays,
+  normalizeCommissionRate,
+} = require('./pos_status');
 const { ensureInvoicesBillingSourceColumn } = require('./schema');
 
 const HALKBANK_PROD_GATEWAY_URL = 'https://sanalpos.halkbank.com.tr/fim/est3Dgate';
@@ -1305,8 +1309,20 @@ async function ensureInvoicePaymentLinksTable() {
       add column if not exists dismissed_by uuid,
       add column if not exists valor_days integer,
       add column if not exists reminded_at timestamptz,
-      add column if not exists reminded_count integer not null default 0
+      add column if not exists reminded_count integer not null default 0,
+      add column if not exists settle_commission numeric,
+      add column if not exists settle_bank_account_id text,
+      add column if not exists sap_settled_at timestamptz
   `);
+}
+
+function withPosCommissionNote(description, commission) {
+  const base = String(description || '')
+    .replace(/\s*[·•]\s*POS komisyon [\d.,]+\s*TL/gi, '')
+    .trim();
+  const amount = Number(commission || 0);
+  if (!(amount > 0.009)) return base;
+  return `${base} · POS komisyon ${amount.toFixed(2)} TL`.trim();
 }
 
 async function loadPosValorDays() {
@@ -1323,6 +1339,23 @@ async function loadPosValorDays() {
     return normalizeValorDays(result.rows[0]?.pos_valor_days);
   } catch (_) {
     return 1;
+  }
+}
+
+async function loadPosCommissionRate() {
+  try {
+    const result = await query(
+      `
+        select pos_commission_rate
+        from public.e_invoice_settings
+        where is_active = true
+        order by created_at asc
+        limit 1
+      `,
+    );
+    return normalizeCommissionRate(result.rows[0]?.pos_commission_rate, 0);
+  } catch (_) {
+    return 0;
   }
 }
 
@@ -2938,6 +2971,10 @@ async function markPosPaymentSettled({
   linkId,
   settled = true,
   createdBy,
+  commission = null,
+  bankAccountId = null,
+  sapPosted = false,
+  kpbAmount = null,
 }) {
   await ensureInvoicePaymentLinksTable();
   const id = String(linkId || '').trim();
@@ -2948,7 +2985,7 @@ async function markPosPaymentSettled({
   }
   const current = await query(
     `
-      select id, status, settled_at
+      select id, status, settled_at, invoice_ids
       from public.invoice_payment_links
       where id = $1::uuid
       limit 1
@@ -2968,25 +3005,95 @@ async function markPosPaymentSettled({
     error.statusCode = 400;
     throw error;
   }
+  const settleNow = settled === true;
+  const commissionAmount = settleNow
+    ? Math.max(0, Number(commission || 0))
+    : null;
+  if (settleNow && commission != null && Number.isNaN(Number(commission))) {
+    const error = new Error('Komisyon tutarı geçersiz.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const bankId = settleNow
+    ? String(bankAccountId || '').trim() || null
+    : null;
+  const sapNow = settleNow && sapPosted === true;
   const updated = await query(
     `
       update public.invoice_payment_links
-      set settled_at = case when $2 then now() else null end,
-          settled_by = case when $2 then $3::uuid else null end,
+      set settled_at = case when $2 then coalesce(settled_at, now()) else null end,
+          settled_by = case when $2 then coalesce(settled_by, $3::uuid) else null end,
+          settle_commission = case when $2 then $4 else null end,
+          settle_bank_account_id = case when $2 then $5 else null end,
+          sap_settled_at = case
+            when $2 and $6 then coalesce(sap_settled_at, now())
+            when $2 then sap_settled_at
+            else null
+          end,
           updated_at = now()
       where id = $1::uuid
-      returning id, status, settled_at
+      returning
+        id,
+        status,
+        settled_at,
+        sap_settled_at,
+        settle_commission,
+        settle_bank_account_id
     `,
-    [id, settled === true, asUuidOrNull(createdBy)],
+    [
+      id,
+      settleNow,
+      asUuidOrNull(createdBy),
+      commissionAmount,
+      bankId,
+      sapNow,
+    ],
   );
   const next = updated.rows[0];
+  if (settleNow && Array.isArray(row.invoice_ids) && row.invoice_ids.length) {
+    const collections = await query(
+      `
+        select id, description
+        from public.transactions
+        where invoice_id = any($1::uuid[])
+          and is_active = true
+          and transaction_type in ('collection', 'payment')
+      `,
+      [row.invoice_ids],
+    );
+    for (const tx of collections.rows) {
+      if (!isPosCollectionTransaction(tx)) continue;
+      const nextDescription = withPosCommissionNote(
+        tx.description,
+        commissionAmount,
+      );
+      if (nextDescription === String(tx.description || '')) continue;
+      await query(
+        `
+          update public.transactions
+          set description = $2
+          where id = $1::uuid
+        `,
+        [tx.id, nextDescription],
+      );
+    }
+  }
+  const sapPart = sapNow ? ' SAP tahsilatı yazıldı.' : '';
+  const commissionPart =
+    settleNow && Number(commissionAmount || 0) > 0.009
+      ? ` Komisyon ${Number(commissionAmount).toFixed(2)} TL.`
+      : '';
   return {
     ok: true,
     id: next.id,
     status: next.status,
     settledAt: next.settled_at,
-    message: settled
-      ? 'Ödeme hesaba yattı olarak işaretlendi.'
+    sapSettledAt: next.sap_settled_at,
+    commission: next.settle_commission,
+    bankAccountId: next.settle_bank_account_id,
+    kpbAmount: kpbAmount == null ? null : Number(kpbAmount),
+    message: settleNow
+      ? `Ödeme hesaba yattı olarak işaretlendi.${commissionPart}${sapPart}`
       : 'Hesaba yattı işareti geri alındı.',
   };
 }
@@ -3103,8 +3210,10 @@ module.exports = {
   selectCollectionsToReverse,
   isPosCollectionTransaction,
   markPosPaymentSettled,
+  withPosCommissionNote,
   dismissPosCollection,
   loadPosValorDays,
+  loadPosCommissionRate,
   verifyPosRefundTicket,
   getPosConfigFromEnv,
   validatePosConfig,

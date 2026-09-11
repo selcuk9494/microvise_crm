@@ -179,6 +179,26 @@ function normalizeValorDays(value, fallback = 1) {
   return Math.min(30, Math.max(0, parsed));
 }
 
+function normalizeCommissionRate(value, fallback = 0) {
+  const parsed = Number(String(value ?? '').replace(',', '.'));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(30, Math.max(0, Math.round(parsed * 100) / 100));
+}
+
+function commissionAmountFromRate(gross, rate) {
+  const amount = Number(gross || 0);
+  const pct = normalizeCommissionRate(rate, 0);
+  if (!(amount > 0) || !(pct > 0)) return 0;
+  return Math.round(((amount * pct) / 100) * 100) / 100;
+}
+
+function commissionRateFromAmount(gross, commission) {
+  const amount = Number(gross || 0);
+  const fee = Number(commission || 0);
+  if (!(amount > 0) || !(fee >= 0)) return 0;
+  return normalizeCommissionRate((fee / amount) * 100, 0);
+}
+
 function posValorLabel(daysRemaining) {
   if (daysRemaining == null || !Number.isFinite(daysRemaining)) return '';
   if (daysRemaining > 1) return `Valör: ${daysRemaining} gün kaldı`;
@@ -239,6 +259,9 @@ module.exports = {
   isPlanDueOn,
   localToday,
   normalizeValorDays,
+  normalizeCommissionRate,
+  commissionAmountFromRate,
+  commissionRateFromAmount,
   addCalendarDays,
   daysBetweenCalendar,
   posValorLabel,
