@@ -34,6 +34,8 @@
     { "source": "/p/:token", "destination": "/api/invoice-pay?token=:token" },
     { "source": "/pay/:token", "destination": "/api/invoice-pay?token=:token" },
     { "source": "/api/akinsoft/finance/:action", "destination": "/api/akinsoft/finance-:action" },
+    { "source": "/api/auth/apple-config", "destination": "/api/auth/apple?config=1" },
+    { "source": "/api/auth/apple-callback", "destination": "/api/auth/apple?callback=1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [

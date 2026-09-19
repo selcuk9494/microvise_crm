@@ -3,6 +3,9 @@ const { query } = require('../_lib/db');
 const { ensureUsersAuthColumns } = require('../_lib/schema');
 const {
   verifyAppleIdentityToken,
+  appleWebClientId,
+  appleRedirectUri,
+  appleAudiences,
 } = require('../_lib/apple_identity');
 const {
   handleCors,
@@ -126,7 +129,137 @@ function sessionPayload(user, jwtSecret) {
   };
 }
 
-module.exports = async (req, res) => {
+function parseRequestUrl(req) {
+  const host = String(
+    req.headers['x-forwarded-host'] || req.headers.host || 'crm.microvise.net',
+  )
+    .split(',')[0]
+    .trim();
+  const proto = String(req.headers['x-forwarded-proto'] || 'https')
+    .split(',')[0]
+    .trim();
+  return new URL(req.url || '/', `${proto}://${host}`);
+}
+
+function isCallbackRequest(req, url) {
+  if (url.searchParams.get('callback') === '1') return true;
+  if (url.pathname.includes('apple-callback')) return true;
+  const type = String(req.headers['content-type'] || '');
+  return (
+    req.method === 'POST' && type.includes('application/x-www-form-urlencoded')
+  );
+}
+
+function htmlPage(script) {
+  return `<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apple ile giriş</title>
+</head>
+<body>
+  <script>${script}</script>
+</body>
+</html>`;
+}
+
+function callbackScript(href) {
+  const safeHref = JSON.stringify(href);
+  return `
+    (function () {
+      var href = ${safeHref};
+      try {
+        if (window.opener) {
+          window.opener.postMessage(href, '*');
+          window.close();
+          return;
+        }
+      } catch (_) {}
+      try {
+        window.parent.postMessage(href, '*');
+      } catch (_) {}
+      document.body.innerText = 'Apple girişi tamamlandı. Bu pencereyi kapatabilirsiniz.';
+    })();
+  `;
+}
+
+async function readRawBody(req) {
+  if (typeof req.body === 'string') return req.body;
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    return new URLSearchParams(req.body).toString();
+  }
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function handleAppleCallback(req, res, url) {
+  if (req.method === 'OPTIONS') {
+    handleCors(req, res, 'GET,POST,OPTIONS');
+    return;
+  }
+  try {
+    if (req.method === 'POST') {
+      const raw = await readRawBody(req);
+      const posted = new URLSearchParams(raw);
+      if (![...posted.keys()].length) {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end('Apple yanıtı boş.');
+        return;
+      }
+      const next = new URL(url.toString());
+      next.search = '';
+      next.searchParams.set('callback', '1');
+      for (const [key, value] of posted.entries()) {
+        next.searchParams.set(key, value);
+      }
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(htmlPage(callbackScript(next.toString())));
+      return;
+    }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('Method not allowed');
+      return;
+    }
+    const href = url.searchParams.toString()
+      ? url.toString()
+      : `${url.origin}${url.pathname}`;
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(htmlPage(callbackScript(href)));
+  } catch (error) {
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end(
+      error instanceof Error ? error.message : 'Apple geri dönüşü başarısız.',
+    );
+  }
+}
+
+async function handleAppleConfig(req, res) {
+  if (handleCors(req, res, 'GET,OPTIONS')) return;
+  if (req.method !== 'GET') {
+    return methodNotAllowed(req, res, 'GET');
+  }
+  try {
+    return ok(req, res, {
+      enabled: Boolean(appleWebClientId()),
+      clientId: appleWebClientId(),
+      redirectUri: appleRedirectUri(req),
+      audiences: appleAudiences(),
+    });
+  } catch (error) {
+    return serverError(req, res, error);
+  }
+}
+
+async function handleAppleLogin(req, res) {
   if (handleCors(req, res, 'POST,OPTIONS')) return;
   if (req.method !== 'POST') {
     return methodNotAllowed(req, res, 'POST');
@@ -239,4 +372,15 @@ module.exports = async (req, res) => {
   } catch (error) {
     return serverError(req, res, error);
   }
+}
+
+module.exports = async (req, res) => {
+  const url = parseRequestUrl(req);
+  if (isCallbackRequest(req, url)) {
+    return handleAppleCallback(req, res, url);
+  }
+  if (req.method === 'GET' || url.searchParams.get('config') === '1') {
+    return handleAppleConfig(req, res);
+  }
+  return handleAppleLogin(req, res);
 };
