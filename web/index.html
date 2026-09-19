@@ -171,6 +171,31 @@
       cursor: wait;
     }
 
+    .microvise-apple {
+      width: 100%;
+      height: 50px;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 10px;
+      background: #000;
+      color: #fff;
+      font: 700 16px Inter, Roboto, Arial, sans-serif;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .microvise-apple.is-visible {
+      display: flex;
+    }
+
+    .microvise-apple:disabled {
+      opacity: 0.72;
+      cursor: wait;
+    }
+
     .microvise-login-note {
       margin: 14px 0 0;
       color: #64748b;
@@ -256,12 +281,17 @@
 
       function setLoading(isLoading) {
         const button = document.getElementById('microvise-native-login-submit');
+        const apple = document.getElementById('microvise-native-apple');
         const email = document.getElementById('microvise-native-email');
         const password = document.getElementById('microvise-native-password');
         const saved = document.getElementById('microvise-native-saved');
         if (button) {
           button.disabled = isLoading;
           button.textContent = isLoading ? 'Giriş yapılıyor...' : 'Giriş Yap';
+        }
+        if (apple) {
+          apple.disabled = isLoading;
+          apple.textContent = isLoading ? 'Apple ile giriliyor...' : 'Apple ile Giriş';
         }
         if (email) email.disabled = isLoading;
         if (password) password.disabled = isLoading;
@@ -365,6 +395,129 @@
         }, 0);
       }
 
+      function randomNonce() {
+        const bytes = new Uint8Array(16);
+        window.crypto.getRandomValues(bytes);
+        let binary = '';
+        bytes.forEach(function (b) { binary += String.fromCharCode(b); });
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      }
+
+      function loadAppleSdk() {
+        if (window.AppleID && window.AppleID.auth) return Promise.resolve();
+        return new Promise(function (resolve, reject) {
+          const existing = document.querySelector('script[data-apple-auth]');
+          if (existing) {
+            existing.addEventListener('load', resolve);
+            existing.addEventListener('error', reject);
+            return;
+          }
+          const script = document.createElement('script');
+          script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+          script.async = true;
+          script.dataset.appleAuth = '1';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      async function prepareAppleButton() {
+        const button = document.getElementById('microvise-native-apple');
+        if (!button) return;
+        try {
+          const response = await fetch(apiBaseUrl() + '/auth/apple-config', {
+            headers: { 'Accept': 'application/json' }
+          });
+          const config = await response.json();
+          if (!config || !config.enabled || !config.clientId) return;
+          button.dataset.clientId = config.clientId;
+          button.dataset.redirectUri = config.redirectUri || '';
+          button.classList.add('is-visible');
+        } catch (_) {}
+      }
+
+      async function submitAppleLogin() {
+        const button = document.getElementById('microvise-native-apple');
+        const rememberInput = document.getElementById('microvise-native-remember');
+        const remember = !rememberInput || rememberInput.checked;
+        const clientId = button && button.dataset.clientId;
+        const redirectUri = button && button.dataset.redirectUri;
+        if (!clientId || !redirectUri) {
+          setError('Apple ile giriş web için henüz yapılandırılmadı.');
+          return;
+        }
+        setError('');
+        setLoading(true);
+        try {
+          await loadAppleSdk();
+          const nonce = randomNonce();
+          window.AppleID.auth.init({
+            clientId: clientId,
+            scope: 'name email',
+            redirectURI: redirectUri,
+            usePopup: true,
+            nonce: nonce
+          });
+          const result = await window.AppleID.auth.signIn();
+          const identityToken =
+            result && result.authorization && result.authorization.id_token
+              ? result.authorization.id_token
+              : '';
+          if (!identityToken) throw new Error('Apple kimliği alınamadı.');
+          const givenName =
+            result && result.user && result.user.name && result.user.name.firstName
+              ? result.user.name.firstName
+              : '';
+          const familyName =
+            result && result.user && result.user.name && result.user.name.lastName
+              ? result.user.name.lastName
+              : '';
+          const email =
+            result && result.user && result.user.email ? result.user.email : '';
+          const response = await fetch(apiBaseUrl() + '/auth/apple', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json; charset=utf-8'
+            },
+            body: JSON.stringify({
+              identityToken: identityToken,
+              authorizationCode: result.authorization.code || '',
+              nonce: nonce,
+              email: email,
+              givenName: givenName,
+              familyName: familyName
+            })
+          });
+          const text = await response.text();
+          let payload = {};
+          try { payload = text ? JSON.parse(text) : {}; } catch (_) {}
+          if (!response.ok) throw new Error(payload.error || 'Giriş başarısız.');
+          const token = payload.accessToken || '';
+          if (!token) throw new Error('Giriş başarısız.');
+          window.localStorage.setItem(tokenKey, token);
+          const sessionEmail =
+            payload.user && payload.user.email ? payload.user.email : email;
+          if (remember && sessionEmail) {
+            window.localStorage.setItem(rememberedEmailKey, sessionEmail);
+          } else if (!remember) {
+            window.localStorage.removeItem(rememberedEmailKey);
+          }
+          window.location.replace(
+            window.location.origin + window.location.pathname + '?v=' + Date.now() + '#/panel'
+          );
+        } catch (error) {
+          const message = error && error.message ? error.message : 'Giriş başarısız.';
+          if (message.toLowerCase().indexOf('popup_closed') >= 0) {
+            setLoading(false);
+            return;
+          }
+          setError(message);
+          setLoading(false);
+        }
+      }
+
       function ensureNativeLogin() {
         if (document.getElementById('microvise-native-login')) return;
 
@@ -392,6 +545,7 @@
               <span>Beni hatırla</span>
             </label>
             <button id="microvise-native-login-submit" class="microvise-submit" type="submit">Giriş Yap</button>
+            <button id="microvise-native-apple" class="microvise-apple" type="button">Apple ile Giriş</button>
             <p class="microvise-login-note">Admin ve personel rolleri sistem üzerinden yönetilir.</p>
           </form>
         `;
@@ -399,10 +553,13 @@
 
         const form = document.getElementById('microvise-native-login-form');
         const saved = document.getElementById('microvise-native-saved');
+        const apple = document.getElementById('microvise-native-apple');
         const email = document.getElementById('microvise-native-email');
         if (form) form.addEventListener('submit', submitNativeLogin);
         if (saved) saved.addEventListener('click', requestSavedCredential);
+        if (apple) apple.addEventListener('click', submitAppleLogin);
         if (email) email.value = window.localStorage.getItem(rememberedEmailKey) || '';
+        prepareAppleButton();
       }
 
       function syncNativeLogin() {

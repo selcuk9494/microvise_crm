@@ -428,7 +428,24 @@ Future<void> _sendInvoicePaymentLinkWhatsAppFlow({
   final apiClient = ref.read(apiClientProvider);
   if (apiClient == null) return;
 
+  var progressOpen = false;
   try {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        ),
+      ),
+    );
+    progressOpen = true;
     final response = await apiClient.postJson(
       '/mutate',
       body: {
@@ -462,40 +479,48 @@ Future<void> _sendInvoicePaymentLinkWhatsAppFlow({
     if (!context.mounted) return;
     ref.invalidate(invoicesProvider);
 
+    // Telefonda PDF arşivi WhatsApp paylaşımını bekletir / sohbeti kapatır.
+    final attachPdfs = MediaQuery.sizeOf(context).shortestSide >= 700;
     final pdfs = <EInvoicePdfDownload>[];
-    for (final invoice in payable) {
-      try {
-        final archive = await apiClient.postJson(
-          '/e-invoice',
-          body: _archivePdfRequestBody(invoice.id),
-        );
-        if (archive['officialOnly'] == true) continue;
-        final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
-        final pdfBase64 = archive['pdfBase64']?.toString().trim() ?? '';
-        if (pdfUrl.isEmpty && pdfBase64.isEmpty) continue;
-        final number = (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
-            ? _localEInvoiceNumber(invoice.eInvoiceNumber!)
-            : formatInvoiceNumberForDisplay(invoice.invoiceNumber);
-        final customerLabel = (invoice.customerName ?? customer?.name ?? '')
-            .trim();
-        final localPath = archive['localPdfPath']?.toString().trim();
-        pdfs.add(
-          EInvoicePdfDownload(
-            url: pdfUrl,
-            fileName: customerLabel.isEmpty
-                ? '$number.pdf'
-                : '${customerLabel}_$number.pdf',
-            localPath: (localPath != null && localPath.isNotEmpty)
-                ? localPath
-                : null,
-            pdfBase64: pdfBase64.isNotEmpty ? pdfBase64 : null,
-          ),
-        );
-      } catch (_) {
-        // PDF alınamazsa yine de ödeme linki gönderilir.
+    if (attachPdfs) {
+      for (final invoice in payable) {
+        try {
+          final archive = await apiClient.postJson(
+            '/e-invoice',
+            body: _archivePdfRequestBody(invoice.id),
+          );
+          if (archive['officialOnly'] == true) continue;
+          final pdfUrl = archive['pdfUrl']?.toString().trim() ?? '';
+          final pdfBase64 = archive['pdfBase64']?.toString().trim() ?? '';
+          if (pdfUrl.isEmpty && pdfBase64.isEmpty) continue;
+          final number = (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
+              ? _localEInvoiceNumber(invoice.eInvoiceNumber!)
+              : formatInvoiceNumberForDisplay(invoice.invoiceNumber);
+          final customerLabel = (invoice.customerName ?? customer?.name ?? '')
+              .trim();
+          final localPath = archive['localPdfPath']?.toString().trim();
+          pdfs.add(
+            EInvoicePdfDownload(
+              url: pdfUrl,
+              fileName: customerLabel.isEmpty
+                  ? '$number.pdf'
+                  : '${customerLabel}_$number.pdf',
+              localPath: (localPath != null && localPath.isNotEmpty)
+                  ? localPath
+                  : null,
+              pdfBase64: pdfBase64.isNotEmpty ? pdfBase64 : null,
+            ),
+          );
+        } catch (_) {
+          // PDF alınamazsa yine de ödeme linki gönderilir.
+        }
       }
     }
 
+    if (progressOpen && context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      progressOpen = false;
+    }
     if (!context.mounted) return;
     final shared = await shareInvoicePaymentLinkWithWhatsApp(
       context: context,
@@ -533,6 +558,10 @@ Future<void> _sendInvoicePaymentLinkWhatsAppFlow({
     messenger.showSnackBar(
       SnackBar(content: Text('WhatsApp ödeme linki gönderilemedi: $error')),
     );
+  } finally {
+    if (progressOpen && context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
   }
 }
 
@@ -4075,11 +4104,16 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final selected = visibleInvoices
         .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
         .toList(growable: false);
-    await _sendInvoicePaymentLinkWhatsAppFlow(
-      context: context,
-      ref: ref,
-      invoices: selected,
-    );
+    setState(() => _bulkProcessing = true);
+    try {
+      await _sendInvoicePaymentLinkWhatsAppFlow(
+        context: context,
+        ref: ref,
+        invoices: selected,
+      );
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
   }
 
   Future<void> _collectSelected(List<Invoice> visibleInvoices) async {

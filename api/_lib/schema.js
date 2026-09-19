@@ -203,6 +203,7 @@ async function ensureUsersAuthColumns() {
           page_permissions text[] not null default '{}'::text[],
           action_permissions text[] not null default '{}'::text[],
           password_hash text,
+          apple_user_id text,
           is_active boolean not null default true,
           created_at timestamptz not null default now(),
           updated_at timestamptz not null default now()
@@ -223,7 +224,8 @@ async function ensureUsersAuthColumns() {
           add column if not exists password_hash text,
           add column if not exists is_active boolean,
           add column if not exists created_at timestamptz,
-          add column if not exists updated_at timestamptz
+          add column if not exists updated_at timestamptz,
+          add column if not exists apple_user_id text
       `,
     );
     await query(
@@ -243,6 +245,14 @@ async function ensureUsersAuthColumns() {
       `,
     );
   }
+
+  await query(
+    `
+      create unique index if not exists idx_users_apple_user_id
+      on public.users (apple_user_id)
+      where apple_user_id is not null and btrim(apple_user_id) <> ''
+    `,
+  );
 
   await query(
     `

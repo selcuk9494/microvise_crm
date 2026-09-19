@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../app/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:gap/gap.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/platform/open_external_url.dart';
@@ -11,6 +12,9 @@ import '../customers/customer_detail_screen.dart';
 import '../invoices/invoice_model.dart';
 import 'e_invoice_pdf_share.dart';
 import 'local_pdf_bridge.dart';
+
+/// iOS URL limiti; uzun fatura kalemleri wa.me açılışını sessizce düşürür.
+const _kWhatsAppUrlTextLimit = 1400;
 
 String _phoneLabel(String? title, String fallback) {
   final trimmed = (title ?? '').trim();
@@ -57,6 +61,8 @@ Future<void> shareEInvoicePdfWithWhatsApp({
   final action = await showModalBottomSheet<_ShareAction>(
     context: context,
     showDragHandle: true,
+    isScrollControlled: true,
+    useSafeArea: true,
     builder: (context) => SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -65,48 +71,51 @@ Future<void> shareEInvoicePdfWithWhatsApp({
           16,
           16 + MediaQuery.viewInsetsOf(context).bottom,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'WhatsApp ile gönder',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const Gap(6),
-            Text(
-              options.isEmpty
-                  ? 'Cariye kayıtlı numara yok. Numara girin veya PDF’i açıp sohbete ekleyin.'
-                  : 'Numara seçin; WhatsApp sohbeti açılır. PDF yerel olarak hazırlanır — sohbete ekleyin.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
-            ),
-            const Gap(12),
-            for (final opt in options)
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'WhatsApp ile gönder',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const Gap(6),
+              Text(
+                options.isEmpty
+                    ? 'Cariye kayıtlı numara yok. Numara girin veya PDF’i açıp sohbete ekleyin.'
+                    : 'Numara seçin; WhatsApp sohbeti açılır. PDF yerel olarak hazırlanır — sohbete ekleyin.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+              ),
+              const Gap(12),
+              for (final opt in options)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(LucideIcons.messageCircle),
+                  title: Text(opt.label),
+                  subtitle: Text(opt.phone),
+                  onTap: () => Navigator.of(
+                    context,
+                  ).pop(_ShareAction.whatsApp(opt.phone)),
+                ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(LucideIcons.messageCircle),
-                title: Text(opt.label),
-                subtitle: Text(opt.phone),
+                leading: const Icon(LucideIcons.phoneCall),
+                title: const Text('Başka numara'),
                 onTap: () =>
-                    Navigator.of(context).pop(_ShareAction.whatsApp(opt.phone)),
+                    Navigator.of(context).pop(const _ShareAction.other()),
               ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(LucideIcons.phoneCall),
-              title: const Text('Başka numara'),
-              onTap: () =>
-                  Navigator.of(context).pop(const _ShareAction.other()),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(LucideIcons.fileType2),
-              title: const Text('Sadece PDF aç'),
-              onTap: () =>
-                  Navigator.of(context).pop(const _ShareAction.openPdfOnly()),
-            ),
-          ],
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(LucideIcons.fileType2),
+                title: const Text('Sadece PDF aç'),
+                onTap: () =>
+                    Navigator.of(context).pop(const _ShareAction.openPdfOnly()),
+              ),
+            ],
+          ),
         ),
       ),
     ),
@@ -132,16 +141,7 @@ Future<void> shareEInvoicePdfWithWhatsApp({
   await Clipboard.setData(ClipboardData(text: message));
 
   if (phoneToUse != null) {
-    final waPhone = normalizePhoneForWhatsApp(phoneToUse);
-    final url = waPhone.isEmpty
-        ? Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}')
-        : Uri.parse(
-            'https://wa.me/$waPhone?text=${Uri.encodeComponent(message)}',
-          );
-    final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-    if (!opened) {
-      await openExternalUrl(url.toString());
-    }
+    await openWhatsAppChat(phone: phoneToUse, text: message);
   }
 
   final number = (invoice.eInvoiceNumber?.trim().isNotEmpty ?? false)
@@ -289,6 +289,8 @@ Future<String?> pickWhatsAppPhone({
   final action = await showModalBottomSheet<_ShareAction>(
     context: context,
     showDragHandle: true,
+    isScrollControlled: true,
+    useSafeArea: true,
     builder: (context) => SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -297,38 +299,41 @@ Future<String?> pickWhatsAppPhone({
           16,
           16 + MediaQuery.viewInsetsOf(context).bottom,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const Gap(6),
-            Text(
-              options.isEmpty
-                  ? 'Cariye kayıtlı numara yok. Numara girin veya vazgeçin.'
-                  : subtitle,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
-            ),
-            const Gap(12),
-            for (final opt in options)
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const Gap(6),
+              Text(
+                options.isEmpty
+                    ? 'Cariye kayıtlı numara yok. Numara girin veya vazgeçin.'
+                    : subtitle,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+              ),
+              const Gap(12),
+              for (final opt in options)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(LucideIcons.messageCircle),
+                  title: Text(opt.label),
+                  subtitle: Text(opt.phone),
+                  onTap: () => Navigator.of(
+                    context,
+                  ).pop(_ShareAction.whatsApp(opt.phone)),
+                ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(LucideIcons.messageCircle),
-                title: Text(opt.label),
-                subtitle: Text(opt.phone),
+                leading: const Icon(LucideIcons.phoneCall),
+                title: const Text('Başka numara'),
                 onTap: () =>
-                    Navigator.of(context).pop(_ShareAction.whatsApp(opt.phone)),
+                    Navigator.of(context).pop(const _ShareAction.other()),
               ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(LucideIcons.phoneCall),
-              title: const Text('Başka numara'),
-              onTap: () =>
-                  Navigator.of(context).pop(const _ShareAction.other()),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ),
@@ -375,19 +380,30 @@ Future<bool> shareInvoicePaymentLinkWithWhatsApp({
   );
   await Clipboard.setData(ClipboardData(text: message));
 
-  final waPhone = normalizePhoneForWhatsApp(phone);
-  final url = waPhone.isEmpty
-      ? Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}')
-      : Uri.parse(
-          'https://wa.me/$waPhone?text=${Uri.encodeComponent(message)}',
-        );
-  final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-  if (!opened) {
-    await openExternalUrl(url.toString());
+  final launchText = _whatsAppLaunchText(
+    fullMessage: message,
+    paymentUrl: paymentUrl,
+    amountLabel: amountLabel,
+    customerName: customerName ?? customer?.name,
+    invoiceLabels: invoiceLabels,
+  );
+  var opened = await openWhatsAppChat(phone: phone, text: launchText);
+  if (!opened && !kIsWeb) {
+    try {
+      await Share.share(message, sharePositionOrigin: _shareOrigin());
+      opened = true;
+    } catch (_) {}
   }
 
+  if (!context.mounted) return opened;
+
+  // Native / dar ekranda PDF paylaşım paneli WhatsApp sohbetini kapatır.
   var sharedPdf = false;
-  if (pdfs.isNotEmpty) {
+  final attachPdfOnDesktopWeb =
+      kIsWeb &&
+      pdfs.isNotEmpty &&
+      MediaQuery.sizeOf(context).width >= 900;
+  if (attachPdfOnDesktopWeb) {
     try {
       sharedPdf = await shareEInvoicePdfBundle(
         files: pdfs,
@@ -398,9 +414,7 @@ Future<bool> shareInvoicePaymentLinkWithWhatsApp({
     }
     if (!sharedPdf) {
       for (final pdf in pdfs) {
-        if (kIsWeb &&
-            isLocalOpenPdfUrl(pdf.url) &&
-            canUseLocalOpenPdfBridge()) {
+        if (isLocalOpenPdfUrl(pdf.url) && canUseLocalOpenPdfBridge()) {
           sharedPdf = await openExternalUrl(pdf.url) || sharedPdf;
           continue;
         }
@@ -409,7 +423,7 @@ Future<bool> shareInvoicePaymentLinkWithWhatsApp({
         }
       }
     }
-    if (kIsWeb && canUseLocalOpenPdfBridge()) {
+    if (canUseLocalOpenPdfBridge()) {
       for (final pdf in pdfs) {
         final revealUrl = revealLocalFileUrlFromOpenPdf(pdf.url);
         if (revealUrl != null) {
@@ -419,17 +433,78 @@ Future<bool> shareInvoicePaymentLinkWithWhatsApp({
     }
   }
 
-  if (!context.mounted) return false;
+  if (!context.mounted) return opened;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(
-        sharedPdf
+        !opened
+            ? 'WhatsApp açılamadı. Mesaj panoya kopyalandı.'
+            : sharedPdf
             ? 'WhatsApp açıldı. Fatura PDF’sini sohbete ekleyin.'
             : 'WhatsApp açıldı. Ödeme kartı ve buton sohbette görünecek.',
       ),
     ),
   );
-  return true;
+  return opened;
+}
+
+/// WhatsApp sohbetini native şema, wa.me ve api.whatsapp.com ile açmayı dener.
+Future<bool> openWhatsAppChat({
+  required String phone,
+  required String text,
+}) async {
+  final waPhone = normalizePhoneForWhatsApp(phone);
+  final encoded = Uri.encodeComponent(text);
+  final uris = <Uri>[
+    if (!kIsWeb && waPhone.isNotEmpty)
+      Uri.parse('whatsapp://send?phone=$waPhone&text=$encoded'),
+    if (waPhone.isNotEmpty)
+      Uri.parse('https://wa.me/$waPhone?text=$encoded'),
+    Uri.parse(
+      waPhone.isEmpty
+          ? 'https://api.whatsapp.com/send?text=$encoded'
+          : 'https://api.whatsapp.com/send?phone=$waPhone&text=$encoded',
+    ),
+  ];
+  final mode = kIsWeb
+      ? LaunchMode.platformDefault
+      : LaunchMode.externalApplication;
+  for (final uri in uris) {
+    try {
+      if (await launchUrl(uri, mode: mode)) return true;
+    } catch (_) {}
+  }
+  final fallback = uris.isEmpty ? '' : uris.last.toString();
+  if (fallback.isEmpty) return false;
+  return openExternalUrl(fallback);
+}
+
+String _whatsAppLaunchText({
+  required String fullMessage,
+  required String paymentUrl,
+  required String amountLabel,
+  String? customerName,
+  required List<String> invoiceLabels,
+}) {
+  final encodedLen = Uri.encodeComponent(fullMessage).length;
+  if (fullMessage.length <= _kWhatsAppUrlTextLimit && encodedLen <= 1800) {
+    return fullMessage;
+  }
+  final compact = buildInvoicePaymentWhatsAppMessage(
+    paymentUrl: paymentUrl,
+    amountLabel: amountLabel,
+    invoiceLabels: invoiceLabels,
+    customerName: customerName,
+    includePdfNote: false,
+  );
+  if (compact.length <= _kWhatsAppUrlTextLimit) return compact;
+  final name = (customerName ?? '').trim();
+  final greeting = name.isEmpty ? 'Merhaba,' : 'Merhaba $name,';
+  return '$greeting\n\n'
+      '*Tutar: $amountLabel*\n\n'
+      'Güvenli ödeme:\n'
+      '$paymentUrl\n\n'
+      '_Microvise Innovation_';
 }
 
 /// TR (+90) ve Kıbrıs (+357 / KKTC 053x→90) numaralarını wa.me için normalize eder.
@@ -511,6 +586,22 @@ Future<String?> _askPhoneNumber(BuildContext context) async {
 
 String _normalizePhoneKey(String raw) {
   return raw.replaceAll(RegExp(r'[^0-9]'), '');
+}
+
+Rect _shareOrigin() {
+  final view = WidgetsBinding.instance.platformDispatcher.views.firstOrNull;
+  final dpr = view?.devicePixelRatio ?? 1.0;
+  final size = view == null
+      ? const Size(1, 1)
+      : Size(view.physicalSize.width / dpr, view.physicalSize.height / dpr);
+  final maxX = size.width > 20 ? size.width - 20 : 0.0;
+  final maxY = size.height > 20 ? size.height - 20 : 0.0;
+  return Rect.fromLTWH(
+    (size.width / 2 - 10).clamp(0.0, maxX),
+    (size.height / 2 - 10).clamp(0.0, maxY),
+    20,
+    20,
+  );
 }
 
 class _PhoneOption {

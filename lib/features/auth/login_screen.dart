@@ -1,8 +1,13 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
@@ -40,6 +45,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _emailController.text = rememberedEmail;
     }
     Future.microtask(() => AppCache.remove(_legacyRememberedPasswordKey));
+  }
+
+  String _randomNonce() {
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
+  Future<void> _finishLogin({
+    required String token,
+    required String email,
+  }) async {
+    ref.read(apiAccessTokenProvider.notifier).set(token, persist: _rememberMe);
+    if (_rememberMe && email.isNotEmpty) {
+      await AppCache.writeString(_rememberedEmailKey, email);
+    } else if (!_rememberMe) {
+      await AppCache.remove(_rememberedEmailKey);
+    }
+    TextInput.finishAutofillContext(shouldSave: true);
+    ref.invalidate(currentUserProfileProvider);
+    if (!mounted) return;
+    context.go('/panel');
+  }
+
+  void _showLoginError(Object error) {
+    final raw = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(raw.startsWith('Giriş') ? raw : 'Giriş başarısız: $raw'),
+      ),
+    );
   }
 
   @override
@@ -83,29 +118,95 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (token.isEmpty) {
         throw Exception('Giriş başarısız.');
       }
-      ref
-          .read(apiAccessTokenProvider.notifier)
-          .set(token, persist: _rememberMe);
       if (_rememberMe) {
-        await AppCache.writeString(_rememberedEmailKey, email);
         await storeBrowserCredential(email: email, password: password);
-      } else {
-        await AppCache.remove(_rememberedEmailKey);
       }
-      TextInput.finishAutofillContext(shouldSave: true);
-      ref.invalidate(currentUserProfileProvider);
-      if (!mounted) return;
-      context.go('/panel');
+      await _finishLogin(token: token, email: email);
     } catch (e) {
       if (!mounted) return;
-      final raw = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            raw.startsWith('Giriş') ? raw : 'Giriş başarısız: $raw',
-          ),
-        ),
+      _showLoginError(e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _signInWithApple() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('API yapılandırması yok.')));
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      WebAuthenticationOptions? webOptions;
+      final needsWebAuth =
+          kIsWeb || defaultTargetPlatform == TargetPlatform.android;
+      if (needsWebAuth) {
+        final config = await apiClient.getJson(
+          '/auth/apple-config',
+          requiresAuth: false,
+        );
+        final clientId = config['clientId']?.toString().trim() ?? '';
+        final redirect = config['redirectUri']?.toString().trim() ?? '';
+        if (clientId.isEmpty || redirect.isEmpty) {
+          throw Exception(
+            'Web’de Apple ile giriş için Apple Services ID henüz tanımlanmadı.',
+          );
+        }
+        webOptions = WebAuthenticationOptions(
+          clientId: clientId,
+          redirectUri: Uri.parse(redirect),
+        );
+      }
+
+      final nonce = _randomNonce();
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: nonce,
+        webAuthenticationOptions: webOptions,
       );
+      final identityToken = credential.identityToken?.trim() ?? '';
+      if (identityToken.isEmpty) {
+        throw Exception('Apple kimliği alınamadı.');
+      }
+
+      final response = await apiClient.postJson(
+        '/auth/apple',
+        requiresAuth: false,
+        body: {
+          'identityToken': identityToken,
+          'authorizationCode': credential.authorizationCode,
+          'nonce': nonce,
+          'email': credential.email,
+          'givenName': credential.givenName,
+          'familyName': credential.familyName,
+          'userIdentifier': credential.userIdentifier,
+        },
+      );
+      final token = (response['accessToken'] ?? '').toString();
+      if (token.isEmpty) {
+        throw Exception('Giriş başarısız.');
+      }
+      final email =
+          (response['user'] is Map ? response['user']['email'] : null)
+              ?.toString()
+              .trim() ??
+          credential.email?.trim() ??
+          '';
+      await _finishLogin(token: token, email: email);
+    } on SignInWithAppleAuthorizationException catch (error) {
+      if (error.code == AuthorizationErrorCode.canceled) return;
+      if (!mounted) return;
+      _showLoginError(error.message);
+    } catch (e) {
+      if (!mounted) return;
+      _showLoginError(e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -292,6 +393,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                 ),
                               ],
+                            ),
+                            const Gap(12),
+                            IgnorePointer(
+                              ignoring: _loading,
+                              child: Opacity(
+                                opacity: _loading ? 0.55 : 1,
+                                child: SignInWithAppleButton(
+                                  onPressed: _signInWithApple,
+                                  text: 'Apple ile Giriş',
+                                  height: 44,
+                                  borderRadius: const BorderRadius.all(
+                                    Radius.circular(10),
+                                  ),
+                                ),
+                              ),
                             ),
                             const Gap(12),
                             Text(
