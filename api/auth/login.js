@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { query } = require('../_lib/db');
 const { ensureUsersAuthColumns } = require('../_lib/schema');
+const handleAppleAuth = require('../_lib/apple_auth');
 const {
   handleCors,
   ok,
@@ -122,6 +123,18 @@ const adminPagePermissions = [
 ];
 
 module.exports = async (req, res) => {
+  const appleMode = (() => {
+    try {
+      const url = new URL(req.url || '/', 'https://crm.microvise.net');
+      if (url.searchParams.get('apple')) return true;
+      return url.pathname.includes('/auth/apple');
+    } catch (_) {
+      return false;
+    }
+  })();
+  if (appleMode) {
+    return handleAppleAuth(req, res);
+  }
   if (handleCors(req, res, 'POST,OPTIONS')) return;
   if (req.method !== 'POST') {
     return methodNotAllowed(req, res, 'POST');

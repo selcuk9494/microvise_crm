@@ -142,7 +142,8 @@ function parseRequestUrl(req) {
 }
 
 function isCallbackRequest(req, url) {
-  if (url.searchParams.get('callback') === '1') return true;
+    if (url.searchParams.get('callback') === '1') return true;
+  if (url.searchParams.get('apple') === 'callback') return true;
   if (url.pathname.includes('apple-callback')) return true;
   const type = String(req.headers['content-type'] || '');
   return (
@@ -379,7 +380,7 @@ module.exports = async (req, res) => {
   if (isCallbackRequest(req, url)) {
     return handleAppleCallback(req, res, url);
   }
-  if (req.method === 'GET' || url.searchParams.get('config') === '1') {
+  if (req.method === 'GET' || url.searchParams.get('config') === '1' || url.searchParams.get('apple') === 'config') {
     return handleAppleConfig(req, res);
   }
   return handleAppleLogin(req, res);
