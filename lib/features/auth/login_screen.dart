@@ -131,7 +131,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _signInWithApple() async {
-    if (kIsWeb) return;
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) {
       ScaffoldMessenger.of(
@@ -396,26 +395,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ],
                             ),
                             const Gap(12),
-                            if (!kIsWeb &&
-                                (defaultTargetPlatform == TargetPlatform.iOS ||
-                                    defaultTargetPlatform ==
-                                        TargetPlatform.macOS)) ...[
-                              IgnorePointer(
-                                ignoring: _loading,
-                                child: Opacity(
-                                  opacity: _loading ? 0.55 : 1,
-                                  child: SignInWithAppleButton(
-                                    onPressed: _signInWithApple,
-                                    text: 'Apple ile Giriş',
-                                    height: 44,
-                                    borderRadius: const BorderRadius.all(
-                                      Radius.circular(10),
-                                    ),
+                            IgnorePointer(
+                              ignoring: _loading,
+                              child: Opacity(
+                                opacity: _loading ? 0.55 : 1,
+                                child: SignInWithAppleButton(
+                                  onPressed: _signInWithApple,
+                                  text: 'Apple ile Giriş',
+                                  height: 44,
+                                  borderRadius: const BorderRadius.all(
+                                    Radius.circular(10),
                                   ),
                                 ),
                               ),
-                              const Gap(12),
-                            ],
+                            ),
+                            const Gap(12),
                             Text(
                               'Admin ve personel rolleri sistem üzerinden yönetilir.',
                               style: Theme.of(context).textTheme.bodySmall
