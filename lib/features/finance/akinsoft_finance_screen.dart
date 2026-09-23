@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/format/currency_format.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
@@ -774,6 +775,13 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     final cariCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final lines = <_MasrafLineDraft>[_MasrafLineDraft()];
+    var payMethod = _kasas.isNotEmpty
+        ? 'cash'
+        : (_accounts.isNotEmpty ? 'bank' : 'cash');
+    String? kasaAdi = _kasas.isEmpty ? null : _text(_kasas.first['kasaAdi']);
+    String? bankAccountId = _accounts.isEmpty
+        ? null
+        : _text(_accounts.first['sourceId']);
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -824,6 +832,76 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                       controller: descCtrl,
                       decoration: const InputDecoration(labelText: 'Açıklama'),
                     ),
+                    const Gap(8),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('masraf-pay-$payMethod'),
+                      initialValue: payMethod,
+                      decoration: const InputDecoration(
+                        labelText: 'Çıkış kaynağı *',
+                        helperText: 'Tutar bu kasa veya banka hesabından düşülür.',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'cash', child: Text('Kasa')),
+                        DropdownMenuItem(value: 'bank', child: Text('Banka')),
+                      ],
+                      onChanged: (value) =>
+                          setLocal(() => payMethod = value ?? payMethod),
+                    ),
+                    if (payMethod == 'cash') ...[
+                      const Gap(8),
+                      DropdownButtonFormField<String>(
+                        initialValue:
+                            _kasas.any((k) => _text(k['kasaAdi']) == kasaAdi)
+                            ? kasaAdi
+                            : null,
+                        decoration: InputDecoration(
+                          labelText: 'Kasa *',
+                          helperText: _kasas.isEmpty
+                              ? 'Önce SAP Kasa’dan kasa ekleyin.'
+                              : null,
+                        ),
+                        items: [
+                          for (final k in _kasas)
+                            DropdownMenuItem(
+                              value: _text(k['kasaAdi']),
+                              child: Text(_text(k['kasaAdi'])),
+                            ),
+                        ],
+                        onChanged: _kasas.isEmpty
+                            ? null
+                            : (v) => setLocal(() => kasaAdi = v),
+                      ),
+                    ] else ...[
+                      const Gap(8),
+                      DropdownButtonFormField<String>(
+                        initialValue:
+                            _accounts.any(
+                              (a) => _text(a['sourceId']) == bankAccountId,
+                            )
+                            ? bankAccountId
+                            : null,
+                        decoration: InputDecoration(
+                          labelText: 'Banka hesabı *',
+                          helperText: _accounts.isEmpty
+                              ? 'Önce Bankalar / Hesaplar’dan hesap ekleyin.'
+                              : null,
+                        ),
+                        items: [
+                          for (final a in _accounts)
+                            DropdownMenuItem(
+                              value: _text(a['sourceId']),
+                              child: Text(
+                                _text(a['label']).isEmpty
+                                    ? _text(a['hesapNo'])
+                                    : _text(a['label']),
+                              ),
+                            ),
+                        ],
+                        onChanged: _accounts.isEmpty
+                            ? null
+                            : (v) => setLocal(() => bankAccountId = v),
+                      ),
+                    ],
                     const Gap(12),
                     Row(
                       children: [
@@ -908,6 +986,8 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
                                           const TextInputType.numberWithOptions(
                                             decimal: true,
                                           ),
+                                      inputFormatters:
+                                          moneyDecimalInputFormatters,
                                       decoration: const InputDecoration(
                                         labelText: 'Birim fiyat *',
                                       ),
@@ -1005,6 +1085,14 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       setState(() => _error = 'En az bir masraf kalemi girin.');
       return;
     }
+    if (payMethod == 'cash' && (kasaAdi ?? '').isEmpty) {
+      setState(() => _error = 'Masrafın düşüleceği kasayı seçin.');
+      return;
+    }
+    if (payMethod == 'bank' && (bankAccountId ?? '').isEmpty) {
+      setState(() => _error = 'Masrafın düşüleceği banka hesabını seçin.');
+      return;
+    }
     await _mutate(
       'finance/masraf',
       {
@@ -1012,6 +1100,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         'description': descCtrl.text.trim(),
         'date': date.toIso8601String(),
         'items': items,
+        'payMethod': payMethod,
+        if (payMethod == 'cash') 'kasaAdi': kasaAdi,
+        if (payMethod == 'bank') 'bankAccountId': bankAccountId,
       },
       successMessage: 'Masraf faturası SAP’a yazıldı (MSF).',
     );
@@ -1029,10 +1120,8 @@ class _MasrafLineDraft {
   final TextEditingController priceCtrl;
   double taxRate = 0;
 
-  double get qty =>
-      double.tryParse(qtyCtrl.text.trim().replaceAll(',', '.')) ?? 0;
-  double get unitPrice =>
-      double.tryParse(priceCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+  double get qty => parseCurrencyValue(qtyCtrl.text) ?? 0;
+  double get unitPrice => parseCurrencyValue(priceCtrl.text) ?? 0;
 }
 
 class _Banner extends StatelessWidget {
@@ -1251,7 +1340,7 @@ class _MasrafList extends StatelessWidget {
           index: index,
           title: _text(row['faturaNo']),
           subtitle:
-              '${_date(row['date'])} · ${_text(row['cariUnvan']).isEmpty ? 'Cari yok' : _text(row['cariUnvan'])} · ${_money(row['toplam'] as num? ?? 0)}${itemNames.isEmpty ? '' : ' · $itemNames'}',
+              '${_date(row['date'])} · ${_text(row['cariUnvan']).isEmpty ? 'Cari yok' : _text(row['cariUnvan'])} · ${_money(row['toplam'] as num? ?? 0)}${_text(row['payLabel']).isEmpty ? '' : ' · ${_text(row['payLabel'])}'}${itemNames.isEmpty ? '' : ' · $itemNames'}',
           trailing: const AppBadge(
             label: 'MSF',
             tone: AppBadgeTone.warning,

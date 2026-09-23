@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/format/app_date_time.dart';
+import '../../core/format/currency_format.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_phosphor_icons.dart';
@@ -55,14 +56,7 @@ String formatPosMoney(double amount, String? currency) {
   ).format(amount);
 }
 
-double? parsePosAmount(String raw) {
-  final text = raw.trim().replaceAll(' ', '');
-  if (text.isEmpty) return null;
-  final normalized = text.contains(',')
-      ? text.replaceAll('.', '').replaceAll(',', '.')
-      : text;
-  return double.tryParse(normalized);
-}
+double? parsePosAmount(String raw) => parseCurrencyValue(raw);
 
 double normalizePosCommissionRate(double value) {
   if (value.isNaN) return 0;
@@ -681,14 +675,43 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
           });
         }
       }
-      var sapPosted = false;
-      if (settled && details != null && details.postToSap) {
-        sapPosted = await _postSapPosCollection(row, details);
-        if (!sapPosted) return;
-      }
       final apiClient = ref.read(apiClientProvider);
       if (apiClient == null) return;
-      final response = await apiClient.postJson(
+      var sapPosted = false;
+      Map<String, dynamic>? response;
+      if (settled) {
+        response = await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'markPosPaymentSettled',
+            'linkId': row.id,
+            'settled': true,
+            if (details != null) 'commission': details.commission,
+            if (details != null) 'bankAccountId': details.bankAccountId,
+            if (details != null) 'kpbAmount': details.kpbAmount,
+            'sapPosted': false,
+          },
+        );
+      }
+      if (settled && details != null && details.postToSap) {
+        try {
+          sapPosted = await _postSapPosCollection(row, details);
+        } catch (error) {
+          if (!mounted) return;
+          ref.invalidate(posCollectionsProvider(_filter));
+          ref.invalidate(invoicesProvider);
+          ref.invalidate(accountBalancesProvider);
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                'Hesaba yattı işaretlendi. SAP yazılamadı: ${_akinsoftBridgeError(error)}',
+              ),
+            ),
+          );
+          return;
+        }
+      }
+      response = await apiClient.postJson(
         '/mutate',
         body: {
           'op': 'markPosPaymentSettled',
@@ -716,12 +739,13 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
       );
     } catch (error) {
       if (!mounted) return;
+      ref.invalidate(posCollectionsProvider(_filter));
       messenger.showSnackBar(
         SnackBar(
           content: Text(
             settled
-                ? 'Hesaba yatırılamadı: ${_akinsoftBridgeError(error)}'
-                : 'İşaret kaldırılamadı: ${_akinsoftBridgeError(error)}',
+                ? 'Hesaba yatırılamadı: ${_settleError(error)}'
+                : 'İşaret kaldırılamadı: ${_settleError(error)}',
           ),
         ),
       );
@@ -1008,9 +1032,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
 
   Future<void> _editCommissionRate(double current) async {
     final controller = TextEditingController(
-      text: current > 0
-          ? current.toStringAsFixed(2).replaceAll('.', ',')
-          : '',
+      text: current > 0 ? formatMoneyInput(current) : '',
     );
     final next = await showDialog<double>(
       context: context,
@@ -1020,9 +1042,10 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
           controller: controller,
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: moneyDecimalInputFormatters,
           decoration: const InputDecoration(
             labelText: 'Oran (%)',
-            helperText: 'Hesaba yattı’da otomatik gelir. Örn. 2,45',
+            helperText: 'Nokta veya virgül aynıdır. Örn. 2,45',
           ),
           onSubmitted: (value) {
             Navigator.pop(context, parsePosAmount(value) ?? 0);
@@ -1865,14 +1888,12 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
     final commission = savedCommission != null && savedCommission > 0.009
         ? savedCommission
         : commissionAmountFromRate(gross, rate);
-    _gross = TextEditingController(text: gross.toStringAsFixed(2));
+    _gross = TextEditingController(text: formatMoneyInput(gross));
     _rate = TextEditingController(
-      text: rate > 0 ? rate.toStringAsFixed(2).replaceAll('.', ',') : '',
+      text: rate > 0 ? formatMoneyInput(rate) : '',
     );
     _commission = TextEditingController(
-      text: commission > 0
-          ? commission.toStringAsFixed(2).replaceAll('.', ',')
-          : '',
+      text: commission > 0 ? formatMoneyInput(commission) : '',
     );
     _gross.addListener(_onGrossChanged);
     _rate.addListener(_onRateChanged);
@@ -1911,9 +1932,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
     }
     _syncing = true;
     final nextRate = commissionRateFromAmount(gross, commission);
-    _rate.text = nextRate > 0
-        ? nextRate.toStringAsFixed(2).replaceAll('.', ',')
-        : '';
+    _rate.text = nextRate > 0 ? formatMoneyInput(nextRate) : '';
     _syncing = false;
     setState(() {});
   }
@@ -1924,7 +1943,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
     _syncing = true;
     final commission = commissionAmountFromRate(gross, rate);
     _commission.text = commission > 0
-        ? commission.toStringAsFixed(2).replaceAll('.', ',')
+        ? formatMoneyInput(commission)
         : (rate <= 0 ? '' : '0,00');
     _syncing = false;
     setState(() {});
@@ -2066,6 +2085,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
+                inputFormatters: moneyDecimalInputFormatters,
                 decoration: const InputDecoration(
                   labelText: 'POS tutarı (TL)',
                   helperText: 'Bankanın müşteriden çektiği brüt tutar.',
@@ -2082,6 +2102,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      inputFormatters: moneyDecimalInputFormatters,
                       decoration: const InputDecoration(
                         labelText: 'Komisyon %',
                         helperText: 'Oran yazınca tutar hesaplanır.',
@@ -2096,6 +2117,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      inputFormatters: moneyDecimalInputFormatters,
                       decoration: const InputDecoration(
                         labelText: 'Komisyon tutarı (TL)',
                         helperText: 'Tutar yazınca yüzde hesaplanır.',
@@ -2172,6 +2194,17 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
       ],
     );
   }
+}
+
+String _settleError(Object error) {
+  final text = error.toString().replaceFirst(RegExp(r'^Exception: '), '');
+  if (RegExp(
+    r'Connection refused|Failed host lookup|ClientException|SocketException|XMLHttpRequest',
+    caseSensitive: false,
+  ).hasMatch(text)) {
+    return _akinsoftBridgeError(error);
+  }
+  return text;
 }
 
 String _akinsoftBridgeError(Object error) {

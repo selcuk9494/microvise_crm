@@ -1077,7 +1077,20 @@ async function handleAkinsoftAnalyze(req, res) {
 function numberOrZero(value) {
   if (value == null) return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const parsed = Number.parseFloat(String(value).replace(',', '.'));
+  const text = String(value).trim().replace(/\s/g, '');
+  if (!text) return 0;
+  const lastComma = text.lastIndexOf(',');
+  const lastDot = text.lastIndexOf('.');
+  let normalized = text;
+  if (lastComma >= 0 && lastDot >= 0) {
+    normalized =
+      lastComma > lastDot
+        ? text.replace(/\./g, '').replace(',', '.')
+        : text.replace(/,/g, '');
+  } else if (lastComma >= 0) {
+    normalized = text.replace(/,/g, '.');
+  }
+  const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 

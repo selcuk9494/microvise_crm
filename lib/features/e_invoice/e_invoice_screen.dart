@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/providers/provider_cache.dart';
+import '../../core/format/currency_format.dart';
 import '../../core/format/search_normalize.dart';
 import '../../core/platform/open_external_url.dart';
 import '../../core/ui/app_badge.dart';
@@ -1054,14 +1055,7 @@ class _CollectionDetails {
   final DateTime? checkDate;
 }
 
-double? _parseCollectionAmount(String raw) {
-  final text = raw.trim().replaceAll(' ', '');
-  if (text.isEmpty) return null;
-  final normalized = text.contains(',')
-      ? text.replaceAll('.', '').replaceAll(',', '.')
-      : text;
-  return double.tryParse(normalized);
-}
+double? _parseCollectionAmount(String raw) => parseCurrencyValue(raw);
 
 class _CollectionSeed {
   const _CollectionSeed({
@@ -1180,14 +1174,14 @@ class _CollectionDialogState extends State<_CollectionDialog> {
     _checkNo = TextEditingController();
     _desc = TextEditingController(text: seed?.description ?? '');
     final amount = seed?.amount ?? widget.total;
-    _amount = TextEditingController(text: amount.toStringAsFixed(2));
+    _amount = TextEditingController(text: formatMoneyInput(amount));
     final defaultTl = seed?.kpbAmount != null && seed!.kpbAmount! > 0
         ? seed.kpbAmount!
         : (_isFx && _invoiceRate > 1.5 ? amount * _invoiceRate : amount);
-    _tlAmount = TextEditingController(text: defaultTl.toStringAsFixed(2));
+    _tlAmount = TextEditingController(text: formatMoneyInput(defaultTl));
     _commission = TextEditingController(
       text: (seed?.commission ?? 0) > 0.009
-          ? seed!.commission.toStringAsFixed(2)
+          ? formatMoneyInput(seed!.commission)
           : '',
     );
     _amount.addListener(_onMoneyChanged);
@@ -1383,6 +1377,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
+                inputFormatters: moneyDecimalInputFormatters,
                 decoration: InputDecoration(
                   labelText: 'Tutar ($_currency)',
                   helperText: widget.invoices.length > 1
@@ -1399,6 +1394,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
+                  inputFormatters: moneyDecimalInputFormatters,
                   decoration: InputDecoration(
                     labelText: _isPosMethod ? 'POS TL tutarı' : 'TL karşılığı',
                     helperText: _isPosMethod
@@ -1519,6 +1515,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
+                  inputFormatters: moneyDecimalInputFormatters,
                   decoration: const InputDecoration(
                     labelText: 'Komisyon (TL)',
                     helperText:
@@ -13150,16 +13147,13 @@ class _ErrorCard extends StatelessWidget {
 double _parseDecimal(String value) {
   final trimmed = value.trim().replaceAll(' ', '');
   if (trimmed.isEmpty) return 0;
-  // TR: 1.234,56 — mixed separators → strip thousands dots
   if (trimmed.contains(',') && trimmed.contains('.')) {
     return double.tryParse(trimmed.replaceAll('.', '').replaceAll(',', '.')) ??
         0;
   }
-  // TR decimal comma: 12,50
   if (trimmed.contains(',')) {
     return double.tryParse(trimmed.replaceAll(',', '.')) ?? 0;
   }
-  // Plain / US: 12.50
   return double.tryParse(trimmed) ?? 0;
 }
 

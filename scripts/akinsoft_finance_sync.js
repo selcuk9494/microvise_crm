@@ -376,6 +376,74 @@ function createAkinsoftFinanceHandlers(ctx) {
     `);
 
     const list = [];
+    const payByEvrak = new Map();
+    const evraks = [
+      ...new Set(
+        (headers.recordset || [])
+          .map((row) => String(row.faturaNo || '').slice(0, 10).trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (evraks.length) {
+      const bind = (req) =>
+        evraks.map((evrak, index) => {
+          req.input(`e${index}`, sql.NVarChar(16), evrak);
+          return `@e${index}`;
+        });
+      if (await akinsoftTableExists(pool, 'KASAHR')) {
+        const req = pool.request();
+        const keys = bind(req);
+        const rows = await req.query(`
+          select
+            convert(nvarchar(16), EVRAK_NO) as evrak,
+            convert(nvarchar(40), KASA_ADI) as kasaAdi
+          from dbo.KASAHR
+          where coalesce(SILINDI, 0) = 0
+            and isnull(KPB_GDTUT, 0) > 0
+            and EVRAK_NO in (${keys.join(',')})
+            and (
+              OZEL_KODU = N'Masraf'
+              or SOURCE_APP = N'MICROVISE'
+              or KAYDEDEN = N'MICROVISE'
+            )
+        `);
+        for (const row of rows.recordset || []) {
+          payByEvrak.set(String(row.evrak), {
+            payMethod: 'cash',
+            payLabel: `Kasa ${textOrNull(row.kasaAdi) || ''}`.trim(),
+          });
+        }
+      }
+      if (await akinsoftTableExists(pool, 'BANKAHR')) {
+        const req = pool.request();
+        const keys = bind(req);
+        const rows = await req.query(`
+          select
+            convert(nvarchar(16), hr.EVRAK_NO) as evrak,
+            convert(nvarchar(80), a.BANKA_ADI) as bankName,
+            convert(nvarchar(40), h.TANIMI) as tanimi,
+            convert(nvarchar(40), h.HESAP_NO) as hesapNo,
+            convert(nvarchar(8), h.HESAP_TURU) as hesapTuru
+          from dbo.BANKAHR hr
+          left join dbo.BANKA_HESAP h on h.BLKODU = hr.BLHSKODU
+          left join dbo.BANKA_ADI a on a.BLKODU = h.BLBNKODU
+          where coalesce(hr.SILINDI, 0) = 0
+            and isnull(hr.TUTAR_ALACAK, 0) > 0
+            and hr.EVRAK_NO in (${keys.join(',')})
+            and (
+              hr.OZEL_KODU = N'Masraf'
+              or hr.SOURCE_APP = N'MICROVISE'
+              or hr.KAYDEDEN = N'MICROVISE'
+            )
+        `);
+        for (const row of rows.recordset || []) {
+          payByEvrak.set(String(row.evrak), {
+            payMethod: 'bank',
+            payLabel: accountLabel(row.bankName, row.tanimi, row.hesapNo, row.hesapTuru),
+          });
+        }
+      }
+    }
     for (const row of headers.recordset || []) {
       const lineReq = pool.request();
       lineReq.input('fid', sql.BigInt, Number(row.sourceId));
@@ -393,6 +461,7 @@ function createAkinsoftFinanceHandlers(ctx) {
         where hr.BLFTKODU = @fid
         order by hr.BLKODU
       `);
+      const pay = payByEvrak.get(String(row.faturaNo || '').slice(0, 10).trim()) || {};
       list.push({
         sourceId: String(row.sourceId),
         faturaNo: textOrNull(row.faturaNo),
@@ -404,6 +473,8 @@ function createAkinsoftFinanceHandlers(ctx) {
         kdv: numberOrZero(row.kdv),
         durum: Number(row.durum) || 0,
         aciklama: textOrNull(row.aciklama),
+        payMethod: pay.payMethod || null,
+        payLabel: pay.payLabel || null,
         items: (lines.recordset || []).map((line) => ({
           sourceId: String(line.sourceId),
           name: textOrNull(line.name) || 'Masraf',
@@ -995,6 +1066,40 @@ function createAkinsoftFinanceHandlers(ctx) {
     setFirstColumn(header, faturaColumns, ['DOVIZ_KULLAN'], 0);
     setFirstColumn(header, faturaColumns, ['DOVIZ_BIRIMI'], 'TL');
 
+    let payMethod = String(body.payMethod || body.method || '').toLowerCase();
+    if (payMethod === 'kasa' || payMethod === 'nakit') payMethod = 'cash';
+    if (payMethod === 'banka') payMethod = 'bank';
+    const kasaAdi = textOrNull(body.kasaAdi);
+    const bankAccountId = Number(body.bankAccountId || body.accountId);
+    if (payMethod !== 'cash' && payMethod !== 'bank') {
+      throw Object.assign(
+        new Error('Çıkış kaynağı seçin: kasa veya banka.'),
+        { statusCode: 400 },
+      );
+    }
+    if (payMethod === 'cash' && !kasaAdi) {
+      throw Object.assign(new Error('Masrafın düşüleceği kasayı seçin.'), {
+        statusCode: 400,
+      });
+    }
+    if (payMethod === 'bank' && (!Number.isFinite(bankAccountId) || bankAccountId <= 0)) {
+      throw Object.assign(new Error('Masrafın düşüleceği banka hesabını seçin.'), {
+        statusCode: 400,
+      });
+    }
+    if (payMethod === 'cash') {
+      setFirstColumn(header, faturaColumns, ['KASA_ADI'], kasaAdi.slice(0, 10));
+      setFirstColumn(header, faturaColumns, ['ODEME_SEKLI', 'ODEME_TIPI'], 'KASA');
+    } else {
+      setFirstColumn(
+        header,
+        faturaColumns,
+        ['BLHSKODU', 'BLBAHSKODU', 'BLBAKODU'],
+        bankAccountId,
+      );
+      setFirstColumn(header, faturaColumns, ['ODEME_SEKLI', 'ODEME_TIPI'], 'BANKA');
+    }
+
     await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'FATURA', faturaColumns, header);
 
     const lineIds = [];
@@ -1016,11 +1121,78 @@ function createAkinsoftFinanceHandlers(ctx) {
       lineIds.push(String(lineId));
     }
 
+    const aciklama = (
+      textOrNull(body.description || body.aciklama) ||
+      `Masraf ${faturaNo}`
+    ).slice(0, 50);
+    const evrakNo = String(faturaNo).slice(0, 10);
+    const tarihOnly = new Date(tarih);
+    tarihOnly.setHours(0, 0, 0, 0);
+    let kasaHrId = null;
+    let bankHrId = null;
+    let payLabel = null;
+
+    if (payMethod === 'cash') {
+      if (!(await akinsoftTableExists(pool, 'KASAHR'))) {
+        throw Object.assign(new Error('KASAHR tablosu bulunamadı.'), { statusCode: 400 });
+      }
+      const kasaHrColumns = await akinsoftTableColumnSet(pool, 'KASAHR');
+      const id = await akinsoftNextBlkoduSafe(pool, 'KASAHR');
+      const kasaRow = { BLKODU: id };
+      setFirstColumn(kasaRow, kasaHrColumns, ['TARIHI'], tarih);
+      setFirstColumn(kasaRow, kasaHrColumns, ['EVRAK_NO'], evrakNo);
+      setFirstColumn(kasaRow, kasaHrColumns, ['KASA_ADI'], kasaAdi.slice(0, 10));
+      setFirstColumn(kasaRow, kasaHrColumns, ['ACIKLAMA'], aciklama);
+      setFirstColumn(kasaRow, kasaHrColumns, ['OZEL_KODU'], 'Masraf');
+      setFirstColumn(kasaRow, kasaHrColumns, ['KPB_GDTUT'], genel);
+      setFirstColumn(kasaRow, kasaHrColumns, ['DOVIZ_KULLAN'], 0);
+      setFirstColumn(kasaRow, kasaHrColumns, ['KPBDVZ'], 1);
+      setFirstColumn(kasaRow, kasaHrColumns, ['SILINDI'], 0);
+      setFirstColumn(kasaRow, kasaHrColumns, ['KAYDEDEN'], 'MICROVISE');
+      setFirstColumn(kasaRow, kasaHrColumns, ['KAYIT_TARIHI'], new Date());
+      setFirstColumn(kasaRow, kasaHrColumns, ['SOURCE_APP'], 'MICROVISE');
+      setFirstColumn(kasaRow, kasaHrColumns, ['FATURA_NO'], faturaNo);
+      await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'KASAHR', kasaHrColumns, kasaRow);
+      kasaHrId = String(id);
+      payLabel = `Kasa ${kasaAdi}`;
+    } else {
+      if (!(await akinsoftTableExists(pool, 'BANKAHR'))) {
+        throw Object.assign(new Error('BANKAHR tablosu bulunamadı.'), { statusCode: 400 });
+      }
+      const accountMeta = await resolveAccountMeta(pool, bankAccountId);
+      const bankHrColumns = await akinsoftTableColumnSet(pool, 'BANKAHR');
+      const id = await akinsoftNextBlkoduSafe(pool, 'BANKAHR');
+      const bankRow = { BLKODU: id };
+      setFirstColumn(bankRow, bankHrColumns, ['EVRAK_NO'], evrakNo);
+      setFirstColumn(bankRow, bankHrColumns, ['TARIHI'], tarih);
+      setFirstColumn(bankRow, bankHrColumns, ['VADESI'], tarihOnly);
+      setFirstColumn(bankRow, bankHrColumns, ['ISLEM_TURU'], 4);
+      setFirstColumn(bankRow, bankHrColumns, ['ACIKLAMA'], aciklama);
+      setFirstColumn(bankRow, bankHrColumns, ['OZEL_KODU'], 'Masraf');
+      setFirstColumn(bankRow, bankHrColumns, ['BLHSKODU'], bankAccountId);
+      setFirstColumn(bankRow, bankHrColumns, ['KPB_TUTARI'], genel);
+      setFirstColumn(bankRow, bankHrColumns, ['TUTAR_ALACAK'], genel);
+      setFirstColumn(bankRow, bankHrColumns, ['SILINDI'], 0);
+      setFirstColumn(bankRow, bankHrColumns, ['KAYDEDEN'], 'MICROVISE');
+      setFirstColumn(bankRow, bankHrColumns, ['KAYIT_TARIHI'], new Date());
+      setFirstColumn(bankRow, bankHrColumns, ['SOURCE_APP'], 'MICROVISE');
+      setFirstColumn(bankRow, bankHrColumns, ['FATURA_NO'], faturaNo);
+      await insertAkinsoftRowWithRequest(() => pool.request(), sql, 'BANKAHR', bankHrColumns, bankRow);
+      bankHrId = String(id);
+      payLabel = accountMeta.label;
+    }
+
     return {
       sourceId: String(faturaId),
       faturaNo,
       toplam: genel,
       lineIds,
+      payMethod,
+      payLabel,
+      kasaHrId,
+      bankHrId,
+      kasaAdi: payMethod === 'cash' ? kasaAdi : null,
+      bankAccountId: payMethod === 'bank' ? String(bankAccountId) : null,
     };
   }
 
@@ -1251,6 +1423,54 @@ function createAkinsoftFinanceHandlers(ctx) {
     ).slice(0, 50);
     const evrakNo = (faturaNo || (await nextEvrakNo(pool, 'CARIHR', 'TH'))).slice(0, 20);
     const cariHrColumns = await akinsoftTableColumnSet(pool, 'CARIHR');
+
+    if (method === 'pos' && Number.isFinite(faturaId) && faturaId > 0) {
+      const hasSourceApp = cariHrColumns.has('SOURCE_APP');
+      const hasKaydeden = cariHrColumns.has('KAYDEDEN');
+      const microviseClause = [
+        hasSourceApp ? `SOURCE_APP = N'MICROVISE'` : null,
+        hasKaydeden ? `KAYDEDEN = N'MICROVISE'` : null,
+      ]
+        .filter(Boolean)
+        .join(' or ');
+      if (microviseClause) {
+        const existingPos = await pool
+          .request()
+          .input('ftk', sql.NVarChar(32), `FTK_${faturaId}`)
+          .query(`
+            select top 1
+              BLKODU as id,
+              convert(nvarchar(40), EVRAK_NO) as evrakNo
+            from dbo.CARIHR
+            where coalesce(SILINDI, 0) = 0
+              and ENTEGRASYON = @ftk
+              and ISLEM_TURU = 6
+              and (${microviseClause})
+            order by BLKODU desc
+          `);
+        const reused = existingPos.recordset?.[0];
+        if (reused) {
+          return {
+            type: 'invoice_collection',
+            method,
+            amount,
+            currency,
+            kpbAmount,
+            commissionKpb,
+            bankKpb: Number(Math.max(0, kpbAmount - commissionKpb).toFixed(2)),
+            kurFarkKpb: 0,
+            remainingKpb: 0,
+            remainingDvz: 0,
+            evrakNo: String(reused.evrakNo || evrakNo),
+            cariHrId: String(reused.id),
+            faturaId: String(faturaId),
+            faturaNo,
+            customerSourceId: String(customerSourceId),
+            reused: true,
+          };
+        }
+      }
+    }
 
     async function insertCariHrLine({
       kpb,
@@ -1631,6 +1851,16 @@ function createAkinsoftFinanceHandlers(ctx) {
     if (!Number.isFinite(sourceId)) {
       throw Object.assign(new Error('sourceId zorunlu.'), { statusCode: 400 });
     }
+    const current = await pool
+      .request()
+      .input('id', sql.BigInt, sourceId)
+      .query(`
+        select convert(nvarchar(40), FATURA_NO) as faturaNo
+        from dbo.FATURA
+        where BLKODU=@id
+      `);
+    const faturaNo = textOrNull(current.recordset?.[0]?.faturaNo);
+    const evrak = faturaNo ? faturaNo.slice(0, 10) : null;
     await pool
       .request()
       .input('id', sql.BigInt, sourceId)
@@ -1639,7 +1869,41 @@ function createAkinsoftFinanceHandlers(ctx) {
         set SILINDI=1, DEGISTIREN=N'MICROVISE', DEGISTIRME_TARIHI=getdate()
         where BLKODU=@id
       `);
-    return { sourceId: String(sourceId), action: 'soft_deleted' };
+    if (evrak) {
+      if (await akinsoftTableExists(pool, 'KASAHR')) {
+        await pool
+          .request()
+          .input('evrak', sql.NVarChar(16), evrak)
+          .query(`
+            update dbo.KASAHR
+            set SILINDI=1, DEGISTIREN=N'MICROVISE', DEGISTIRME_TARIHI=getdate()
+            where EVRAK_NO=@evrak
+              and coalesce(SILINDI, 0)=0
+              and (
+                OZEL_KODU = N'Masraf'
+                or SOURCE_APP = N'MICROVISE'
+                or KAYDEDEN = N'MICROVISE'
+              )
+          `);
+      }
+      if (await akinsoftTableExists(pool, 'BANKAHR')) {
+        await pool
+          .request()
+          .input('evrak', sql.NVarChar(16), evrak)
+          .query(`
+            update dbo.BANKAHR
+            set SILINDI=1, DEGISTIREN=N'MICROVISE', DEGISTIRME_TARIHI=getdate()
+            where EVRAK_NO=@evrak
+              and coalesce(SILINDI, 0)=0
+              and (
+                OZEL_KODU = N'Masraf'
+                or SOURCE_APP = N'MICROVISE'
+                or KAYDEDEN = N'MICROVISE'
+              )
+          `);
+      }
+    }
+    return { sourceId: String(sourceId), action: 'soft_deleted', faturaNo, evrak };
   }
 
   function wrapMutator(mutator) {

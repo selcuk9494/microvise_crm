@@ -39,6 +39,44 @@ function asUuidOrNull(value) {
   return text;
 }
 
+function parseMoneyAmount(value) {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : NaN;
+  }
+  const text = String(value)
+    .trim()
+    .replace(/\s/g, '')
+    .replace(/[₺]/g, '')
+    .replace(/TRY|TL/gi, '');
+  if (!text || text === '-' || text === ',' || text === '.') return NaN;
+  const lastComma = text.lastIndexOf(',');
+  const lastDot = text.lastIndexOf('.');
+  let normalized = text;
+  if (lastComma >= 0 && lastDot >= 0) {
+    normalized =
+      lastComma > lastDot
+        ? text.replace(/\./g, '').replace(',', '.')
+        : text.replace(/,/g, '');
+  } else if (lastComma >= 0) {
+    const after = text.length - lastComma - 1;
+    const integer = text.slice(0, lastComma).replace(/-/g, '');
+    normalized =
+      after === 3 && integer !== '' && integer !== '0'
+        ? text.replace(/,/g, '')
+        : text.replace(',', '.');
+  } else if (lastDot >= 0) {
+    const after = text.length - lastDot - 1;
+    const dots = (text.match(/\./g) || []).length;
+    const integer = text.slice(0, lastDot).replace(/-/g, '');
+    if (dots === 1 && after === 3 && integer !== '' && integer !== '0') {
+      normalized = text.replace(/\./g, '');
+    }
+  }
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : NaN;
+}
+
 function buildHalkbankHashVer3(params, storeKey) {
   const keys = Object.keys(params).sort((a, b) =>
     a.localeCompare(b, 'en', { sensitivity: 'base' }),
@@ -3006,14 +3044,15 @@ async function markPosPaymentSettled({
     throw error;
   }
   const settleNow = settled === true;
-  const commissionAmount = settleNow
-    ? Math.max(0, Number(commission || 0))
-    : null;
-  if (settleNow && commission != null && Number.isNaN(Number(commission))) {
+  const parsedCommission = parseMoneyAmount(commission);
+  if (settleNow && commission != null && Number.isNaN(parsedCommission)) {
     const error = new Error('Komisyon tutarı geçersiz.');
     error.statusCode = 400;
     throw error;
   }
+  const commissionAmount = settleNow
+    ? Number(Math.max(0, parsedCommission || 0).toFixed(2))
+    : null;
   const bankId = settleNow
     ? String(bankAccountId || '').trim() || null
     : null;
@@ -3021,13 +3060,16 @@ async function markPosPaymentSettled({
   const updated = await query(
     `
       update public.invoice_payment_links
-      set settled_at = case when $2 then coalesce(settled_at, now()) else null end,
-          settled_by = case when $2 then coalesce(settled_by, $3::uuid) else null end,
-          settle_commission = case when $2 then $4 else null end,
-          settle_bank_account_id = case when $2 then $5 else null end,
+      set settled_at = case when $2::boolean then coalesce(settled_at, now()) else null end,
+          settled_by = case when $2::boolean then coalesce(settled_by, $3::uuid) else null end,
+          settle_commission = case
+            when $2::boolean then $4::numeric
+            else null::numeric
+          end,
+          settle_bank_account_id = case when $2::boolean then $5 else null end,
           sap_settled_at = case
-            when $2 and $6 then coalesce(sap_settled_at, now())
-            when $2 then sap_settled_at
+            when $2::boolean and $6::boolean then coalesce(sap_settled_at, now())
+            when $2::boolean then sap_settled_at
             else null
           end,
           updated_at = now()
