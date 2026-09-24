@@ -92,6 +92,23 @@ function counterToObject(mapOrObj) {
   return { ...mapOrObj };
 }
 
+function findBankCountIndex(headers) {
+  const known = findHeaderIndex(headers, [
+    'Uzerindeki Banka Uygulama Sayısı',
+    'Üzerindeki Banka Uygulama Sayısı',
+    'Banka Uyg. Sayısı',
+    'Banka Uygulama Sayısı',
+    'Banka Uyg Sayisi',
+    'Banka Adet',
+  ]);
+  if (known >= 0) return known;
+  const normalized = headers.map(normalizeHeader);
+  return normalized.findIndex((h) => {
+    if (!h.includes('banka') || h.includes('vas')) return false;
+    return h.includes('sayi') || h.includes('adet');
+  });
+}
+
 function loadBankRows(buffer) {
   const matrix = readMatrix(buffer);
   if (!matrix.length) throw new Error('Banka Excel dosyası boş.');
@@ -100,16 +117,12 @@ function loadBankRows(buffer) {
   const idx = {
     appName: findHeaderIndex(headers, ['Uygulama Adi', 'Uygulama Adı']),
     model: findHeaderIndex(headers, ['Cihaz Modeli']),
-    bankCount: findHeaderIndex(headers, [
-      'Uzerindeki Banka Uygulama Sayısı',
-      'Üzerindeki Banka Uygulama Sayısı',
-    ]),
-    bankCountAlt: findHeaderIndex(headers, ['Banka Adet']),
+    bankCount: findBankCountIndex(headers),
   };
   if (idx.appName < 0 || idx.model < 0) {
     throw new Error('Banka dosyasında Uygulama Adı veya Cihaz Modeli sütunu bulunamadı.');
   }
-  if (idx.bankCount < 0 && idx.bankCountAlt < 0) {
+  if (idx.bankCount < 0) {
     throw new Error('Banka dosyasında banka sayısı sütunu bulunamadı.');
   }
 
@@ -125,9 +138,7 @@ function loadBankRows(buffer) {
       raw: record,
       appName: String(line[idx.appName] ?? ''),
       model: String(line[idx.model] ?? ''),
-      bankCount: toNumber(
-        line[idx.bankCount >= 0 ? idx.bankCount : idx.bankCountAlt],
-      ),
+      bankCount: toNumber(line[idx.bankCount]),
       group: null,
     });
   }
@@ -1445,4 +1456,6 @@ module.exports = {
   exportMutakabatExcel,
   decodeBase64File,
   normalizeUnitPrices,
+  findBankCountIndex,
+  loadBankRows,
 };
