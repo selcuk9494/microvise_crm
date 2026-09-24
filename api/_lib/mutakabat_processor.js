@@ -164,13 +164,39 @@ function isVar(value) {
   return s === 'var' || s === 'yes' || s === 'evet' || s === 'true' || s === '1';
 }
 
+function findSicilIndex(headers) {
+  const known = findHeaderIndex(headers, [
+    'Sicil No',
+    'Sicil',
+    'Seri No',
+    'Serial No',
+    'Serial',
+    'Cihaz Sicil',
+    'Cihaz Seri No',
+  ]);
+  if (known >= 0) return known;
+  const normalized = headers.map(normalizeHeader);
+  return normalized.findIndex((h) => {
+    if (!h || h.includes('lisans')) return false;
+    return (
+      h === 'serial' ||
+      h === 'serial no' ||
+      h === 'seri no' ||
+      h === 'sicil' ||
+      h === 'sicil no' ||
+      h.includes('sicil') ||
+      h.includes('serial')
+    );
+  });
+}
+
 function loadGmp3Rows(buffer) {
   const matrix = readMatrix(buffer);
   if (!matrix.length) throw new Error('GMP3 Excel dosyası boş.');
 
   const headers = matrix[0].map((h) => String(h ?? ''));
   const idx = {
-    sicil: findHeaderIndex(headers, ['Sicil', 'Sicil No', 'Seri No']),
+    sicil: findSicilIndex(headers),
     model: findHeaderIndex(headers, ['Cihaz Modeli']),
     yetki: findHeaderIndex(headers, [
       'Harici Cihaz Yetkisi Açık',
@@ -219,7 +245,7 @@ function loadTsmRows(buffer) {
 
   const headers = matrix[0].map((h) => String(h ?? ''));
   const idx = {
-    sicil: findHeaderIndex(headers, ['Sicil No', 'Sicil', 'Seri No']),
+    sicil: findSicilIndex(headers),
     model: findHeaderIndex(headers, ['Cihaz Modeli']),
     lisans: findHeaderIndex(headers, ['Uygulama Lisansı', 'Uygulama Lisansi']),
   };
@@ -1457,5 +1483,8 @@ module.exports = {
   decodeBase64File,
   normalizeUnitPrices,
   findBankCountIndex,
+  findSicilIndex,
   loadBankRows,
+  loadGmp3Rows,
+  loadTsmRows,
 };

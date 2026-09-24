@@ -3,7 +3,10 @@ const fs = require('node:fs');
 const test = require('node:test');
 const {
   findBankCountIndex,
+  findSicilIndex,
   loadBankRows,
+  loadGmp3Rows,
+  loadTsmRows,
 } = require('../api/_lib/mutakabat_processor');
 
 test('eski banka başlığı Uzerindeki Banka Uygulama Sayısı', () => {
@@ -46,4 +49,40 @@ test('yeni Ağustos banka dosyası okunur', () => {
   assert.ok((groups.YKB || 0) > 0, 'YKB ayrışmalı');
   assert.ok((groups.INGENICO || 0) > 0, 'INGENICO ayrışmalı');
   assert.ok(loaded.rows.some((row) => row.bankCount >= 2));
+});
+
+test('eski TSM başlığı Sicil No', () => {
+  assert.equal(
+    findSicilIndex(['Uygulama Lisansı', 'Cihaz Modeli', 'Sicil No']),
+    2,
+  );
+});
+
+test('yeni TSM başlığı Serial No', () => {
+  assert.equal(
+    findSicilIndex(['Serial No', 'Uygulama Lisansı', 'Cihaz Durumu']),
+    0,
+  );
+});
+
+test('yeni Ağustos TSM dosyası okunur', () => {
+  const path = '/Users/selcuk/Downloads/irestoagus.xlsx';
+  if (!fs.existsSync(path)) {
+    test.skip('irestoagus.xlsx yok');
+    return;
+  }
+  const loaded = loadTsmRows(fs.readFileSync(path));
+  assert.ok(loaded.rows.length > 10, `satır ${loaded.rows.length}`);
+  assert.ok(loaded.rows.every((row) => row.raw['Serial No'] || row.model != null));
+});
+
+test('yeni Ağustos GMP3 dosyası okunur', () => {
+  const path = '/Users/selcuk/Downloads/gmpagu.xlsx';
+  if (!fs.existsSync(path)) {
+    test.skip('gmpagu.xlsx yok');
+    return;
+  }
+  const loaded = loadGmp3Rows(fs.readFileSync(path));
+  assert.ok(loaded.rows.length > 100, `satır ${loaded.rows.length}`);
+  assert.ok(loaded.rawYesCount >= loaded.rows.length);
 });
