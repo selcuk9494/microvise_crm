@@ -45,6 +45,7 @@ const {
   ensureProductImageUrlColumn,
   ensureInvoicesBillingSourceColumn,
   ensureInvoicesCustomerSentColumn,
+  ensureInvoicesListNoteColumn,
   ensureHatLisansPriorCollectionsTable,
 } = require('./_lib/schema');
 const { buildSystemReports } = require('./_lib/reports');
@@ -1859,6 +1860,9 @@ module.exports = async (req, res) => {
             ? 'all'
             : 'active';
 
+        await ensureInvoicesBillingSourceColumn();
+        await ensureInvoicesCustomerSentColumn();
+        await ensureInvoicesListNoteColumn();
         const values = [];
         let whereSql = 'where true';
         if (activeFilter === 'active') {
@@ -1877,12 +1881,25 @@ module.exports = async (req, res) => {
             .split(',')
             .map((item) => item.trim())
             .filter(Boolean);
+          const includePaidUnsent =
+            statuses.includes('open') && !statuses.includes('paid');
+          const paidUnsentSql = `
+            or (
+              i.invoice_type = 'sales'
+              and i.status = 'paid'
+              and i.customer_sent_at is null
+            )
+          `;
           if (statuses.length > 1) {
             values.push(statuses);
-            whereSql += ` and i.status = any($${values.length}::text[])`;
+            whereSql += includePaidUnsent
+              ? ` and (i.status = any($${values.length}::text[]) ${paidUnsentSql})`
+              : ` and i.status = any($${values.length}::text[])`;
           } else {
             values.push(status);
-            whereSql += ` and i.status = $${values.length}`;
+            whereSql += includePaidUnsent
+              ? ` and (i.status = $${values.length} ${paidUnsentSql})`
+              : ` and i.status = $${values.length}`;
           }
         }
         if (eInvoiceStatus === 'sent') {
@@ -1912,8 +1929,6 @@ module.exports = async (req, res) => {
           values.push(endDate);
           whereSql += ` and i.invoice_date <= $${values.length}::date`;
         }
-        await ensureInvoicesBillingSourceColumn();
-        await ensureInvoicesCustomerSentColumn();
         const billingSource = String(req.query.billingSource || '').trim();
         if (billingSource === 'hat_lisans') {
           whereSql += ` and i.billing_source = 'hat_lisans'`;
@@ -2150,6 +2165,7 @@ module.exports = async (req, res) => {
       case 'invoice_detail': {
         if (!requireAnyPage(req, user, ['faturalama', 'e_fatura'], res)) return;
         await ensureInvoicesCustomerSentColumn();
+        await ensureInvoicesListNoteColumn();
         const id = String(req.query.invoiceId || '').trim();
         if (!id) return badRequest(req, res, 'invoiceId zorunludur.');
         const result = await query(

@@ -2192,7 +2192,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final hasHiddenItems = visibleItems.length < items.length;
     final sales = items.where((e) => e.invoiceType == 'sales').length;
     final purchases = items.where((e) => e.invoiceType == 'purchase').length;
-    final open = items.where((e) => e.status == 'open').length;
+    final open = items.where((e) => e.staysInOpenQueue).length;
     final partial = items.where((e) => e.status == 'partial').length;
     final sentToCustomer = items
         .where((e) => e.invoiceType == 'sales' && e.isSentToCustomer)
@@ -2222,7 +2222,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ),
       _SummaryFilterBadge(
         label: 'Açık: $open',
-        tooltip: 'Sadece açık faturalar',
+        tooltip: 'Açık faturalar. Tahsil edilen satış, müşteriye iletilene kadar burada kalır.',
         selected: _filter.status == 'open',
         tone: _filter.status == 'open' || open > 0
             ? AppBadgeTone.warning
@@ -5837,6 +5837,98 @@ class _InvoiceHeaderText extends StatelessWidget {
   }
 }
 
+const _kInvoiceListNoteColors = <String, Color>{
+  'orange': Color(0xFFF59E0B),
+  'blue': Color(0xFF2563EB),
+  'purple': Color(0xFF7C3AED),
+  'green': Color(0xFF16A34A),
+  'pink': Color(0xFFDB2777),
+  'teal': Color(0xFF0D9488),
+};
+
+Color _invoiceListNoteColor(String? key) {
+  return _kInvoiceListNoteColors[key] ?? _kInvoiceListNoteColors['orange']!;
+}
+
+class _InvoiceListNoteChip extends StatelessWidget {
+  const _InvoiceListNoteChip({
+    required this.note,
+    required this.colorKey,
+    required this.onTap,
+    this.compact = false,
+  });
+
+  final String? note;
+  final String? colorKey;
+  final VoidCallback? onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = (note ?? '').trim();
+    final color = _invoiceListNoteColor(colorKey);
+    if (text.isEmpty) {
+      return Tooltip(
+        message: 'Hatırlatıcı not ekle',
+        waitDuration: const Duration(milliseconds: 250),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 4 : 5,
+              vertical: compact ? 1 : 2,
+            ),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceMuted.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.border.withValues(alpha: 0.8)),
+            ),
+            child: Icon(
+              Icons.sticky_note_2_outlined,
+              size: compact ? 12 : 13,
+              color: AppTheme.textMuted,
+            ),
+          ),
+        ),
+      );
+    }
+    return Tooltip(
+      message: text,
+      waitDuration: const Duration(milliseconds: 250),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: compact ? 140 : 200),
+          child: Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 6 : 8,
+              vertical: compact ? 1 : 2,
+            ),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withValues(alpha: 0.45)),
+            ),
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: compact ? 10 : 11,
+                height: 1.2,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EInvoiceRow extends ConsumerStatefulWidget {
   const _EInvoiceRow({
     required this.invoice,
@@ -6035,11 +6127,17 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                 _toggleActive();
               case 'collect':
                 widget.onCollect?.call();
+              case 'list_note':
+                _editListNote();
               case 'delete':
                 _delete();
             }
           },
           itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'list_note',
+              child: Text('Hatırlatıcı not'),
+            ),
             if (widget.onCollect != null)
               const PopupMenuItem(
                 value: 'collect',
@@ -6236,6 +6334,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               widget.onCorrectCollect?.call();
             case 'collect':
               widget.onCollect?.call();
+            case 'list_note':
+              _editListNote();
             case 'reverse_collect':
               widget.onReverseCollect?.call();
             case 'manual':
@@ -6255,6 +6355,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           }
         },
         itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'list_note',
+            child: Text('Hatırlatıcı not'),
+          ),
           if (widget.onCollect != null)
             const PopupMenuItem(
               value: 'collect',
@@ -6458,17 +6562,29 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            invoice.customerName ?? 'Cari',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(
-                                  fontSize: 12.5,
-                                  height: 1.1,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppTheme.text,
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  invoice.customerName ?? 'Cari',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(
+                                        fontSize: 12.5,
+                                        height: 1.1,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.text,
+                                      ),
                                 ),
+                              ),
+                              const Gap(6),
+                              _InvoiceListNoteChip(
+                                note: invoice.listNote,
+                                colorKey: invoice.listNoteColor,
+                                onTap: _busy ? null : _editListNote,
+                              ),
+                            ],
                           ),
                           Tooltip(
                             message: invoice.invoiceNumber,
@@ -6691,16 +6807,30 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                         ],
                       ),
                       const Gap(4),
-                      Text(
-                        invoice.customerName ?? 'Cari',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontSize: 13,
-                          height: 1.25,
-                          fontWeight: FontWeight.w500,
-                          color: AppTheme.textMuted,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              invoice.customerName ?? 'Cari',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    fontSize: 13,
+                                    height: 1.25,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.textMuted,
+                                  ),
+                            ),
+                          ),
+                          const Gap(6),
+                          _InvoiceListNoteChip(
+                            note: invoice.listNote,
+                            colorKey: invoice.listNoteColor,
+                            compact: true,
+                            onTap: _busy ? null : _editListNote,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -7225,6 +7355,154 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Manuel durum güncellenemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _editListNote() async {
+    final invoice = widget.invoice;
+    final controller = TextEditingController(
+      text: (invoice.listNote ?? '').trim(),
+    );
+    var colorKey = (invoice.listNoteColor ?? '').trim();
+    if (!_kInvoiceListNoteColors.containsKey(colorKey)) {
+      colorKey = 'orange';
+    }
+    final result = await showDialog<Map<String, String?>>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: const Text('Hatırlatıcı not'),
+              content: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cari kaydından bağımsızdır. Maliye ve SAP’a gitmez. '
+                      'Örn. “Muhtarın arkadaşı”.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      maxLength: 80,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Not',
+                        hintText: 'Muhtarın arkadaşı',
+                      ),
+                      onSubmitted: (_) {
+                        Navigator.pop(context, {
+                          'note': controller.text.trim(),
+                          'color': colorKey,
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in _kInvoiceListNoteColors.entries)
+                          InkWell(
+                            onTap: () => setLocal(() => colorKey = entry.key),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: entry.value,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: colorKey == entry.key
+                                      ? Colors.black87
+                                      : Colors.white,
+                                  width: colorKey == entry.key ? 3 : 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, {
+                    'note': '',
+                    'color': null,
+                  }),
+                  child: const Text('Sil'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Vazgeç'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, {
+                    'note': controller.text.trim(),
+                    'color': colorKey,
+                  }),
+                  child: const Text('Kaydet'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    if (result == null || !mounted) return;
+
+    final nextNote = (result['note'] ?? '').trim();
+    final nextColor = nextNote.isEmpty
+        ? ''
+        : ((result['color'] ?? 'orange').trim().isEmpty
+              ? 'orange'
+              : result['color']!.trim());
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _busy = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'invoices',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': invoice.id},
+          ],
+          'values': {
+            'list_note': nextNote,
+            'list_note_color': nextColor,
+          },
+        },
+      );
+      ref.invalidate(invoicesProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nextNote.isEmpty
+                ? '${invoice.invoiceNumberDisplay} hatırlatıcı notu silindi.'
+                : '${invoice.invoiceNumberDisplay} hatırlatıcı notu kaydedildi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hatırlatıcı not kaydedilemedi: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -7949,8 +8227,18 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     if (selected) return AppDenseList.rowFill(index, selected: true);
     final base = AppDenseList.rowFill(index);
     if (invoice.invoiceType != 'sales' || !invoice.isActive) return base;
-    final tint = invoice.isSentToCustomer ? AppTheme.success : AppTheme.warning;
-    return Color.alphaBlend(AppTheme.softTint(tint, alpha: 0.18), base);
+    final tint = invoice.isSentToCustomer
+        ? AppTheme.success
+        : invoice.isPaidAwaitingCustomerSent
+            ? AppTheme.blue
+            : AppTheme.warning;
+    return Color.alphaBlend(
+      AppTheme.softTint(
+        tint,
+        alpha: invoice.isPaidAwaitingCustomerSent ? 0.22 : 0.18,
+      ),
+      base,
+    );
   }
 
   Widget? _customerSentBadge(Invoice invoice) {
@@ -7969,6 +8257,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           label: 'İletildi',
           tone: AppBadgeTone.success,
         ),
+      );
+    }
+    if (invoice.isPaidAwaitingCustomerSent) {
+      return const AppBadge(
+        dense: true,
+        label: 'İletilmedi · tahsil edildi',
+        tone: AppBadgeTone.primary,
       );
     }
     return const AppBadge(
@@ -7991,6 +8286,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
 
   String _invoicePaymentStatusLabel(Invoice invoice) {
     if (invoice.isPaidPendingEInvoice) return 'Ödendi · Maliye bekliyor';
+    if (invoice.isPaidAwaitingCustomerSent) return 'Ödendi · iletilmedi';
     return _statusLabel(invoice.status);
   }
 
@@ -8005,6 +8301,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
 
   AppBadgeTone _invoicePaymentStatusTone(Invoice invoice) {
     if (invoice.isPaidPendingEInvoice) return AppBadgeTone.warning;
+    if (invoice.isPaidAwaitingCustomerSent) return AppBadgeTone.primary;
     return _statusTone(invoice.status);
   }
 

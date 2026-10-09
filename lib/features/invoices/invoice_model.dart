@@ -100,6 +100,10 @@ class Invoice {
   final String? customerSentVia;
   final String? billingSource;
 
+  /// Liste ekranı hatırlatıcısı — cari ve resmi `notes` alanından bağımsız.
+  final String? listNote;
+  final String? listNoteColor;
+
   const Invoice({
     required this.id,
     required this.invoiceNumber,
@@ -149,11 +153,23 @@ class Invoice {
     this.customerSentAt,
     this.customerSentVia,
     this.billingSource,
+    this.listNote,
+    this.listNoteColor,
   });
 
   double get remainingAmount => grandTotal - paidAmount;
   bool get isPaid => status == 'paid';
   bool get isOpen => status == 'open' || status == 'partial';
+
+  /// Açık kuyruk: ödenmemiş fatura, veya tahsil edilmiş ama müşteriye iletilmemiş satış.
+  bool get staysInOpenQueue {
+    if (status == 'open') return true;
+    return isPaidAwaitingCustomerSent;
+  }
+
+  /// Tahsil edildi, müşteriye henüz iletilmedi — açık listede ayrı renk.
+  bool get isPaidAwaitingCustomerSent =>
+      invoiceType == 'sales' && status == 'paid' && !isSentToCustomer;
   bool get isHatLisansBilling => (billingSource ?? '').trim() == 'hat_lisans';
   bool get isHatLisansPayable =>
       isHatLisansBilling &&
@@ -446,6 +462,14 @@ class Invoice {
           json['status']?.toString() ??
           'open',
       notes: json['notes']?.toString(),
+      listNote: () {
+        final raw = json['list_note']?.toString().trim();
+        return (raw == null || raw.isEmpty) ? null : raw;
+      }(),
+      listNoteColor: () {
+        final raw = json['list_note_color']?.toString().trim();
+        return (raw == null || raw.isEmpty) ? null : raw;
+      }(),
       eInvoiceStatus: json['e_invoice_status']?.toString() ?? 'not_sent',
       eInvoiceNumber: json['e_invoice_number'] == null
           ? null

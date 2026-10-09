@@ -37,6 +37,7 @@ const ensured = {
   invoice_prices_include_vat: false,
   invoices_billing_source: false,
   invoices_customer_sent: false,
+  invoices_list_note: false,
   hat_lisans_billing_settings: false,
   hat_lisans_prior_collections: false,
   akinsoft_invoice_sync: false,
@@ -2116,6 +2117,21 @@ async function ensureInvoicesCustomerSentColumn() {
   return true;
 }
 
+async function ensureInvoicesListNoteColumn() {
+  if (ensured.invoices_list_note) return true;
+  if (!(await tableExists('invoices'))) {
+    ensured.invoices_list_note = true;
+    return true;
+  }
+  await query(`
+    alter table public.invoices
+      add column if not exists list_note text,
+      add column if not exists list_note_color text
+  `);
+  ensured.invoices_list_note = true;
+  return true;
+}
+
 async function ensureHatLisansBillingSettingsTable() {
   if (ensured.hat_lisans_billing_settings) return true;
   await query(`
@@ -2497,6 +2513,7 @@ module.exports = {
   ensureInvoicePricesIncludeVatColumn,
   ensureInvoicesBillingSourceColumn,
   ensureInvoicesCustomerSentColumn,
+  ensureInvoicesListNoteColumn,
   ensureHatLisansBillingSettingsTable,
   ensureHatLisansPriorCollectionsTable,
   ensureAkinsoftInvoiceSyncColumns,

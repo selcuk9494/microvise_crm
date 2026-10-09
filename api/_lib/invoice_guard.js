@@ -23,6 +23,8 @@ const PROTECTED_UPDATE_ALLOWLIST = new Set([
   'e_invoice_pdf_path',
   'customer_sent_at',
   'customer_sent_via',
+  'list_note',
+  'list_note_color',
   'is_active',
 ]);
 

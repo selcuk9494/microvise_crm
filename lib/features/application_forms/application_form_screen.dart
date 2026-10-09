@@ -7850,29 +7850,41 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onDeletePermanently;
 
   List<Widget> _documentStatusBadges({required bool dense}) {
+    Widget badge({
+      required String label,
+      required String tooltip,
+      required AppBadgeTone tone,
+    }) {
+      return Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 250),
+        child: AppBadge(dense: dense, label: label, tone: tone),
+      );
+    }
+
     return [
       if (record.hasApprovalDocument)
-        AppBadge(
-          dense: dense,
-          label: 'Onay belgesi',
+        badge(
+          label: 'Onay',
+          tooltip: 'Onay belgesi yüklendi',
           tone: AppBadgeTone.primary,
         ),
       if (record.hasWorkplaceSlip)
-        AppBadge(
-          dense: dense,
-          label: 'İşyeri slip',
+        badge(
+          label: 'Slip',
+          tooltip: 'İşyeri işlem slipi yüklendi',
           tone: AppBadgeTone.success,
         ),
       if (!isBankViewer && record.isApproved && !record.hasApprovalDocument)
-        AppBadge(
-          dense: dense,
-          label: 'Onay belgesi yok',
+        badge(
+          label: 'Onay yok',
+          tooltip: 'Onay belgesi yok',
           tone: AppBadgeTone.warning,
         ),
       if (!isBankViewer && record.isApproved && !record.hasWorkplaceSlip)
-        AppBadge(
-          dense: dense,
+        badge(
           label: 'Slip yok',
+          tooltip: 'İşyeri işlem slipi yok',
           tone: AppBadgeTone.warning,
         ),
     ];
@@ -7880,10 +7892,7 @@ class _ApplicationRecordCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateText = DateFormat(
-      'd MMM y',
-      'tr_TR',
-    ).format(record.applicationDate);
+    final dateText = DateFormat('dd.MM.yyyy').format(record.applicationDate);
     final isMobile = MediaQuery.sizeOf(context).width < 900;
     const bankAccent = Color(0xFF0F766E);
     final isBankSubmission = record.createdByIsBank;
@@ -8089,7 +8098,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: 62,
+                width: 44,
                 child: Center(
                   child: Checkbox(
                     value: selected,
@@ -8099,72 +8108,55 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               Expanded(
-                flex: 36,
+                flex: 28,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 8, 12, 8),
+                  padding: const EdgeInsets.fromLTRB(0, 8, 10, 8),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        record.customerName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                          height: 1.15,
-                          decoration: record.isActive
-                              ? TextDecoration.none
-                              : TextDecoration.lineThrough,
+                      Tooltip(
+                        message: record.customerName,
+                        waitDuration: const Duration(milliseconds: 250),
+                        child: Text(
+                          record.customerName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                                height: 1.15,
+                                decoration: record.isActive
+                                    ? TextDecoration.none
+                                    : TextDecoration.lineThrough,
+                              ),
                         ),
                       ),
                       const Gap(4),
-                      SizedBox(
-                        height: 22,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: [
-                            if (record.businessActivityName
-                                    ?.trim()
-                                    .isNotEmpty ??
-                                false) ...[
-                              _InfoChip(
-                                icon: LucideIcons.store,
-                                text: record.businessActivityName!,
-                              ),
-                              const Gap(4),
-                            ],
-                            if (record.brandModel.isNotEmpty)
-                              _InfoChip(
-                                icon: LucideIcons.cpu,
-                                text: record.brandModel,
-                              ),
-                            if (record.hasApprovalDocument) ...[
-                              const Gap(4),
-                              const _InfoChip(
-                                icon: LucideIcons.fileCheck,
-                                text: 'Onay belgesi',
-                                highlighted: true,
-                              ),
-                            ],
-                            if (record.hasWorkplaceSlip) ...[
-                              const Gap(4),
-                              const _InfoChip(
-                                icon: LucideIcons.receipt,
-                                text: 'İşyeri slip',
-                                highlighted: true,
-                              ),
-                            ],
-                          ],
-                        ),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          if (record.businessActivityName?.trim().isNotEmpty ??
+                              false)
+                            _InfoChip(
+                              icon: LucideIcons.store,
+                              text: record.businessActivityName!,
+                            ),
+                          if (record.brandModel.isNotEmpty)
+                            _InfoChip(
+                              icon: LucideIcons.cpu,
+                              text: record.brandModel,
+                            ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ),
               Expanded(
-                flex: 15,
+                flex: 14,
                 child: _ApplicationListMeta(
                   icon: LucideIcons.calendarDays,
                   label: 'Tarih',
@@ -8172,7 +8164,7 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               Expanded(
-                flex: 16,
+                flex: 14,
                 child: _ApplicationListMeta(
                   icon: LucideIcons.folderOpen,
                   label: 'Dosya',
@@ -8195,15 +8187,15 @@ class _ApplicationRecordCard extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: 268,
+                width: 148,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     vertical: 8,
                     horizontal: 6,
                   ),
                   child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                    spacing: 4,
+                    runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       if (!isBankViewer && isBankSubmission)
@@ -8219,73 +8211,72 @@ class _ApplicationRecordCard extends StatelessWidget {
                         tone: approvalTone,
                         dense: true,
                       ),
-                      if ((isBankViewer
-                              ? record.isBankApproved
-                              : record.isApproved) &&
-                          approvedRegistry != null)
-                        AppBadge(
-                          dense: true,
-                          label: 'Sicil: $approvedRegistry',
-                          tone: AppBadgeTone.success,
-                        ),
                       ..._documentStatusBadges(dense: true),
                     ],
                   ),
                 ),
               ),
               SizedBox(
-                width: 178,
+                width: 156,
                 child: Padding(
-                  padding: const EdgeInsets.only(right: 14),
+                  padding: const EdgeInsets.only(right: 10),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (canBankApprove)
-                        _RecordPrimaryAction(
-                          onPressed: onBankApprove,
-                          icon: LucideIcons.landmark,
-                          label: 'Bankayı Onayla',
-                          primary: true,
-                        )
-                      else if (canApprove && record.isPendingApproval)
-                        _RecordPrimaryAction(
-                          onPressed: onApprove,
-                          icon: LucideIcons.badgeCheck,
-                          label: 'Onayla',
-                          primary: true,
-                        )
-                      else if (canApprove && record.isApproved)
-                        _RecordPrimaryAction(
-                          onPressed: onUnapprove,
-                          icon: LucideIcons.undo2,
-                          label: 'Geri Al',
-                        )
-                      else if (canModify)
-                        _RecordPrimaryAction(
-                          onPressed: onEdit,
-                          icon: LucideIcons.pencil,
-                          label: 'Düzenle',
-                        )
-                      else
-                        _RecordPrimaryAction(
-                          onPressed: onPrintKdv,
-                          icon: LucideIcons.printer,
-                          label: 'KDV4',
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: canBankApprove
+                              ? _RecordPrimaryAction(
+                                  onPressed: onBankApprove,
+                                  icon: LucideIcons.landmark,
+                                  label: 'Onayla',
+                                  primary: true,
+                                )
+                              : canApprove && record.isPendingApproval
+                              ? _RecordPrimaryAction(
+                                  onPressed: onApprove,
+                                  icon: LucideIcons.badgeCheck,
+                                  label: 'Onayla',
+                                  primary: true,
+                                )
+                              : canApprove && record.isApproved
+                              ? _RecordPrimaryAction(
+                                  onPressed: onUnapprove,
+                                  icon: LucideIcons.undo2,
+                                  label: 'Geri Al',
+                                )
+                              : canModify
+                              ? _RecordPrimaryAction(
+                                  onPressed: onEdit,
+                                  icon: LucideIcons.pencil,
+                                  label: 'Düzenle',
+                                )
+                              : _RecordPrimaryAction(
+                                  onPressed: onPrintKdv,
+                                  icon: LucideIcons.printer,
+                                  label: 'KDV4',
+                                ),
                         ),
-                      const Gap(8),
+                      ),
+                      const Gap(6),
                       PopupMenuButton<String>(
                         tooltip: 'Diğer işlemler',
                         itemBuilder: (context) => menuItems,
                         onSelected: handleMenuSelection,
                         child: Container(
-                          width: 38,
-                          height: 38,
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: AppTheme.surfaceMuted,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: AppTheme.border),
                           ),
-                          child: const Icon(LucideIcons.ellipsis, size: 20),
+                          child: Icon(
+                            LucideIcons.ellipsis,
+                            size: 18,
+                            color: AppTheme.textSoft,
+                          ),
                         ),
                       ),
                     ],
@@ -8366,15 +8357,6 @@ class _ApplicationRecordCard extends StatelessWidget {
                       label: approvalLabel,
                       tone: approvalTone,
                     ),
-                    if ((isBankViewer
-                            ? record.isBankApproved
-                            : record.isApproved) &&
-                        approvedRegistry != null)
-                      AppBadge(
-                        dense: true,
-                        label: 'Sicil: $approvedRegistry',
-                        tone: AppBadgeTone.success,
-                      ),
                     ..._documentStatusBadges(dense: true),
                   ],
                 ),
@@ -9296,7 +9278,11 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = highlighted ? AppTheme.success : AppTheme.textMuted;
-    return AppDenseInfoChip(icon: icon, text: text, color: color);
+    return Tooltip(
+      message: text,
+      waitDuration: const Duration(milliseconds: 250),
+      child: AppDenseInfoChip(icon: icon, text: text, color: color),
+    );
   }
 }
 
@@ -9316,50 +9302,48 @@ class _ApplicationListMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = highlighted ? AppTheme.success : AppTheme.textMuted;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 16, color: color),
-          ),
-          const Gap(9),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Tooltip(
+      message: '$label: $value',
+      waitDuration: const Duration(milliseconds: 250),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                  ),
-                ),
+                Icon(icon, size: 13, color: color),
                 const Gap(4),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: highlighted ? AppTheme.success : AppTheme.textSoft,
-                    fontWeight: FontWeight.w800,
-                    height: 1.05,
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textMuted,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 10.5,
+                      height: 1,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+            const Gap(3),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: highlighted ? AppTheme.success : AppTheme.textSoft,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+                height: 1.1,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -9382,8 +9366,9 @@ class _RecordPrimaryAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = (primary ? FilledButton.styleFrom : OutlinedButton.styleFrom)
         .call(
-          minimumSize: const Size(96, 38),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          minimumSize: const Size(0, 36),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
             fontWeight: FontWeight.w800,
             fontSize: 12,
@@ -9393,11 +9378,9 @@ class _RecordPrimaryAction extends StatelessWidget {
     final child = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16),
-        const Gap(6),
-        Flexible(
-          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
+        Icon(icon, size: 15),
+        const Gap(5),
+        Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       ],
     );
 
