@@ -2296,6 +2296,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   }) async {
     if (oldIndex < 0 || oldIndex >= visible.length) return;
     var target = newIndex;
+    if (target > oldIndex) target -= 1;
     if (target < 0) target = 0;
     if (target >= visible.length) target = visible.length - 1;
     final ids = visible.map((group) => group.customerId).toList();
@@ -3074,7 +3075,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             child: child,
           );
         },
-        onReorderItem: (oldIndex, newIndex) {
+        onReorder: (oldIndex, newIndex) {
           unawaited(
             _reorderOpenCustomers(
               visible: groups,
