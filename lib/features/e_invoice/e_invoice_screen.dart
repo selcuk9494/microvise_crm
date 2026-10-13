@@ -1890,11 +1890,15 @@ class _OpenCustomerGroup {
     required this.customerId,
     required this.customerName,
     required this.invoices,
+    this.listNote,
+    this.listNoteColor,
   });
 
   final String customerId;
   final String customerName;
   final List<Invoice> invoices;
+  final String? listNote;
+  final String? listNoteColor;
 
   Map<String, double> get remainingByCurrency {
     final totals = <String, double>{};
@@ -2121,6 +2125,18 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               customerId: entry.key,
               customerName: name,
               invoices: invoices,
+              listNote: invoices
+                  .map((item) => item.customerListNote?.trim())
+                  .firstWhere(
+                    (item) => item != null && item.isNotEmpty,
+                    orElse: () => null,
+                  ),
+              listNoteColor: invoices
+                  .map((item) => item.customerListNoteColor?.trim())
+                  .firstWhere(
+                    (item) => item != null && item.isNotEmpty,
+                    orElse: () => null,
+                  ),
             );
           },
         )
@@ -2171,6 +2187,62 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     }
   }
 
+  Future<void> _editCustomerListNote(_OpenCustomerGroup group) async {
+    final result = await _showListNoteEditor(
+      context,
+      title: 'Cari etiketi',
+      subtitle:
+          'Carinin üzerine yazılır; açık fatura listesinde ismin yanında durur. Maliye ve SAP’a gitmez. Örn. “Muhtarın arkadaşı”.',
+      initialNote: group.listNote,
+      initialColor: group.listNoteColor,
+    );
+    if (result == null || !mounted) return;
+    final nextNote = (result['note'] ?? '').trim();
+    final nextColor = nextNote.isEmpty
+        ? ''
+        : ((result['color'] ?? 'orange').trim().isEmpty
+              ? 'orange'
+              : result['color']!.trim());
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) return;
+    setState(() => _bulkProcessing = true);
+    try {
+      await apiClient.postJson(
+        '/mutate',
+        body: {
+          'op': 'updateWhere',
+          'table': 'customers',
+          'filters': [
+            {'col': 'id', 'op': 'eq', 'value': group.customerId},
+          ],
+          'values': {
+            'list_note': nextNote,
+            'list_note_color': nextColor,
+          },
+        },
+      );
+      ref.invalidate(invoicesProvider);
+      ref.invalidate(customersLookupProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nextNote.isEmpty
+                ? '${group.customerName} etiketi silindi.'
+                : '${group.customerName} etiketi kaydedildi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Cari etiketi kaydedilemedi: $error')));
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
+  }
+
   Widget _buildOpenCustomersPage({
     required List<Invoice> items,
     required bool loadingFilteredItems,
@@ -2183,6 +2255,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               .where((group) {
                 final haystack = [
                   group.customerName,
+                  group.listNote ?? '',
                   ...group.invoices.map(
                     (invoice) =>
                         '${invoice.invoiceNumberDisplay} ${invoice.listNote ?? ''}',
@@ -2222,204 +2295,276 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       body: Column(
         children: [
           if (loadingFilteredItems) const LinearProgressIndicator(minHeight: 2),
-          AppCard(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          Expanded(
+            child: AppCard(
+            padding: EdgeInsets.zero,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Borcu kalan satış faturaları cari bazında. Cari satırına basınca faturalar açılır; tahsilat, ekstre ve hatırlatıcı not aynı yerden yapılır.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                  ),
-                ),
-                const Gap(10),
-                TextField(
-                  onChanged: (value) => setState(() => _customerQuery = value),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
-                    labelText: 'Cari / fatura / not ara',
-                    hintText: 'Muhtarın arkadaşı, fatura no, firma adı',
-                    isDense: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Gap(8),
-          if (groups.isEmpty)
-            Expanded(
-              child: AppCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _customerQuery.trim().isEmpty
-                        ? 'Açık bakiyesi olan satış faturası yok.'
-                        : 'Aramaya uyan borçlu cari bulunamadı.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textMuted,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: TextField(
+                    onChanged: (value) =>
+                        setState(() => _customerQuery = value),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
+                      hintText: 'Cari, etiket veya fatura no',
+                      isDense: true,
                     ),
                   ),
                 ),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.only(bottom: 24),
-                itemCount: groups.length,
-                separatorBuilder: (_, _) => const Gap(8),
-                itemBuilder: (context, index) {
-                  final group = groups[index];
-                  final expanded = _expandedCustomerId == group.customerId;
-                  final notes = group.invoices
-                      .map((invoice) => (invoice.listNote ?? '').trim())
-                      .where((note) => note.isNotEmpty)
-                      .toSet()
-                      .take(3)
-                      .toList(growable: false);
-                  return AppCard(
-                    padding: EdgeInsets.zero,
-                    child: Column(
-                      children: [
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              _expandedCustomerId = expanded
-                                  ? null
-                                  : group.customerId;
-                            });
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  expanded
-                                      ? AppPhosphorIcons.caretDown
-                                      : AppPhosphorIcons.caretRight,
-                                  size: 18,
-                                  color: AppTheme.textSoft,
+                const Divider(height: 1),
+                if (groups.isEmpty)
+                  Expanded(
+                    child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _customerQuery.trim().isEmpty
+                            ? 'Açık bakiyesi olan satış faturası yok.'
+                            : 'Aramaya uyan borçlu cari bulunamadı.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                  )
+                else
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      itemCount: groups.length,
+                      itemBuilder: (context, index) {
+                        final group = groups[index];
+                        final expanded =
+                            _expandedCustomerId == group.customerId;
+                        return Column(
+                          children: [
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: expanded
+                                    ? AppTheme.softTint(
+                                        AppTheme.primary,
+                                        alpha: 0.08,
+                                      )
+                                    : (index.isEven
+                                          ? AppTheme.surfaceMuted.withValues(
+                                              alpha: 0.35,
+                                            )
+                                          : null),
+                                border: Border(
+                                  bottom: AppDenseList.hairline,
                                 ),
-                                const Gap(8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        group.customerName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                      ),
-                                      const Gap(4),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 4,
-                                        children: [
-                                          AppBadge(
-                                            dense: true,
-                                            label:
-                                                '${group.invoices.length} fatura',
-                                            tone: AppBadgeTone.neutral,
-                                          ),
-                                          AppBadge(
-                                            dense: true,
-                                            label: _formatCurrencyAmounts(
-                                              group.remainingByCurrency,
-                                            ),
-                                            tone: AppBadgeTone.warning,
-                                          ),
-                                          for (final note in notes)
-                                            AppBadge(
-                                              dense: true,
-                                              label: note,
-                                              tone: AppBadgeTone.primary,
-                                            ),
-                                        ],
-                                      ),
-                                    ],
+                              ),
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _expandedCustomerId = expanded
+                                        ? null
+                                        : group.customerId;
+                                  });
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
                                   ),
-                                ),
-                                const Gap(8),
-                                Flexible(
-                                  child: Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    alignment: WrapAlignment.end,
+                                  child: Row(
                                     children: [
-                                      OutlinedButton.icon(
+                                      Icon(
+                                        expanded
+                                            ? AppPhosphorIcons.caretDown
+                                            : AppPhosphorIcons.caretRight,
+                                        size: 16,
+                                        color: AppTheme.textSoft,
+                                      ),
+                                      const Gap(8),
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                group.customerName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleSmall
+                                                    ?.copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      fontSize: 13,
+                                                    ),
+                                              ),
+                                            ),
+                                            const Gap(6),
+                                            _InvoiceListNoteChip(
+                                              note: group.listNote,
+                                              colorKey: group.listNoteColor,
+                                              onTap: _bulkProcessing
+                                                  ? null
+                                                  : () =>
+                                                        _editCustomerListNote(
+                                                          group,
+                                                        ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const Gap(8),
+                                      AppBadge(
+                                        dense: true,
+                                        label:
+                                            '${group.invoices.length} fatura',
+                                        tone: AppBadgeTone.neutral,
+                                      ),
+                                      const Gap(8),
+                                      SizedBox(
+                                        width: 168,
+                                        child: Text(
+                                          _formatCurrencyAmounts(
+                                            group.remainingByCurrency,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.end,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleSmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 13,
+                                                color: AppTheme.warning,
+                                              ),
+                                        ),
+                                      ),
+                                      const Gap(6),
+                                      Flexible(
+                                        child: SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          reverse: true,
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                      _InvoiceIconAction(
+                                        tooltip: 'Ödeme linki oluştur',
+                                        icon: AppPhosphorIcons.link,
+                                        tone: _InvoiceActionTone.primary,
+                                        onPressed: _bulkProcessing
+                                            ? null
+                                            : () =>
+                                                  _createInvoicePaymentLinkFlow(
+                                                    context: context,
+                                                    ref: ref,
+                                                    invoices: group.invoices,
+                                                  ),
+                                      ),
+                                      _InvoiceIconAction(
+                                        tooltip:
+                                            'Fatura ve ödeme linkini mail at',
+                                        icon: AppPhosphorIcons.paperPlaneTilt,
+                                        tone: _InvoiceActionTone.primary,
+                                        onPressed: _bulkProcessing
+                                            ? null
+                                            : () =>
+                                                  _sendInvoicePaymentLinkEmailFlow(
+                                                    context: context,
+                                                    ref: ref,
+                                                    invoices: group.invoices,
+                                                  ),
+                                      ),
+                                      _InvoiceIconAction(
+                                        tooltip:
+                                            'Fatura ve ödeme linkini WhatsApp ile gönder',
+                                        icon: LucideIcons.messageCircle,
+                                        tone: _InvoiceActionTone.primary,
+                                        onPressed: _bulkProcessing
+                                            ? null
+                                            : () async {
+                                                setState(
+                                                  () => _bulkProcessing = true,
+                                                );
+                                                try {
+                                                  await _sendInvoicePaymentLinkWhatsAppFlow(
+                                                    context: context,
+                                                    ref: ref,
+                                                    invoices: group.invoices,
+                                                  );
+                                                } finally {
+                                                  if (mounted) {
+                                                    setState(
+                                                      () => _bulkProcessing =
+                                                          false,
+                                                    );
+                                                  }
+                                                }
+                                              },
+                                      ),
+                                      _InvoiceIconAction(
+                                        tooltip: 'Cari ekstre PDF',
+                                        icon: AppPhosphorIcons.fileText,
+                                        tone: _InvoiceActionTone.info,
                                         onPressed: _bulkProcessing
                                             ? null
                                             : () => _shareStatementFor(
                                                 group.invoices,
                                               ),
-                                        icon: const Icon(
-                                          AppPhosphorIcons.fileText,
-                                          size: 16,
-                                        ),
-                                        label: const Text('Ekstre'),
                                       ),
-                                      FilledButton.icon(
+                                      _InvoiceIconAction(
+                                        tooltip: 'Tahsilat',
+                                        icon: AppPhosphorIcons.money,
+                                        tone: _InvoiceActionTone.success,
                                         onPressed: _bulkProcessing
                                             ? null
                                             : () => _collectInvoices(
                                                 group.invoices,
                                               ),
-                                        icon: const Icon(
-                                          AppPhosphorIcons.money,
-                                          size: 16,
-                                        ),
-                                        label: const Text('Tahsilat'),
                                       ),
+                                            ],
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
-                        if (expanded) ...[
-                          const Divider(height: 1),
-                          for (var i = 0; i < group.invoices.length; i++)
-                            _EInvoiceRow(
-                              index: i,
-                              invoice: group.invoices[i],
-                              selected: false,
-                              forceCompact: true,
-                              onCollect:
-                                  group.invoices[i].isOpen &&
-                                      group.invoices[i].remainingAmount > 0
-                                  ? () => _collectInvoices([
-                                      group.invoices[i],
-                                    ])
-                                  : null,
-                              onReverseCollect:
-                                  group.invoices[i].canReverseCollection
-                                  ? () => _reverseCollections([
-                                      group.invoices[i],
-                                    ])
-                                  : null,
-                              onCorrectCollect:
-                                  group.invoices[i].canCorrectCollection
-                                  ? () => _correctCollections([
-                                      group.invoices[i],
-                                    ])
-                                  : null,
-                            ),
-                        ],
-                      ],
+                            if (expanded)
+                              for (var i = 0; i < group.invoices.length; i++)
+                                _EInvoiceRow(
+                                  index: i,
+                                  invoice: group.invoices[i],
+                                  selected: false,
+                                  forceCompact: true,
+                                  onCollect:
+                                      group.invoices[i].isOpen &&
+                                          group.invoices[i].remainingAmount > 0
+                                      ? () => _collectInvoices([
+                                          group.invoices[i],
+                                        ])
+                                      : null,
+                                  onReverseCollect:
+                                      group.invoices[i].canReverseCollection
+                                      ? () => _reverseCollections([
+                                          group.invoices[i],
+                                        ])
+                                      : null,
+                                  onCorrectCollect:
+                                      group.invoices[i].canCorrectCollection
+                                      ? () => _correctCollections([
+                                          group.invoices[i],
+                                        ])
+                                      : null,
+                                ),
+                          ],
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
+                  ),
+              ],
             ),
+          ),
+          ),
         ],
       ),
     );
@@ -6240,6 +6385,114 @@ Color _invoiceListNoteColor(String? key) {
   return _kInvoiceListNoteColors[key] ?? _kInvoiceListNoteColors['orange']!;
 }
 
+Future<Map<String, String?>?> _showListNoteEditor(
+  BuildContext context, {
+  required String title,
+  required String subtitle,
+  String? initialNote,
+  String? initialColor,
+}) async {
+  final controller = TextEditingController(text: (initialNote ?? '').trim());
+  var colorKey = (initialColor ?? '').trim();
+  if (!_kInvoiceListNoteColors.containsKey(colorKey)) {
+    colorKey = 'orange';
+  }
+  try {
+    return await showDialog<Map<String, String?>>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: Text(title),
+              content: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      maxLength: 80,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Etiket',
+                        hintText: 'Muhtarın arkadaşı',
+                      ),
+                      onSubmitted: (_) {
+                        Navigator.pop(context, {
+                          'note': controller.text.trim(),
+                          'color': colorKey,
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in _kInvoiceListNoteColors.entries)
+                          InkWell(
+                            onTap: () => setLocal(() => colorKey = entry.key),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: entry.value,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: colorKey == entry.key
+                                      ? Colors.black87
+                                      : Colors.white,
+                                  width: colorKey == entry.key ? 3 : 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, {
+                    'note': '',
+                    'color': null,
+                  }),
+                  child: const Text('Sil'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Vazgeç'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, {
+                    'note': controller.text.trim(),
+                    'color': colorKey,
+                  }),
+                  child: const Text('Kaydet'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    controller.dispose();
+  }
+}
+
 class _InvoiceListNoteChip extends StatelessWidget {
   const _InvoiceListNoteChip({
     required this.note,
@@ -7756,105 +8009,14 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
 
   Future<void> _editListNote() async {
     final invoice = widget.invoice;
-    final controller = TextEditingController(
-      text: (invoice.listNote ?? '').trim(),
+    final result = await _showListNoteEditor(
+      context,
+      title: 'Hatırlatıcı not',
+      subtitle:
+          'Bu faturanın listesinde görünür. Cari kaydından bağımsızdır; Maliye ve SAP’a gitmez. Örn. “Muhtarın arkadaşı”.',
+      initialNote: invoice.listNote,
+      initialColor: invoice.listNoteColor,
     );
-    var colorKey = (invoice.listNoteColor ?? '').trim();
-    if (!_kInvoiceListNoteColors.containsKey(colorKey)) {
-      colorKey = 'orange';
-    }
-    final result = await showDialog<Map<String, String?>>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setLocal) {
-            return AlertDialog(
-              title: const Text('Hatırlatıcı not'),
-              content: SizedBox(
-                width: 380,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Cari kaydından bağımsızdır. Maliye ve SAP’a gitmez. '
-                      'Örn. “Muhtarın arkadaşı”.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      maxLength: 80,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Not',
-                        hintText: 'Muhtarın arkadaşı',
-                      ),
-                      onSubmitted: (_) {
-                        Navigator.pop(context, {
-                          'note': controller.text.trim(),
-                          'color': colorKey,
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final entry in _kInvoiceListNoteColors.entries)
-                          InkWell(
-                            onTap: () => setLocal(() => colorKey = entry.key),
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: entry.value,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: colorKey == entry.key
-                                      ? Colors.black87
-                                      : Colors.white,
-                                  width: colorKey == entry.key ? 3 : 1.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, {
-                    'note': '',
-                    'color': null,
-                  }),
-                  child: const Text('Sil'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Vazgeç'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, {
-                    'note': controller.text.trim(),
-                    'color': colorKey,
-                  }),
-                  child: const Text('Kaydet'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    controller.dispose();
     if (result == null || !mounted) return;
 
     final nextNote = (result['note'] ?? '').trim();

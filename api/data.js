@@ -38,6 +38,7 @@ const {
   ensureApplicationFormActivityLogsTable,
   ensureCustomerCountryColumns,
   ensureCustomerEmailColumns,
+  ensureCustomerListNoteColumn,
   ensureAkinsoftInvoiceSyncColumns,
   ensureMutakabatPriceSettingsTable,
   ensureMutakabatRecordsTable,
@@ -1863,6 +1864,7 @@ module.exports = async (req, res) => {
         await ensureInvoicesBillingSourceColumn();
         await ensureInvoicesCustomerSentColumn();
         await ensureInvoicesListNoteColumn();
+        await ensureCustomerListNoteColumn();
         const values = [];
         let whereSql = 'where true';
         if (activeFilter === 'active') {
@@ -2056,7 +2058,12 @@ module.exports = async (req, res) => {
                   then 'open'
                 else fi.status
               end as effective_status,
-              json_build_object('name', c.name, 'email', c.email) as customers,
+              json_build_object(
+                'name', c.name,
+                'email', c.email,
+                'list_note', c.list_note,
+                'list_note_color', c.list_note_color
+              ) as customers,
               fi.erp_invoice_number,
               asm.source_id as akinsoft_source_id,
               asm.source_code as akinsoft_source_code,

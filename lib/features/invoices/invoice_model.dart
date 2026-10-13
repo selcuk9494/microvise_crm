@@ -103,6 +103,8 @@ class Invoice {
   /// Liste ekranı hatırlatıcısı — cari ve resmi `notes` alanından bağımsız.
   final String? listNote;
   final String? listNoteColor;
+  final String? customerListNote;
+  final String? customerListNoteColor;
 
   const Invoice({
     required this.id,
@@ -155,6 +157,8 @@ class Invoice {
     this.billingSource,
     this.listNote,
     this.listNoteColor,
+    this.customerListNote,
+    this.customerListNoteColor,
   });
 
   double get remainingAmount => grandTotal - paidAmount;
@@ -425,6 +429,18 @@ class Invoice {
       customerEmail: customers is Map
           ? customers['email']?.toString()
           : json['customer_email']?.toString(),
+      customerListNote: () {
+        final raw = customers is Map
+            ? customers['list_note']?.toString().trim()
+            : json['customer_list_note']?.toString().trim();
+        return (raw == null || raw.isEmpty) ? null : raw;
+      }(),
+      customerListNoteColor: () {
+        final raw = customers is Map
+            ? customers['list_note_color']?.toString().trim()
+            : json['customer_list_note_color']?.toString().trim();
+        return (raw == null || raw.isEmpty) ? null : raw;
+      }(),
       invoiceDate:
           parseAppDateTime(json['invoice_date']?.toString()) ?? appNow(),
       dueDate: json['due_date'] != null

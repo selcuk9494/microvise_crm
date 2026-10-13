@@ -34,6 +34,7 @@ const ensured = {
   application_form_activity_logs: false,
   customer_country_columns: false,
   customer_extra_emails: false,
+  customer_list_note: false,
   invoice_prices_include_vat: false,
   invoices_billing_source: false,
   invoices_customer_sent: false,
@@ -71,6 +72,21 @@ async function ensureCustomerEmailColumns() {
       add column if not exists email_3 text
   `);
   ensured.customer_extra_emails = true;
+  return true;
+}
+
+async function ensureCustomerListNoteColumn() {
+  if (ensured.customer_list_note) return true;
+  if (!(await tableExists('customers'))) {
+    ensured.customer_list_note = true;
+    return true;
+  }
+  await query(`
+    alter table public.customers
+      add column if not exists list_note text,
+      add column if not exists list_note_color text
+  `);
+  ensured.customer_list_note = true;
   return true;
 }
 
@@ -2478,6 +2494,7 @@ async function ensureQuoteDocumentSettings() {
 module.exports = {
   ensureCustomerCountryColumns,
   ensureCustomerEmailColumns,
+  ensureCustomerListNoteColumn,
   ensureSerialTrackingTable,
   ensureUsersAuthColumns,
   ensureRegionColorsTable,

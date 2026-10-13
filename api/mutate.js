@@ -40,6 +40,7 @@ const {
   ensureInvoicePricesIncludeVatColumn,
   ensureInvoicesCustomerSentColumn,
   ensureInvoicesListNoteColumn,
+  ensureCustomerListNoteColumn,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,
   ensureQuotesTables,
@@ -4187,6 +4188,11 @@ module.exports = async (req, res) => {
       columnsCache.delete('invoices');
       columnsMetaCache.delete('invoices');
     }
+    if (table === 'customers') {
+      await ensureCustomerListNoteColumn();
+      columnsCache.delete('customers');
+      columnsMetaCache.delete('customers');
+    }
 
     const bankCustomerCreate =
       isBankLikeUser(user) && table === 'customers' && op === 'upsert';
@@ -4194,7 +4200,15 @@ module.exports = async (req, res) => {
       isBankLikeUser(user) &&
       table === 'business_activity_types' &&
       ['upsert', 'insertMany'].includes(op);
-    const requiredPage = tablePermissions[table] || null;
+    const customerListNoteOnly =
+      table === 'customers' &&
+      Object.keys(body.values || {})
+        .filter((key) => key !== 'id')
+        .every((key) => key === 'list_note' || key === 'list_note_color') &&
+      Object.keys(body.values || {}).filter((key) => key !== 'id').length > 0;
+    const requiredPage = customerListNoteOnly
+      ? ['musteriler', 'e_fatura', 'faturalama']
+      : tablePermissions[table] || null;
     if (
       requiredPage &&
       !bankCustomerCreate &&
