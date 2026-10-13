@@ -1893,6 +1893,7 @@ class _OpenCustomerGroup {
     this.listNote,
     this.listNoteColor,
     this.listSort = 0,
+    required this.latestInvoiceAt,
   });
 
   final String customerId;
@@ -1901,6 +1902,7 @@ class _OpenCustomerGroup {
   final String? listNote;
   final String? listNoteColor;
   final int listSort;
+  final DateTime latestInvoiceAt;
 
   Map<String, double> get remainingByCurrency {
     final totals = <String, double>{};
@@ -1951,6 +1953,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   String? _labelFilter;
   final Set<String> _expandedCustomerIds = {};
   final List<String> _openCustomerOrderIds = [];
+  bool _openCustomerOrderManual = false;
 
   void _applyFilter(InvoiceFilter filter) {
     setState(() {
@@ -2137,9 +2140,16 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 .map((item) => (item.customerListNoteColor ?? '').trim())
                 .where((item) => item.isNotEmpty);
             var listSort = 0;
+            var latestInvoiceAt = invoices.first.createdAt;
             for (final invoice in invoices) {
               if (invoice.customerListSort > listSort) {
                 listSort = invoice.customerListSort;
+              }
+              if (invoice.createdAt.isAfter(latestInvoiceAt)) {
+                latestInvoiceAt = invoice.createdAt;
+              }
+              if (invoice.invoiceDate.isAfter(latestInvoiceAt)) {
+                latestInvoiceAt = invoice.invoiceDate;
               }
             }
             return _OpenCustomerGroup(
@@ -2151,6 +2161,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                   ? null
                   : customerColors.first,
               listSort: listSort,
+              latestInvoiceAt: latestInvoiceAt,
             );
           },
         )
@@ -2166,14 +2177,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       } else if (bPinned) {
         return 1;
       }
-      final aRem = a.remainingByCurrency;
-      final bRem = b.remainingByCurrency;
-      final usd = (bRem['USD'] ?? 0).compareTo(aRem['USD'] ?? 0);
-      if (usd != 0) return usd;
-      final tryCmp = (bRem['TRY'] ?? 0).compareTo(aRem['TRY'] ?? 0);
-      if (tryCmp != 0) return tryCmp;
-      final count = b.invoices.length.compareTo(a.invoices.length);
-      if (count != 0) return count;
+      final byDate = b.latestInvoiceAt.compareTo(a.latestInvoiceAt);
+      if (byDate != 0) return byDate;
       return a.customerName.toLowerCase().compareTo(b.customerName.toLowerCase());
     });
     return groups;
@@ -2272,8 +2277,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   ) {
     if (groups.isEmpty) return groups;
     final byId = {for (final group in groups) group.customerId: group};
-    if (_openCustomerOrderIds.isEmpty) {
-      _openCustomerOrderIds.addAll(groups.map((group) => group.customerId));
+    if (!_openCustomerOrderManual) {
+      _openCustomerOrderIds
+        ..clear()
+        ..addAll(groups.map((group) => group.customerId));
       return groups;
     }
     final known = groups.map((group) => group.customerId).toSet();
@@ -2316,6 +2323,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       next.add(ids[nextIndex++]);
     }
     setState(() {
+      _openCustomerOrderManual = true;
       _openCustomerOrderIds
         ..clear()
         ..addAll(next);
