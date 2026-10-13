@@ -35,6 +35,7 @@ const ensured = {
   customer_country_columns: false,
   customer_extra_emails: false,
   customer_list_note: false,
+  customer_list_sort: false,
   invoice_prices_include_vat: false,
   invoices_billing_source: false,
   invoices_customer_sent: false,
@@ -87,6 +88,20 @@ async function ensureCustomerListNoteColumn() {
       add column if not exists list_note_color text
   `);
   ensured.customer_list_note = true;
+  return true;
+}
+
+async function ensureCustomerListSortColumn() {
+  if (ensured.customer_list_sort) return true;
+  if (!(await tableExists('customers'))) {
+    ensured.customer_list_sort = true;
+    return true;
+  }
+  await query(`
+    alter table public.customers
+      add column if not exists list_sort integer not null default 0
+  `);
+  ensured.customer_list_sort = true;
   return true;
 }
 
@@ -2495,6 +2510,7 @@ module.exports = {
   ensureCustomerCountryColumns,
   ensureCustomerEmailColumns,
   ensureCustomerListNoteColumn,
+  ensureCustomerListSortColumn,
   ensureSerialTrackingTable,
   ensureUsersAuthColumns,
   ensureRegionColorsTable,

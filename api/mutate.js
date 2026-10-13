@@ -41,6 +41,7 @@ const {
   ensureInvoicesCustomerSentColumn,
   ensureInvoicesListNoteColumn,
   ensureCustomerListNoteColumn,
+  ensureCustomerListSortColumn,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,
   ensureQuotesTables,
@@ -4190,6 +4191,7 @@ module.exports = async (req, res) => {
     }
     if (table === 'customers') {
       await ensureCustomerListNoteColumn();
+      await ensureCustomerListSortColumn();
       columnsCache.delete('customers');
       columnsMetaCache.delete('customers');
     }
@@ -4204,7 +4206,12 @@ module.exports = async (req, res) => {
       table === 'customers' &&
       Object.keys(body.values || {})
         .filter((key) => key !== 'id')
-        .every((key) => key === 'list_note' || key === 'list_note_color') &&
+        .every(
+          (key) =>
+            key === 'list_note' ||
+            key === 'list_note_color' ||
+            key === 'list_sort',
+        ) &&
       Object.keys(body.values || {}).filter((key) => key !== 'id').length > 0;
     const requiredPage = customerListNoteOnly
       ? ['musteriler', 'e_fatura', 'faturalama']

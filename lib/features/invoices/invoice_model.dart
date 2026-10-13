@@ -105,6 +105,7 @@ class Invoice {
   final String? listNoteColor;
   final String? customerListNote;
   final String? customerListNoteColor;
+  final int customerListSort;
 
   const Invoice({
     required this.id,
@@ -159,6 +160,7 @@ class Invoice {
     this.listNoteColor,
     this.customerListNote,
     this.customerListNoteColor,
+    this.customerListSort = 0,
   });
 
   double get remainingAmount => grandTotal - paidAmount;
@@ -440,6 +442,13 @@ class Invoice {
             ? customers['list_note_color']?.toString().trim()
             : json['customer_list_note_color']?.toString().trim();
         return (raw == null || raw.isEmpty) ? null : raw;
+      }(),
+      customerListSort: () {
+        final raw = customers is Map
+            ? customers['list_sort']
+            : json['customer_list_sort'];
+        if (raw is num) return raw.toInt();
+        return int.tryParse(raw?.toString() ?? '') ?? 0;
       }(),
       invoiceDate:
           parseAppDateTime(json['invoice_date']?.toString()) ?? appNow(),

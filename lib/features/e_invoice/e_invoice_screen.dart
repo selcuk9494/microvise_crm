@@ -1892,6 +1892,7 @@ class _OpenCustomerGroup {
     required this.invoices,
     this.listNote,
     this.listNoteColor,
+    this.listSort = 0,
   });
 
   final String customerId;
@@ -1899,6 +1900,7 @@ class _OpenCustomerGroup {
   final List<Invoice> invoices;
   final String? listNote;
   final String? listNoteColor;
+  final int listSort;
 
   Map<String, double> get remainingByCurrency {
     final totals = <String, double>{};
@@ -1910,20 +1912,6 @@ class _OpenCustomerGroup {
     }
     return totals;
   }
-}
-
-class _OpenListEntry {
-  const _OpenListEntry.header(this.group)
-      : invoice = null,
-        invoiceIndex = 0;
-
-  const _OpenListEntry.invoice(this.group, this.invoice, this.invoiceIndex);
-
-  final _OpenCustomerGroup group;
-  final Invoice? invoice;
-  final int invoiceIndex;
-
-  bool get isHeader => invoice == null;
 }
 
 class _InvoicesTab extends ConsumerStatefulWidget {
@@ -1960,7 +1948,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   bool _pullingAkinsoft = false;
   bool _syncingIncoming = false;
   String _customerQuery = '';
-  final Set<String> _collapsedCustomerIds = {};
+  String? _labelFilter;
+  final Set<String> _expandedCustomerIds = {};
+  final List<String> _openCustomerOrderIds = [];
 
   void _applyFilter(InvoiceFilter filter) {
     setState(() {
@@ -2146,6 +2136,12 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             final customerColors = invoices
                 .map((item) => (item.customerListNoteColor ?? '').trim())
                 .where((item) => item.isNotEmpty);
+            var listSort = 0;
+            for (final invoice in invoices) {
+              if (invoice.customerListSort > listSort) {
+                listSort = invoice.customerListSort;
+              }
+            }
             return _OpenCustomerGroup(
               customerId: entry.key,
               customerName: name,
@@ -2154,11 +2150,22 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               listNoteColor: customerColors.isEmpty
                   ? null
                   : customerColors.first,
+              listSort: listSort,
             );
           },
         )
         .toList(growable: false);
     groups.sort((a, b) {
+      final aPinned = a.listSort > 0;
+      final bPinned = b.listSort > 0;
+      if (aPinned && bPinned) {
+        final bySort = a.listSort.compareTo(b.listSort);
+        if (bySort != 0) return bySort;
+      } else if (aPinned) {
+        return -1;
+      } else if (bPinned) {
+        return 1;
+      }
       final aRem = a.remainingByCurrency;
       final bRem = b.remainingByCurrency;
       final usd = (bRem['USD'] ?? 0).compareTo(aRem['USD'] ?? 0);
@@ -2260,16 +2267,116 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     }
   }
 
-  List<_OpenListEntry> _openListEntries(List<_OpenCustomerGroup> groups) {
-    final entries = <_OpenListEntry>[];
+  List<_OpenCustomerGroup> _orderedOpenGroups(
+    List<_OpenCustomerGroup> groups,
+  ) {
+    if (groups.isEmpty) return groups;
+    final byId = {for (final group in groups) group.customerId: group};
+    if (_openCustomerOrderIds.isEmpty) {
+      _openCustomerOrderIds.addAll(groups.map((group) => group.customerId));
+      return groups;
+    }
+    final known = groups.map((group) => group.customerId).toSet();
+    _openCustomerOrderIds.removeWhere((id) => !known.contains(id));
     for (final group in groups) {
-      entries.add(_OpenListEntry.header(group));
-      if (_collapsedCustomerIds.contains(group.customerId)) continue;
-      for (var i = 0; i < group.invoices.length; i++) {
-        entries.add(_OpenListEntry.invoice(group, group.invoices[i], i));
+      if (!_openCustomerOrderIds.contains(group.customerId)) {
+        _openCustomerOrderIds.add(group.customerId);
       }
     }
-    return entries;
+    return [
+      for (final id in _openCustomerOrderIds)
+        if (byId[id] != null) byId[id]!,
+    ];
+  }
+
+  Future<void> _reorderOpenCustomers({
+    required List<_OpenCustomerGroup> visible,
+    required int oldIndex,
+    required int newIndex,
+  }) async {
+    if (oldIndex < 0 || oldIndex >= visible.length) return;
+    var target = newIndex;
+    if (target < 0) target = 0;
+    if (target >= visible.length) target = visible.length - 1;
+    final ids = visible.map((group) => group.customerId).toList();
+    final moved = ids.removeAt(oldIndex);
+    ids.insert(target, moved);
+    final visibleSet = ids.toSet();
+    var nextIndex = 0;
+    final next = <String>[];
+    for (final id in _openCustomerOrderIds) {
+      if (visibleSet.contains(id)) {
+        next.add(ids[nextIndex++]);
+      } else {
+        next.add(id);
+      }
+    }
+    while (nextIndex < ids.length) {
+      next.add(ids[nextIndex++]);
+    }
+    setState(() {
+      _openCustomerOrderIds
+        ..clear()
+        ..addAll(next);
+    });
+    await _persistOpenCustomerOrder();
+  }
+
+  Future<void> _persistOpenCustomerOrder() async {
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null || _openCustomerOrderIds.isEmpty) return;
+    try {
+      const chunk = 10;
+      for (var start = 0; start < _openCustomerOrderIds.length; start += chunk) {
+        final end = (start + chunk < _openCustomerOrderIds.length)
+            ? start + chunk
+            : _openCustomerOrderIds.length;
+        await Future.wait([
+          for (var i = start; i < end; i++)
+            apiClient.postJson(
+              '/mutate',
+              body: {
+                'op': 'updateWhere',
+                'table': 'customers',
+                'filters': [
+                  {
+                    'col': 'id',
+                    'op': 'eq',
+                    'value': _openCustomerOrderIds[i],
+                  },
+                ],
+                'values': {'list_sort': i + 1},
+              },
+            ),
+        ]);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sıralama kaydedilemedi: $error')),
+      );
+    }
+  }
+
+  Widget _openCustomerDragHandle(int index) {
+    final handle = Tooltip(
+      message: 'Sıralamak için sürükle',
+      waitDuration: const Duration(milliseconds: 250),
+      child: SizedBox(
+        width: 28,
+        height: 32,
+        child: Center(
+          child: Icon(
+            LucideIcons.gripVertical,
+            size: 16,
+            color: AppTheme.textMuted,
+          ),
+        ),
+      ),
+    );
+    return kIsWeb
+        ? ReorderableDragStartListener(index: index, child: handle)
+        : ReorderableDelayedDragStartListener(index: index, child: handle);
   }
 
   Widget _openInvoiceRow(Invoice invoice, int index) {
@@ -2310,11 +2417,15 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     );
   }
 
-  Widget _openCustomerHeader(_OpenCustomerGroup group, {required bool compact}) {
+  Widget _openCustomerHeader(
+    _OpenCustomerGroup group, {
+    required bool compact,
+    required int reorderIndex,
+  }) {
     final ids = group.invoices.map((invoice) => invoice.id).toSet();
     final selectedCount = ids.where(_selectedInvoiceIds.contains).length;
     final allSelected = ids.isNotEmpty && selectedCount == ids.length;
-    final collapsed = _collapsedCustomerIds.contains(group.customerId);
+    final expanded = _expandedCustomerIds.contains(group.customerId);
     final actions = <Widget>[
       _InvoiceIconAction(
         tooltip: 'Ödeme linki oluştur',
@@ -2403,12 +2514,12 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ],
     );
 
-    void toggleCollapsed() {
+    void toggleExpanded() {
       setState(() {
-        if (collapsed) {
-          _collapsedCustomerIds.remove(group.customerId);
+        if (expanded) {
+          _expandedCustomerIds.remove(group.customerId);
         } else {
-          _collapsedCustomerIds.add(group.customerId);
+          _expandedCustomerIds.add(group.customerId);
         }
       });
     }
@@ -2445,13 +2556,14 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                         : (selectedCount == 0 ? false : null),
                     onChanged: _bulkDeleting ? null : toggleSelected,
                   ),
+                  _openCustomerDragHandle(reorderIndex),
                   IconButton(
                     visualDensity: VisualDensity.compact,
-                    onPressed: toggleCollapsed,
+                    onPressed: toggleExpanded,
                     icon: Icon(
-                      collapsed
-                          ? AppPhosphorIcons.caretRight
-                          : AppPhosphorIcons.caretDown,
+                      expanded
+                          ? AppPhosphorIcons.caretDown
+                          : AppPhosphorIcons.caretRight,
                       size: 16,
                     ),
                   ),
@@ -2519,15 +2631,16 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                   onChanged: _bulkDeleting ? null : toggleSelected,
                 ),
               ),
+              _openCustomerDragHandle(reorderIndex),
               Expanded(
                 child: InkWell(
-                  onTap: toggleCollapsed,
+                  onTap: toggleExpanded,
                   child: Row(
                     children: [
                       Icon(
-                        collapsed
-                            ? AppPhosphorIcons.caretRight
-                            : AppPhosphorIcons.caretDown,
+                        expanded
+                            ? AppPhosphorIcons.caretDown
+                            : AppPhosphorIcons.caretRight,
                         size: 16,
                         color: AppTheme.textSoft,
                       ),
@@ -2631,22 +2744,40 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     required Map<String, dynamic> eInvoiceSettings,
     required AsyncValue<List<Customer>> customersAsync,
   }) {
-    final allGroups = _groupOpenCustomers(items);
-    final groups = _customerQuery.trim().isEmpty
-        ? allGroups
-        : allGroups
-              .where((group) {
-                final haystack = [
-                  group.customerName,
-                  group.listNote ?? '',
-                  ...group.invoices.map(
-                    (invoice) =>
-                        '${invoice.invoiceNumberDisplay} ${invoice.listNote ?? ''}',
-                  ),
-                ].join(' ');
-                return matchesSearchQuery(haystack, _customerQuery);
-              })
-              .toList(growable: false);
+    final allGroups = _orderedOpenGroups(_groupOpenCustomers(items));
+    final uniqueLabels = <String, String>{};
+    for (final group in allGroups) {
+      final note = (group.listNote ?? '').trim();
+      if (note.isEmpty) continue;
+      uniqueLabels.putIfAbsent(note, () => group.listNoteColor ?? 'orange');
+    }
+    final labelNames = uniqueLabels.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    var groups = allGroups;
+    if (_customerQuery.trim().isNotEmpty) {
+      groups = groups
+          .where((group) {
+            final haystack = [
+              group.customerName,
+              group.listNote ?? '',
+              ...group.invoices.map(
+                (invoice) =>
+                    '${invoice.invoiceNumberDisplay} ${invoice.listNote ?? ''}',
+              ),
+            ].join(' ');
+            return matchesSearchQuery(haystack, _customerQuery);
+          })
+          .toList(growable: false);
+    }
+    if (_labelFilter != null) {
+      groups = groups
+          .where((group) {
+            final note = (group.listNote ?? '').trim();
+            if (_labelFilter!.isEmpty) return note.isEmpty;
+            return note.toLowerCase() == _labelFilter!.toLowerCase();
+          })
+          .toList(growable: false);
+    }
     final remaining = <String, double>{};
     var invoiceCount = 0;
     for (final group in groups) {
@@ -2658,7 +2789,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     final visibleInvoices = [
       for (final group in groups) ...group.invoices,
     ];
-    final entries = _openListEntries(groups);
     final selectedReversibleCount = visibleInvoices
         .where(
           (invoice) =>
@@ -2769,6 +2899,50 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 ),
               ],
             ),
+            if (labelNames.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 34,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    ChoiceChip(
+                      visualDensity: VisualDensity.compact,
+                      label: const Text('Tümü'),
+                      selected: _labelFilter == null,
+                      onSelected: (_) =>
+                          setState(() => _labelFilter = null),
+                    ),
+                    const Gap(6),
+                    ChoiceChip(
+                      visualDensity: VisualDensity.compact,
+                      label: const Text('Etiketsiz'),
+                      selected: _labelFilter == '',
+                      onSelected: (selected) => setState(
+                        () => _labelFilter = selected ? '' : null,
+                      ),
+                    ),
+                    for (final note in labelNames) ...[
+                      const Gap(6),
+                      ChoiceChip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: CircleAvatar(
+                          backgroundColor: _invoiceListNoteColor(
+                            uniqueLabels[note],
+                          ),
+                        ),
+                        label: Text(note),
+                        selected: _labelFilter?.toLowerCase() ==
+                            note.toLowerCase(),
+                        onSelected: (selected) => setState(
+                          () => _labelFilter = selected ? note : null,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 4),
             Align(
               alignment: Alignment.centerRight,
@@ -2878,26 +3052,53 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         return Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            _customerQuery.trim().isEmpty
-                ? 'Açık bakiyesi olan satış faturası yok.'
-                : 'Aramaya uyan borçlu cari bulunamadı.',
+            _customerQuery.trim().isNotEmpty || _labelFilter != null
+                ? 'Aramaya uyan borçlu cari bulunamadı.'
+                : 'Açık bakiyesi olan satış faturası yok.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: AppTheme.textMuted,
             ),
           ),
         );
       }
-      return ListView.builder(
+      return ReorderableListView.builder(
+        buildDefaultDragHandles: false,
         padding: compact
             ? const EdgeInsets.fromLTRB(8, 0, 8, 8)
             : EdgeInsets.zero,
-        itemCount: entries.length,
+        itemCount: groups.length,
+        proxyDecorator: (child, index, animation) {
+          return Material(
+            elevation: 4,
+            color: AppTheme.surface,
+            child: child,
+          );
+        },
+        onReorderItem: (oldIndex, newIndex) {
+          unawaited(
+            _reorderOpenCustomers(
+              visible: groups,
+              oldIndex: oldIndex,
+              newIndex: newIndex,
+            ),
+          );
+        },
         itemBuilder: (context, index) {
-          final entry = entries[index];
-          if (entry.isHeader) {
-            return _openCustomerHeader(entry.group, compact: compact);
-          }
-          return _openInvoiceRow(entry.invoice!, entry.invoiceIndex);
+          final group = groups[index];
+          final expanded = _expandedCustomerIds.contains(group.customerId);
+          return Column(
+            key: ValueKey(group.customerId),
+            children: [
+              _openCustomerHeader(
+                group,
+                compact: compact,
+                reorderIndex: index,
+              ),
+              if (expanded)
+                for (var i = 0; i < group.invoices.length; i++)
+                  _openInvoiceRow(group.invoices[i], i),
+            ],
+          );
         },
       );
     }
