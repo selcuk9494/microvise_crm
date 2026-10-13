@@ -2121,22 +2121,20 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             final name = invoices
                 .map((item) => item.customerName?.trim() ?? '')
                 .firstWhere((item) => item.isNotEmpty, orElse: () => 'Cari');
+            final customerNotes = invoices
+                .map((item) => (item.customerListNote ?? '').trim())
+                .where((item) => item.isNotEmpty);
+            final customerColors = invoices
+                .map((item) => (item.customerListNoteColor ?? '').trim())
+                .where((item) => item.isNotEmpty);
             return _OpenCustomerGroup(
               customerId: entry.key,
               customerName: name,
               invoices: invoices,
-              listNote: invoices
-                  .map((item) => item.customerListNote?.trim())
-                  .firstWhere(
-                    (item) => item != null && item.isNotEmpty,
-                    orElse: () => null,
-                  ),
-              listNoteColor: invoices
-                  .map((item) => item.customerListNoteColor?.trim())
-                  .firstWhere(
-                    (item) => item != null && item.isNotEmpty,
-                    orElse: () => null,
-                  ),
+              listNote: customerNotes.isEmpty ? null : customerNotes.first,
+              listNoteColor: customerColors.isEmpty
+                  ? null
+                  : customerColors.first,
             );
           },
         )
@@ -2524,6 +2522,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                             ],
                                           ),
                                         ),
+                                      ),
                                     ],
                                   ),
                                 ),
