@@ -221,6 +221,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ),
             GoRoute(
+              path: 'acik',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: EInvoiceScreen(
+                  section: 'acik',
+                  invoiceType: 'sales',
+                ),
+              ),
+            ),
+            GoRoute(
               path: 'stok',
               pageBuilder: (context, state) => const NoTransitionPage(
                 child: EInvoiceScreen(section: 'stok'),

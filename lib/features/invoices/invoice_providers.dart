@@ -24,6 +24,7 @@ final invoicesProvider = FutureProvider.autoDispose
           if (filter.endDate != null)
             'endDate': filter.endDate!.toIso8601String().substring(0, 10),
           if (filter.customerSent != null) 'customerSent': filter.customerSent!,
+          if (filter.debtOnly) 'debtOnly': '1',
           'activeFilter': filter.activeFilter,
         },
       );
@@ -206,6 +207,9 @@ class InvoiceFilter {
   /// `sent` | `unsent` | null (tümü)
   final String? customerSent;
 
+  /// Açık kuyruktaki tahsil edilmiş / iletilmemiş satışları hariç tutar.
+  final bool debtOnly;
+
   const InvoiceFilter({
     this.activeFilter = 'active',
     this.invoiceType,
@@ -215,6 +219,7 @@ class InvoiceFilter {
     this.startDate,
     this.endDate,
     this.customerSent,
+    this.debtOnly = false,
   });
 
   InvoiceFilter copyWith({
@@ -226,6 +231,7 @@ class InvoiceFilter {
     DateTime? startDate,
     DateTime? endDate,
     String? customerSent,
+    bool? debtOnly,
     bool clearInvoiceType = false,
     bool clearStatus = false,
     bool clearEInvoiceStatus = false,
@@ -247,6 +253,7 @@ class InvoiceFilter {
       customerSent: clearCustomerSent
           ? null
           : (customerSent ?? this.customerSent),
+      debtOnly: debtOnly ?? this.debtOnly,
     );
   }
 }

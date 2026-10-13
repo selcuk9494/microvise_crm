@@ -1671,10 +1671,14 @@ class EInvoiceScreen extends ConsumerWidget {
     };
 
     if (isInvoiceList) {
+      final groupedByCustomer = section == 'acik';
       return _InvoicesTab(
-        key: ValueKey('invoices-${invoiceType ?? 'all'}'),
+        key: ValueKey(
+          'invoices-${invoiceType ?? 'all'}-${groupedByCustomer ? 'acik' : 'list'}',
+        ),
         moneyTry: _moneyTry,
         initialInvoiceType: invoiceType,
+        groupedByCustomer: groupedByCustomer,
         onNewInvoice: () => _openInvoiceTypeDialog(context, ref),
       );
     }
@@ -1881,17 +1885,42 @@ class _EnvPill extends StatelessWidget {
   }
 }
 
+class _OpenCustomerGroup {
+  const _OpenCustomerGroup({
+    required this.customerId,
+    required this.customerName,
+    required this.invoices,
+  });
+
+  final String customerId;
+  final String customerName;
+  final List<Invoice> invoices;
+
+  Map<String, double> get remainingByCurrency {
+    final totals = <String, double>{};
+    for (final invoice in invoices) {
+      final code = invoice.currency.trim().isEmpty
+          ? 'TRY'
+          : invoice.currency.trim().toUpperCase();
+      totals[code] = (totals[code] ?? 0) + invoice.remainingAmount;
+    }
+    return totals;
+  }
+}
+
 class _InvoicesTab extends ConsumerStatefulWidget {
   const _InvoicesTab({
     super.key,
     required this.moneyTry,
     required this.onNewInvoice,
     this.initialInvoiceType,
+    this.groupedByCustomer = false,
   });
 
   final NumberFormat moneyTry;
   final VoidCallback onNewInvoice;
   final String? initialInvoiceType;
+  final bool groupedByCustomer;
 
   @override
   ConsumerState<_InvoicesTab> createState() => _InvoicesTabState();
@@ -1902,8 +1931,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
 
   final Set<String> _selectedInvoiceIds = {};
   late InvoiceFilter _filter = InvoiceFilter(
-    status: 'open',
+    status: widget.groupedByCustomer ? 'open,partial' : 'open',
     invoiceType: widget.initialInvoiceType,
+    debtOnly: widget.groupedByCustomer,
   );
   List<Invoice> _lastInvoices = const [];
   int _visibleInvoiceLimit = _invoiceRenderStep;
@@ -1911,6 +1941,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   bool _bulkProcessing = false;
   bool _pullingAkinsoft = false;
   bool _syncingIncoming = false;
+  String _customerQuery = '';
+  String? _expandedCustomerId;
 
   void _applyFilter(InvoiceFilter filter) {
     setState(() {
@@ -1922,7 +1954,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
 
   Widget _invoicePage({required Widget body, List<Widget> extras = const []}) {
     return AppPageLayout(
-      title: 'E-Fatura',
+      title: widget.groupedByCustomer ? 'Açık Faturalar' : 'E-Fatura',
+      subtitle: widget.groupedByCustomer
+          ? 'Borcu olan cariler. Cariye basınca açık faturalar açılır.'
+          : null,
       compactHeader: true,
       leading: extras.isEmpty
           ? null
@@ -2042,6 +2077,354 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     );
   }
 
+  String _formatCurrencyAmounts(Map<String, double> amounts) {
+    if (amounts.isEmpty) return widget.moneyTry.format(0);
+    const order = ['USD', 'EUR', 'GBP', 'TRY'];
+    final keys = amounts.keys.toList()
+      ..sort((a, b) {
+        final ai = order.indexOf(a.toUpperCase());
+        final bi = order.indexOf(b.toUpperCase());
+        return (ai < 0 ? 99 : ai).compareTo(bi < 0 ? 99 : bi);
+      });
+    return keys
+        .map((code) {
+          final upper = code.toUpperCase();
+          final symbol = upper == 'TRY' ? '₺' : '$upper ';
+          return NumberFormat.currency(
+            locale: 'tr_TR',
+            symbol: symbol,
+            decimalDigits: 2,
+          ).format(amounts[code] ?? 0);
+        })
+        .join(' · ');
+  }
+
+  List<_OpenCustomerGroup> _groupOpenCustomers(List<Invoice> items) {
+    final grouped = <String, List<Invoice>>{};
+    for (final invoice in items) {
+      if (!invoice.isActive ||
+          !invoice.isOpen ||
+          invoice.remainingAmount <= 0.009) {
+        continue;
+      }
+      grouped.putIfAbsent(invoice.customerId, () => []).add(invoice);
+    }
+    final groups = grouped.entries
+        .map(
+          (entry) {
+            final invoices = [...entry.value]
+              ..sort((a, b) => b.invoiceDate.compareTo(a.invoiceDate));
+            final name = invoices
+                .map((item) => item.customerName?.trim() ?? '')
+                .firstWhere((item) => item.isNotEmpty, orElse: () => 'Cari');
+            return _OpenCustomerGroup(
+              customerId: entry.key,
+              customerName: name,
+              invoices: invoices,
+            );
+          },
+        )
+        .toList(growable: false);
+    groups.sort((a, b) {
+      final aRem = a.remainingByCurrency;
+      final bRem = b.remainingByCurrency;
+      final usd = (bRem['USD'] ?? 0).compareTo(aRem['USD'] ?? 0);
+      if (usd != 0) return usd;
+      final tryCmp = (bRem['TRY'] ?? 0).compareTo(aRem['TRY'] ?? 0);
+      if (tryCmp != 0) return tryCmp;
+      final count = b.invoices.length.compareTo(a.invoices.length);
+      if (count != 0) return count;
+      return a.customerName.toLowerCase().compareTo(b.customerName.toLowerCase());
+    });
+    return groups;
+  }
+
+  Future<void> _shareStatementFor(List<Invoice> invoices) async {
+    if (invoices.isEmpty) return;
+    final customerNames = invoices
+        .map((invoice) => invoice.customerName?.trim())
+        .whereType<String>()
+        .where((name) => name.isNotEmpty)
+        .toSet();
+    final customerName = customerNames.length == 1
+        ? customerNames.first
+        : 'Seçili Faturalar';
+    final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+    final settings = ref.read(eInvoiceSettingsProvider).value ?? const {};
+    setState(() => _bulkProcessing = true);
+    try {
+      await shareInvoiceStatementPdf(
+        title: 'Fatura Ekstresi',
+        customerName: customerName,
+        invoices: invoices,
+        bankDetails: (settings['seller_bank_details'] ?? '').toString(),
+        filename:
+            'fatura_ekstresi_${safeStatementFilePart(customerName)}_$stamp.pdf',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ekstre oluşturulamadı: $error')));
+    } finally {
+      if (mounted) setState(() => _bulkProcessing = false);
+    }
+  }
+
+  Widget _buildOpenCustomersPage({
+    required List<Invoice> items,
+    required bool loadingFilteredItems,
+    required Map<String, dynamic> eInvoiceSettings,
+  }) {
+    final allGroups = _groupOpenCustomers(items);
+    final groups = _customerQuery.trim().isEmpty
+        ? allGroups
+        : allGroups
+              .where((group) {
+                final haystack = [
+                  group.customerName,
+                  ...group.invoices.map(
+                    (invoice) =>
+                        '${invoice.invoiceNumberDisplay} ${invoice.listNote ?? ''}',
+                  ),
+                ].join(' ');
+                return matchesSearchQuery(haystack, _customerQuery);
+              })
+              .toList(growable: false);
+    final remaining = <String, double>{};
+    var invoiceCount = 0;
+    for (final group in groups) {
+      invoiceCount += group.invoices.length;
+      group.remainingByCurrency.forEach((code, amount) {
+        remaining[code] = (remaining[code] ?? 0) + amount;
+      });
+    }
+
+    return _invoicePage(
+      extras: [
+        AppBadge(
+          label: 'Cari: ${groups.length}',
+          tone: AppBadgeTone.primary,
+          dense: true,
+        ),
+        AppBadge(
+          label: 'Fatura: $invoiceCount',
+          tone: AppBadgeTone.warning,
+          dense: true,
+        ),
+        AppBadge(
+          label: _formatCurrencyAmounts(remaining),
+          tone: AppBadgeTone.warning,
+          dense: true,
+        ),
+        _EnvPill(settings: eInvoiceSettings),
+      ],
+      body: Column(
+        children: [
+          if (loadingFilteredItems) const LinearProgressIndicator(minHeight: 2),
+          AppCard(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Borcu kalan satış faturaları cari bazında. Cari satırına basınca faturalar açılır; tahsilat, ekstre ve hatırlatıcı not aynı yerden yapılır.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textMuted,
+                  ),
+                ),
+                const Gap(10),
+                TextField(
+                  onChanged: (value) => setState(() => _customerQuery = value),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(AppPhosphorIcons.magnifyingGlass),
+                    labelText: 'Cari / fatura / not ara',
+                    hintText: 'Muhtarın arkadaşı, fatura no, firma adı',
+                    isDense: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Gap(8),
+          if (groups.isEmpty)
+            Expanded(
+              child: AppCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    _customerQuery.trim().isEmpty
+                        ? 'Açık bakiyesi olan satış faturası yok.'
+                        : 'Aramaya uyan borçlu cari bulunamadı.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.only(bottom: 24),
+                itemCount: groups.length,
+                separatorBuilder: (_, _) => const Gap(8),
+                itemBuilder: (context, index) {
+                  final group = groups[index];
+                  final expanded = _expandedCustomerId == group.customerId;
+                  final notes = group.invoices
+                      .map((invoice) => (invoice.listNote ?? '').trim())
+                      .where((note) => note.isNotEmpty)
+                      .toSet()
+                      .take(3)
+                      .toList(growable: false);
+                  return AppCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              _expandedCustomerId = expanded
+                                  ? null
+                                  : group.customerId;
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  expanded
+                                      ? AppPhosphorIcons.caretDown
+                                      : AppPhosphorIcons.caretRight,
+                                  size: 18,
+                                  color: AppTheme.textSoft,
+                                ),
+                                const Gap(8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        group.customerName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                      const Gap(4),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        children: [
+                                          AppBadge(
+                                            dense: true,
+                                            label:
+                                                '${group.invoices.length} fatura',
+                                            tone: AppBadgeTone.neutral,
+                                          ),
+                                          AppBadge(
+                                            dense: true,
+                                            label: _formatCurrencyAmounts(
+                                              group.remainingByCurrency,
+                                            ),
+                                            tone: AppBadgeTone.warning,
+                                          ),
+                                          for (final note in notes)
+                                            AppBadge(
+                                              dense: true,
+                                              label: note,
+                                              tone: AppBadgeTone.primary,
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Gap(8),
+                                Flexible(
+                                  child: Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    alignment: WrapAlignment.end,
+                                    children: [
+                                      OutlinedButton.icon(
+                                        onPressed: _bulkProcessing
+                                            ? null
+                                            : () => _shareStatementFor(
+                                                group.invoices,
+                                              ),
+                                        icon: const Icon(
+                                          AppPhosphorIcons.fileText,
+                                          size: 16,
+                                        ),
+                                        label: const Text('Ekstre'),
+                                      ),
+                                      FilledButton.icon(
+                                        onPressed: _bulkProcessing
+                                            ? null
+                                            : () => _collectInvoices(
+                                                group.invoices,
+                                              ),
+                                        icon: const Icon(
+                                          AppPhosphorIcons.money,
+                                          size: 16,
+                                        ),
+                                        label: const Text('Tahsilat'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (expanded) ...[
+                          const Divider(height: 1),
+                          for (var i = 0; i < group.invoices.length; i++)
+                            _EInvoiceRow(
+                              index: i,
+                              invoice: group.invoices[i],
+                              selected: false,
+                              forceCompact: true,
+                              onCollect:
+                                  group.invoices[i].isOpen &&
+                                      group.invoices[i].remainingAmount > 0
+                                  ? () => _collectInvoices([
+                                      group.invoices[i],
+                                    ])
+                                  : null,
+                              onReverseCollect:
+                                  group.invoices[i].canReverseCollection
+                                  ? () => _reverseCollections([
+                                      group.invoices[i],
+                                    ])
+                                  : null,
+                              onCorrectCollect:
+                                  group.invoices[i].canCorrectCollection
+                                  ? () => _correctCollections([
+                                      group.invoices[i],
+                                    ])
+                                  : null,
+                            ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final invoicesAsync = ref.watch(invoicesProvider(_filter));
@@ -2077,6 +2460,13 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         : _lastInvoices;
     final loadingFilteredItems =
         invoicesAsync.isLoading && _lastInvoices.isNotEmpty;
+    if (widget.groupedByCustomer) {
+      return _buildOpenCustomersPage(
+        items: items,
+        loadingFilteredItems: loadingFilteredItems,
+        eInvoiceSettings: eInvoiceSettings,
+      );
+    }
 
     final itemIds = items.map((invoice) => invoice.id).toSet();
     _selectedInvoiceIds.removeWhere((id) => !itemIds.contains(id));
@@ -5938,6 +6328,7 @@ class _EInvoiceRow extends ConsumerStatefulWidget {
     this.onReverseCollect,
     this.onCorrectCollect,
     this.index = 0,
+    this.forceCompact = false,
   });
 
   final Invoice invoice;
@@ -5947,6 +6338,7 @@ class _EInvoiceRow extends ConsumerStatefulWidget {
   final VoidCallback? onReverseCollect;
   final VoidCallback? onCorrectCollect;
   final int index;
+  final bool forceCompact;
 
   @override
   ConsumerState<_EInvoiceRow> createState() => _EInvoiceRowState();
@@ -6502,7 +6894,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       decimalDigits: 2,
     );
 
-    if (MediaQuery.sizeOf(context).width < 900) {
+    if (widget.forceCompact || MediaQuery.sizeOf(context).width < 900) {
       return _buildCompactRow(
         context,
         invoice,
@@ -6757,15 +7149,16 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Checkbox(
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  value: widget.selected,
-                  onChanged: widget.onSelectedChanged == null
-                      ? null
-                      : (value) => widget.onSelectedChanged!(value ?? false),
-                ),
-                const Gap(4),
+                if (widget.onSelectedChanged != null) ...[
+                  Checkbox(
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    value: widget.selected,
+                    onChanged: (value) =>
+                        widget.onSelectedChanged!(value ?? false),
+                  ),
+                  const Gap(4),
+                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

@@ -1234,6 +1234,12 @@ List<_FormsNavSubItem> _eInvoiceNavSubItems(Set<String> allowedPages) {
       const _FormsNavSubItem(label: 'Satış Faturası', path: '/e-fatura/satis'),
     );
     items.add(
+      const _FormsNavSubItem(
+        label: 'Açık Faturalar',
+        path: '/e-fatura/acik',
+      ),
+    );
+    items.add(
       const _FormsNavSubItem(label: 'Teklif', path: '/e-fatura/teklif'),
     );
     items.addAll(const [

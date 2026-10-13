@@ -1881,8 +1881,13 @@ module.exports = async (req, res) => {
             .split(',')
             .map((item) => item.trim())
             .filter(Boolean);
+          const debtOnly =
+            String(req.query.debtOnly || '').trim() === '1' ||
+            String(req.query.debtOnly || '').trim().toLowerCase() === 'true';
           const includePaidUnsent =
-            statuses.includes('open') && !statuses.includes('paid');
+            !debtOnly &&
+            statuses.includes('open') &&
+            !statuses.includes('paid');
           const paidUnsentSql = `
             or (
               i.invoice_type = 'sales'
@@ -1900,6 +1905,11 @@ module.exports = async (req, res) => {
             whereSql += includePaidUnsent
               ? ` and (i.status = $${values.length} ${paidUnsentSql})`
               : ` and i.status = $${values.length}`;
+          }
+          if (debtOnly) {
+            whereSql += `
+              and (coalesce(i.grand_total, 0) - coalesce(i.paid_amount, 0)) > 0.009
+            `;
           }
         }
         if (eInvoiceStatus === 'sent') {
