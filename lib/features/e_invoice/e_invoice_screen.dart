@@ -2140,13 +2140,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 .map((item) => (item.customerListNoteColor ?? '').trim())
                 .where((item) => item.isNotEmpty);
             var listSort = 0;
-            var latestInvoiceAt = invoices.first.createdAt;
+            var latestInvoiceAt = invoices.first.invoiceDate;
             for (final invoice in invoices) {
               if (invoice.customerListSort > listSort) {
                 listSort = invoice.customerListSort;
-              }
-              if (invoice.createdAt.isAfter(latestInvoiceAt)) {
-                latestInvoiceAt = invoice.createdAt;
               }
               if (invoice.invoiceDate.isAfter(latestInvoiceAt)) {
                 latestInvoiceAt = invoice.invoiceDate;
@@ -2167,16 +2164,6 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         )
         .toList(growable: false);
     groups.sort((a, b) {
-      final aPinned = a.listSort > 0;
-      final bPinned = b.listSort > 0;
-      if (aPinned && bPinned) {
-        final bySort = a.listSort.compareTo(b.listSort);
-        if (bySort != 0) return bySort;
-      } else if (aPinned) {
-        return -1;
-      } else if (bPinned) {
-        return 1;
-      }
       final byDate = b.latestInvoiceAt.compareTo(a.latestInvoiceAt);
       if (byDate != 0) return byDate;
       return a.customerName.toLowerCase().compareTo(b.customerName.toLowerCase());
@@ -2287,7 +2274,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     _openCustomerOrderIds.removeWhere((id) => !known.contains(id));
     for (final group in groups) {
       if (!_openCustomerOrderIds.contains(group.customerId)) {
-        _openCustomerOrderIds.add(group.customerId);
+        _openCustomerOrderIds.insert(0, group.customerId);
       }
     }
     return [
@@ -2685,7 +2672,19 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                   ),
                 ),
               ),
-              const SizedBox(width: AppInvoiceTableCols.date),
+              SizedBox(
+                width: AppInvoiceTableCols.date,
+                child: Text(
+                  DateFormat('dd.MM.yyyy').format(group.latestInvoiceAt),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSoft,
+                  ),
+                ),
+              ),
               const SizedBox(width: AppInvoiceTableCols.type),
               SizedBox(
                 width: AppInvoiceTableCols.status,
