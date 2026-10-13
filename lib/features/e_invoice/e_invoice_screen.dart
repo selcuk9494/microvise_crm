@@ -1912,6 +1912,20 @@ class _OpenCustomerGroup {
   }
 }
 
+class _OpenListEntry {
+  const _OpenListEntry.header(this.group)
+      : invoice = null,
+        invoiceIndex = 0;
+
+  const _OpenListEntry.invoice(this.group, this.invoice, this.invoiceIndex);
+
+  final _OpenCustomerGroup group;
+  final Invoice? invoice;
+  final int invoiceIndex;
+
+  bool get isHeader => invoice == null;
+}
+
 class _InvoicesTab extends ConsumerStatefulWidget {
   const _InvoicesTab({
     super.key,
@@ -1946,11 +1960,16 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   bool _pullingAkinsoft = false;
   bool _syncingIncoming = false;
   String _customerQuery = '';
-  String? _expandedCustomerId;
+  final Set<String> _collapsedCustomerIds = {};
 
   void _applyFilter(InvoiceFilter filter) {
     setState(() {
-      _filter = filter;
+      _filter = widget.groupedByCustomer
+          ? filter.copyWith(
+              debtOnly: true,
+              invoiceType: filter.invoiceType ?? widget.initialInvoiceType,
+            )
+          : filter;
       _visibleInvoiceLimit = _invoiceRenderStep;
       _selectedInvoiceIds.clear();
     });
@@ -1960,7 +1979,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     return AppPageLayout(
       title: widget.groupedByCustomer ? 'Açık Faturalar' : 'E-Fatura',
       subtitle: widget.groupedByCustomer
-          ? 'Borcu olan cariler. Cariye basınca açık faturalar açılır.'
+          ? 'Borcu olan cariler ve açık satış faturaları.'
           : null,
       compactHeader: true,
       leading: extras.isEmpty
@@ -2241,10 +2260,376 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     }
   }
 
+  List<_OpenListEntry> _openListEntries(List<_OpenCustomerGroup> groups) {
+    final entries = <_OpenListEntry>[];
+    for (final group in groups) {
+      entries.add(_OpenListEntry.header(group));
+      if (_collapsedCustomerIds.contains(group.customerId)) continue;
+      for (var i = 0; i < group.invoices.length; i++) {
+        entries.add(_OpenListEntry.invoice(group, group.invoices[i], i));
+      }
+    }
+    return entries;
+  }
+
+  Widget _openInvoiceRow(Invoice invoice, int index) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            color: AppTheme.primary.withValues(alpha: 0.28),
+            width: 3,
+          ),
+        ),
+      ),
+      child: _EInvoiceRow(
+        index: index,
+        invoice: invoice,
+        selected: _selectedInvoiceIds.contains(invoice.id),
+        onCollect: invoice.isOpen && invoice.remainingAmount > 0
+            ? () => _collectInvoices([invoice])
+            : null,
+        onReverseCollect: invoice.canReverseCollection
+            ? () => _reverseCollections([invoice])
+            : null,
+        onCorrectCollect: invoice.canCorrectCollection
+            ? () => _correctCollections([invoice])
+            : null,
+        onSelectedChanged: _bulkDeleting
+            ? null
+            : (selected) {
+                setState(() {
+                  if (selected) {
+                    _selectedInvoiceIds.add(invoice.id);
+                  } else {
+                    _selectedInvoiceIds.remove(invoice.id);
+                  }
+                });
+              },
+      ),
+    );
+  }
+
+  Widget _openCustomerHeader(_OpenCustomerGroup group, {required bool compact}) {
+    final ids = group.invoices.map((invoice) => invoice.id).toSet();
+    final selectedCount = ids.where(_selectedInvoiceIds.contains).length;
+    final allSelected = ids.isNotEmpty && selectedCount == ids.length;
+    final collapsed = _collapsedCustomerIds.contains(group.customerId);
+    final actions = <Widget>[
+      _InvoiceIconAction(
+        tooltip: 'Ödeme linki oluştur',
+        icon: AppPhosphorIcons.link,
+        tone: _InvoiceActionTone.primary,
+        onPressed: _bulkProcessing
+            ? null
+            : () => _createInvoicePaymentLinkFlow(
+                context: context,
+                ref: ref,
+                invoices: group.invoices,
+              ),
+      ),
+      _InvoiceIconAction(
+        tooltip: 'Fatura ve ödeme linkini mail at',
+        icon: AppPhosphorIcons.paperPlaneTilt,
+        tone: _InvoiceActionTone.primary,
+        onPressed: _bulkProcessing
+            ? null
+            : () => _sendInvoicePaymentLinkEmailFlow(
+                context: context,
+                ref: ref,
+                invoices: group.invoices,
+              ),
+      ),
+      _InvoiceIconAction(
+        tooltip: 'Fatura ve ödeme linkini WhatsApp ile gönder',
+        icon: LucideIcons.messageCircle,
+        tone: _InvoiceActionTone.primary,
+        onPressed: _bulkProcessing
+            ? null
+            : () async {
+                setState(() => _bulkProcessing = true);
+                try {
+                  await _sendInvoicePaymentLinkWhatsAppFlow(
+                    context: context,
+                    ref: ref,
+                    invoices: group.invoices,
+                  );
+                } finally {
+                  if (mounted) {
+                    setState(() => _bulkProcessing = false);
+                  }
+                }
+              },
+      ),
+      _InvoiceIconAction(
+        tooltip: 'Cari ekstre PDF',
+        icon: AppPhosphorIcons.fileText,
+        tone: _InvoiceActionTone.info,
+        onPressed: _bulkProcessing
+            ? null
+            : () => _shareStatementFor(group.invoices),
+      ),
+      _InvoiceIconAction(
+        tooltip: 'Tahsilat',
+        icon: AppPhosphorIcons.money,
+        tone: _InvoiceActionTone.success,
+        onPressed: _bulkProcessing
+            ? null
+            : () => _collectInvoices(group.invoices),
+      ),
+    ];
+    final nameAndNote = Row(
+      children: [
+        Flexible(
+          child: Text(
+            group.customerName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontSize: compact ? 13 : 12.5,
+              height: 1.1,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.text,
+            ),
+          ),
+        ),
+        const Gap(6),
+        _InvoiceListNoteChip(
+          note: group.listNote,
+          colorKey: group.listNoteColor,
+          compact: compact,
+          onTap: _bulkProcessing ? null : () => _editCustomerListNote(group),
+        ),
+      ],
+    );
+
+    void toggleCollapsed() {
+      setState(() {
+        if (collapsed) {
+          _collapsedCustomerIds.remove(group.customerId);
+        } else {
+          _collapsedCustomerIds.add(group.customerId);
+        }
+      });
+    }
+
+    void toggleSelected(bool? value) {
+      setState(() {
+        if (value == true) {
+          _selectedInvoiceIds.addAll(ids);
+        } else {
+          _selectedInvoiceIds.removeAll(ids);
+        }
+      });
+    }
+
+    if (compact) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppTheme.softTint(AppTheme.primary, alpha: 0.08),
+          border: Border(bottom: AppDenseList.hairline),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Checkbox(
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    tristate: true,
+                    value: allSelected
+                        ? true
+                        : (selectedCount == 0 ? false : null),
+                    onChanged: _bulkDeleting ? null : toggleSelected,
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: toggleCollapsed,
+                    icon: Icon(
+                      collapsed
+                          ? AppPhosphorIcons.caretRight
+                          : AppPhosphorIcons.caretDown,
+                      size: 16,
+                    ),
+                  ),
+                  Expanded(child: nameAndNote),
+                  Text(
+                    _formatCurrencyAmounts(group.remainingByCurrency),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.warning,
+                    ),
+                  ),
+                ],
+              ),
+              const Gap(6),
+              Row(
+                children: [
+                  AppBadge(
+                    dense: true,
+                    label: '${group.invoices.length} fatura',
+                    tone: AppBadgeTone.warning,
+                  ),
+                  const Spacer(),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      reverse: true,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: actions,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppTheme.softTint(AppTheme.primary, alpha: 0.08),
+        border: Border(bottom: AppDenseList.hairline),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: AppDenseList.rowHeight),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDenseList.rowH,
+            vertical: 6,
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: AppInvoiceTableCols.check,
+                child: Checkbox(
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  tristate: true,
+                  value: allSelected
+                      ? true
+                      : (selectedCount == 0 ? false : null),
+                  onChanged: _bulkDeleting ? null : toggleSelected,
+                ),
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap: toggleCollapsed,
+                  child: Row(
+                    children: [
+                      Icon(
+                        collapsed
+                            ? AppPhosphorIcons.caretRight
+                            : AppPhosphorIcons.caretDown,
+                        size: 16,
+                        color: AppTheme.textSoft,
+                      ),
+                      const Gap(AppInvoiceTableCols.leadingGap),
+                      AppDenseLeadingIcon(
+                        icon: AppPhosphorIcons.buildings,
+                        color: AppTheme.primary,
+                        colorful: true,
+                      ),
+                      const Gap(AppInvoiceTableCols.leadingGap),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            nameAndNote,
+                            Text(
+                              '${group.invoices.length} açık fatura',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    fontSize: 11.5,
+                                    height: 1.1,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textSoft,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppInvoiceTableCols.date),
+              const SizedBox(width: AppInvoiceTableCols.type),
+              SizedBox(
+                width: AppInvoiceTableCols.status,
+                child: Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    AppBadge(
+                      dense: true,
+                      label: '${group.invoices.length} fatura',
+                      tone: AppBadgeTone.warning,
+                    ),
+                    const AppBadge(
+                      dense: true,
+                      label: 'Açık',
+                      tone: AppBadgeTone.warning,
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: AppInvoiceTableCols.amount,
+                child: Text(
+                  _formatCurrencyAmounts(group.remainingByCurrency),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.warning,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: AppInvoiceTableCols.actions,
+                height: AppDenseList.action,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < actions.length; i++) ...[
+                          if (i > 0) const Gap(2),
+                          actions[i],
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildOpenCustomersPage({
     required List<Invoice> items,
     required bool loadingFilteredItems,
     required Map<String, dynamic> eInvoiceSettings,
+    required AsyncValue<List<Customer>> customersAsync,
   }) {
     final allGroups = _groupOpenCustomers(items);
     final groups = _customerQuery.trim().isEmpty
@@ -2270,36 +2655,108 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         remaining[code] = (remaining[code] ?? 0) + amount;
       });
     }
+    final visibleInvoices = [
+      for (final group in groups) ...group.invoices,
+    ];
+    final entries = _openListEntries(groups);
+    final selectedReversibleCount = visibleInvoices
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.canReverseCollection,
+        )
+        .length;
+    final selectedCustomerUnsentCount = visibleInvoices
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.invoiceType == 'sales' &&
+              invoice.isActive &&
+              !invoice.isSentToCustomer,
+        )
+        .length;
+    final selectedCustomerSentCount = visibleInvoices
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.invoiceType == 'sales' &&
+              invoice.isActive &&
+              invoice.isSentToCustomer,
+        )
+        .length;
+    final bulkCustomerSentUndo =
+        selectedCustomerUnsentCount == 0 && selectedCustomerSentCount > 0;
+    final bulkCustomerSentCount = bulkCustomerSentUndo
+        ? selectedCustomerSentCount
+        : selectedCustomerUnsentCount;
+    final selectedSentCount = visibleInvoices
+        .where(
+          (invoice) =>
+              _selectedInvoiceIds.contains(invoice.id) &&
+              invoice.canOpenOfficialEInvoicePdf,
+        )
+        .length;
+    final isPhone = MediaQuery.sizeOf(context).width < 700;
+    final extras = <Widget>[
+      AppBadge(
+        label: 'Cari: ${groups.length}',
+        tone: AppBadgeTone.primary,
+        dense: true,
+      ),
+      AppBadge(
+        label: 'Fatura: $invoiceCount',
+        tone: AppBadgeTone.warning,
+        dense: true,
+      ),
+      AppBadge(
+        label: _formatCurrencyAmounts(remaining),
+        tone: AppBadgeTone.warning,
+        dense: true,
+      ),
+      _EnvPill(settings: eInvoiceSettings),
+    ];
 
-    return _invoicePage(
-      extras: [
-        AppBadge(
-          label: 'Cari: ${groups.length}',
-          tone: AppBadgeTone.primary,
-          dense: true,
-        ),
-        AppBadge(
-          label: 'Fatura: $invoiceCount',
-          tone: AppBadgeTone.warning,
-          dense: true,
-        ),
-        AppBadge(
-          label: _formatCurrencyAmounts(remaining),
-          tone: AppBadgeTone.warning,
-          dense: true,
-        ),
-        _EnvPill(settings: eInvoiceSettings),
-      ],
-      body: Column(
-        children: [
-          if (loadingFilteredItems) const LinearProgressIndicator(minHeight: 2),
-          Expanded(
-            child: AppCard(
-            padding: EdgeInsets.zero,
-            child: Column(
+    final bulkBar = Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      child: Theme(
+        data: _bulkActionsTheme(context),
+        child: Column(
+          children: [
+            Row(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                Checkbox(
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  tristate: true,
+                  value: visibleInvoices.isNotEmpty &&
+                          _selectedInvoiceIds.length == visibleInvoices.length
+                      ? true
+                      : (_selectedInvoiceIds.isEmpty ? false : null),
+                  onChanged: _bulkDeleting
+                      ? null
+                      : (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selectedInvoiceIds
+                                ..clear()
+                                ..addAll(visibleInvoices.map((e) => e.id));
+                            } else {
+                              _selectedInvoiceIds.clear();
+                            }
+                          });
+                        },
+                ),
+                const Gap(6),
+                Text(
+                  _selectedInvoiceIds.isEmpty
+                      ? '$invoiceCount fatura'
+                      : '${_selectedInvoiceIds.length} seçili',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontSize: 12,
+                  ),
+                ),
+                const Gap(8),
+                Expanded(
                   child: TextField(
                     onChanged: (value) =>
                         setState(() => _customerQuery = value),
@@ -2310,260 +2767,208 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                     ),
                   ),
                 ),
-                const Divider(height: 1),
-                if (groups.isEmpty)
-                  Expanded(
-                    child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        _customerQuery.trim().isEmpty
-                            ? 'Açık bakiyesi olan satış faturası yok.'
-                            : 'Aramaya uyan borçlu cari bulunamadı.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTheme.textMuted,
+              ],
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 4,
+                runSpacing: 4,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed:
+                        _selectedInvoiceIds.isEmpty ||
+                            _bulkDeleting ||
+                            _bulkProcessing
+                        ? null
+                        : () => _collectSelected(visibleInvoices),
+                    icon: const Icon(AppPhosphorIcons.coins, size: 14),
+                    label: const Text('Tahsilat'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        selectedReversibleCount == 0 ||
+                            _bulkDeleting ||
+                            _bulkProcessing
+                        ? null
+                        : () => _reverseSelected(visibleInvoices),
+                    icon: const Icon(AppPhosphorIcons.arrowUUpLeft, size: 14),
+                    label: const Text('Geri al'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _selectedInvoiceIds.isEmpty ||
+                            _bulkDeleting ||
+                            _bulkProcessing
+                        ? null
+                        : () => _createPaymentLinkSelected(visibleInvoices),
+                    icon: const Icon(AppPhosphorIcons.link, size: 14),
+                    label: const Text('Ödeme linki'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _selectedInvoiceIds.isEmpty ||
+                            _bulkDeleting ||
+                            _bulkProcessing
+                        ? null
+                        : () => _emailPaymentLinkSelected(visibleInvoices),
+                    icon: const Icon(AppPhosphorIcons.paperPlaneTilt, size: 14),
+                    label: const Text('Mail'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _selectedInvoiceIds.isEmpty ||
+                            _bulkDeleting ||
+                            _bulkProcessing
+                        ? null
+                        : () => _whatsAppPaymentLinkSelected(visibleInvoices),
+                    icon: const Icon(LucideIcons.messageCircle, size: 14),
+                    label: const Text('WhatsApp'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        bulkCustomerSentCount == 0 ||
+                            _bulkDeleting ||
+                            _bulkProcessing
+                        ? null
+                        : () => _markCustomerSentSelected(
+                            visibleInvoices,
+                            sent: !bulkCustomerSentUndo,
+                          ),
+                    icon: const Icon(AppPhosphorIcons.checkCircle, size: 14),
+                    label: Text(
+                      bulkCustomerSentUndo ? 'İletildi geri al' : 'İletildi',
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        selectedSentCount == 0 ||
+                            _bulkDeleting ||
+                            _bulkProcessing
+                        ? null
+                        : () => _downloadSelectedPdfs(visibleInvoices),
+                    icon: const Icon(
+                      AppPhosphorIcons.fileMagnifyingGlass,
+                      size: 14,
+                    ),
+                    label: const Text('PDF'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed:
+                        _selectedInvoiceIds.isEmpty ||
+                            _bulkDeleting ||
+                            _bulkProcessing
+                        ? null
+                        : () => _exportSelectedStatement(visibleInvoices),
+                    icon: const Icon(AppPhosphorIcons.receipt, size: 14),
+                    label: const Text('Ekstre'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    Widget listBody({required bool compact}) {
+      if (groups.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            _customerQuery.trim().isEmpty
+                ? 'Açık bakiyesi olan satış faturası yok.'
+                : 'Aramaya uyan borçlu cari bulunamadı.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppTheme.textMuted,
+            ),
+          ),
+        );
+      }
+      return ListView.builder(
+        padding: compact
+            ? const EdgeInsets.fromLTRB(8, 0, 8, 8)
+            : EdgeInsets.zero,
+        itemCount: entries.length,
+        itemBuilder: (context, index) {
+          final entry = entries[index];
+          if (entry.isHeader) {
+            return _openCustomerHeader(entry.group, compact: compact);
+          }
+          return _openInvoiceRow(entry.invoice!, entry.invoiceIndex);
+        },
+      );
+    }
+
+    final listCard = AppCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          bulkBar,
+          if (groups.isEmpty)
+            Expanded(child: listBody(compact: isPhone))
+          else if (isPhone)
+            Expanded(child: listBody(compact: true))
+          else
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  if (constraints.maxWidth < 900) {
+                    return listBody(compact: true);
+                  }
+                  final minTableWidth = AppInvoiceTableCols.fixedTotal + 260;
+                  final tableWidth = constraints.maxWidth < minTableWidth
+                      ? minTableWidth
+                      : constraints.maxWidth;
+                  return ClipRect(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: tableWidth,
+                        height: constraints.maxHeight,
+                        child: Column(
+                          children: [
+                            const _EInvoiceListHeader(),
+                            Expanded(child: listBody(compact: false)),
+                          ],
                         ),
                       ),
                     ),
-                  ),
-                  )
-                else
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: groups.length,
-                      itemBuilder: (context, index) {
-                        final group = groups[index];
-                        final expanded =
-                            _expandedCustomerId == group.customerId;
-                        return Column(
-                          children: [
-                            DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: expanded
-                                    ? AppTheme.softTint(
-                                        AppTheme.primary,
-                                        alpha: 0.08,
-                                      )
-                                    : (index.isEven
-                                          ? AppTheme.surfaceMuted.withValues(
-                                              alpha: 0.35,
-                                            )
-                                          : null),
-                                border: Border(
-                                  bottom: AppDenseList.hairline,
-                                ),
-                              ),
-                              child: InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _expandedCustomerId = expanded
-                                        ? null
-                                        : group.customerId;
-                                  });
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 8,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        expanded
-                                            ? AppPhosphorIcons.caretDown
-                                            : AppPhosphorIcons.caretRight,
-                                        size: 16,
-                                        color: AppTheme.textSoft,
-                                      ),
-                                      const Gap(8),
-                                      Expanded(
-                                        child: Row(
-                                          children: [
-                                            Flexible(
-                                              child: Text(
-                                                group.customerName,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .titleSmall
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                      fontSize: 13,
-                                                    ),
-                                              ),
-                                            ),
-                                            const Gap(6),
-                                            _InvoiceListNoteChip(
-                                              note: group.listNote,
-                                              colorKey: group.listNoteColor,
-                                              onTap: _bulkProcessing
-                                                  ? null
-                                                  : () =>
-                                                        _editCustomerListNote(
-                                                          group,
-                                                        ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const Gap(8),
-                                      AppBadge(
-                                        dense: true,
-                                        label:
-                                            '${group.invoices.length} fatura',
-                                        tone: AppBadgeTone.neutral,
-                                      ),
-                                      const Gap(8),
-                                      SizedBox(
-                                        width: 168,
-                                        child: Text(
-                                          _formatCurrencyAmounts(
-                                            group.remainingByCurrency,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign: TextAlign.end,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleSmall
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 13,
-                                                color: AppTheme.warning,
-                                              ),
-                                        ),
-                                      ),
-                                      const Gap(6),
-                                      Flexible(
-                                        child: SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          reverse: true,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                      _InvoiceIconAction(
-                                        tooltip: 'Ödeme linki oluştur',
-                                        icon: AppPhosphorIcons.link,
-                                        tone: _InvoiceActionTone.primary,
-                                        onPressed: _bulkProcessing
-                                            ? null
-                                            : () =>
-                                                  _createInvoicePaymentLinkFlow(
-                                                    context: context,
-                                                    ref: ref,
-                                                    invoices: group.invoices,
-                                                  ),
-                                      ),
-                                      _InvoiceIconAction(
-                                        tooltip:
-                                            'Fatura ve ödeme linkini mail at',
-                                        icon: AppPhosphorIcons.paperPlaneTilt,
-                                        tone: _InvoiceActionTone.primary,
-                                        onPressed: _bulkProcessing
-                                            ? null
-                                            : () =>
-                                                  _sendInvoicePaymentLinkEmailFlow(
-                                                    context: context,
-                                                    ref: ref,
-                                                    invoices: group.invoices,
-                                                  ),
-                                      ),
-                                      _InvoiceIconAction(
-                                        tooltip:
-                                            'Fatura ve ödeme linkini WhatsApp ile gönder',
-                                        icon: LucideIcons.messageCircle,
-                                        tone: _InvoiceActionTone.primary,
-                                        onPressed: _bulkProcessing
-                                            ? null
-                                            : () async {
-                                                setState(
-                                                  () => _bulkProcessing = true,
-                                                );
-                                                try {
-                                                  await _sendInvoicePaymentLinkWhatsAppFlow(
-                                                    context: context,
-                                                    ref: ref,
-                                                    invoices: group.invoices,
-                                                  );
-                                                } finally {
-                                                  if (mounted) {
-                                                    setState(
-                                                      () => _bulkProcessing =
-                                                          false,
-                                                    );
-                                                  }
-                                                }
-                                              },
-                                      ),
-                                      _InvoiceIconAction(
-                                        tooltip: 'Cari ekstre PDF',
-                                        icon: AppPhosphorIcons.fileText,
-                                        tone: _InvoiceActionTone.info,
-                                        onPressed: _bulkProcessing
-                                            ? null
-                                            : () => _shareStatementFor(
-                                                group.invoices,
-                                              ),
-                                      ),
-                                      _InvoiceIconAction(
-                                        tooltip: 'Tahsilat',
-                                        icon: AppPhosphorIcons.money,
-                                        tone: _InvoiceActionTone.success,
-                                        onPressed: _bulkProcessing
-                                            ? null
-                                            : () => _collectInvoices(
-                                                group.invoices,
-                                              ),
-                                      ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (expanded)
-                              for (var i = 0; i < group.invoices.length; i++)
-                                _EInvoiceRow(
-                                  index: i,
-                                  invoice: group.invoices[i],
-                                  selected: false,
-                                  forceCompact: true,
-                                  onCollect:
-                                      group.invoices[i].isOpen &&
-                                          group.invoices[i].remainingAmount > 0
-                                      ? () => _collectInvoices([
-                                          group.invoices[i],
-                                        ])
-                                      : null,
-                                  onReverseCollect:
-                                      group.invoices[i].canReverseCollection
-                                      ? () => _reverseCollections([
-                                          group.invoices[i],
-                                        ])
-                                      : null,
-                                  onCorrectCollect:
-                                      group.invoices[i].canCorrectCollection
-                                      ? () => _correctCollections([
-                                          group.invoices[i],
-                                        ])
-                                      : null,
-                                ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-              ],
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+
+    return _invoicePage(
+      extras: extras,
+      body: Column(
+        children: [
+          if (loadingFilteredItems) const LinearProgressIndicator(minHeight: 2),
+          if (loadingFilteredItems) const Gap(4),
+          _InvoiceFiltersCard(
+            filter: _filter,
+            customersAsync: customersAsync,
+            onChanged: _applyFilter,
+            onRefresh: () => ref.invalidate(invoicesProvider(_filter)),
+            onPullErp: _bulkDeleting || _bulkProcessing ? null : _pullAkinsoftData,
+            pullingErp: _pullingAkinsoft,
+            onSyncIncoming: _bulkDeleting || _bulkProcessing || _syncingIncoming
+                ? null
+                : _syncIncomingFromMaliye,
+            syncingIncoming: _syncingIncoming,
+            clearFilter: InvoiceFilter(
+              status: 'open,partial',
+              invoiceType: widget.initialInvoiceType,
+              debtOnly: true,
             ),
           ),
-          ),
+          const Gap(6),
+          Expanded(child: listCard),
         ],
       ),
     );
@@ -2609,6 +3014,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         items: items,
         loadingFilteredItems: loadingFilteredItems,
         eInvoiceSettings: eInvoiceSettings,
+        customersAsync: customersAsync,
       );
     }
 
@@ -5672,6 +6078,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
     required this.syncingIncoming,
     this.newErpSyncCount = 0,
     this.onPushNewErp,
+    this.clearFilter,
   });
 
   final InvoiceFilter filter;
@@ -5684,6 +6091,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
   final bool syncingIncoming;
   final int newErpSyncCount;
   final VoidCallback? onPushNewErp;
+  final InvoiceFilter? clearFilter;
 
   @override
   Widget build(BuildContext context) {
@@ -6003,7 +6411,9 @@ class _InvoiceFiltersCard extends StatelessWidget {
               label: const Text('Yenile'),
             ),
             TextButton.icon(
-              onPressed: () => onChanged(const InvoiceFilter(status: 'open')),
+              onPressed: () => onChanged(
+                clearFilter ?? const InvoiceFilter(status: 'open'),
+              ),
               icon: const Icon(AppPhosphorIcons.broom, size: 18),
               label: const Text('Temizle'),
             ),
