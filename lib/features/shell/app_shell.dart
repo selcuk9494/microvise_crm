@@ -1282,6 +1282,7 @@ const _financeNavSubItems = <_FormsNavSubItem>[
   _FormsNavSubItem(label: 'Kasa', path: '/finans/akinsoft/kasa'),
   _FormsNavSubItem(label: 'Transferler', path: '/finans/akinsoft/transferler'),
   _FormsNavSubItem(label: 'Masraf Faturaları', path: '/finans/akinsoft/masraf'),
+  _FormsNavSubItem(label: 'İşlem Günlüğü', path: '/finans/log'),
 ];
 
 List<_FormsNavSubItem> _mobileNavSubItems(

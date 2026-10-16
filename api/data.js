@@ -33,6 +33,7 @@ const {
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
   ensureFinanceTables,
+  ensureFinanceOperationLogs,
   ensureApplicationFormsApprovalColumns,
   ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,
@@ -2627,6 +2628,62 @@ module.exports = async (req, res) => {
           values,
         );
         return ok(req, res, { items: result.rows });
+      }
+
+      case 'finance_banks': {
+        await ensureFinanceTables();
+        const includePassive = parseBoolean(req.query.includePassive, false);
+        const values = [];
+        let whereSql = 'where true';
+        if (!includePassive) {
+          values.push(true);
+          whereSql += ` and b.is_active = $${values.length}`;
+        }
+        const result = await query(
+          `
+            select b.*
+            from public.finance_banks b
+            ${whereSql}
+            order by b.name asc
+          `,
+          values,
+        );
+        return ok(req, res, { items: result.rows });
+      }
+
+      case 'finance_operation_logs': {
+        await ensureFinanceOperationLogs();
+        const day = String(req.query.day || req.query.gun || '').trim();
+        const logId = String(req.query.id || '').trim();
+        const values = [];
+        let whereSql = 'where l.is_active = true';
+        if (logId) {
+          values.push(logId);
+          whereSql += ` and l.id = $${values.length}::uuid`;
+        } else if (day) {
+          values.push(day);
+          whereSql += ` and l.occurred_at::date = $${values.length}::date`;
+        } else {
+          whereSql += ` and l.occurred_at::date = current_date`;
+        }
+        const result = await query(
+          `
+            select
+              l.*,
+              json_build_object(
+                'name', a.name,
+                'currency', a.currency,
+                'akinsoft_source_id', a.akinsoft_source_id
+              ) as finance_accounts
+            from public.finance_operation_logs l
+            left join public.finance_accounts a on a.id = l.account_id
+            ${whereSql}
+            order by l.occurred_at desc
+            limit 500
+          `,
+          values,
+        );
+        return ok(req, res, { items: result.rows, day: day || null });
       }
 
       case 'reports_users': {

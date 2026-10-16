@@ -29,6 +29,7 @@ const ensured = {
   work_orders_payment_required: false,
   work_orders_status_check: false,
   finance_tables: false,
+  finance_operation_logs: false,
   application_forms_approval: false,
   application_forms_created_by_repair: false,
   application_form_activity_logs: false,
@@ -540,9 +541,103 @@ async function ensureFinanceTables() {
       execute function public.finance_transactions_update_balance();
     `,
   );
+  await query(`
+    alter table public.finance_accounts
+      add column if not exists akinsoft_source_id text,
+      add column if not exists akinsoft_bank_source_id text
+  `);
+  await query(`
+    alter table public.finance_transactions
+      add column if not exists akinsoft_source_id text
+  `);
+  await query(`
+    create table if not exists public.finance_banks (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      branch text,
+      phone text,
+      address text,
+      akinsoft_source_id text,
+      is_active boolean not null default true,
+      created_by uuid,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `);
+  await query(`
+    create unique index if not exists idx_finance_banks_akinsoft_source
+      on public.finance_banks (akinsoft_source_id)
+      where akinsoft_source_id is not null and akinsoft_source_id <> ''
+  `);
+  await query(`
+    create unique index if not exists idx_finance_accounts_akinsoft_source
+      on public.finance_accounts (akinsoft_source_id)
+      where akinsoft_source_id is not null and akinsoft_source_id <> ''
+  `);
 
   ensured.finance_tables = true;
   return true;
+}
+
+async function ensureFinanceOperationLogs() {
+  if (ensured.finance_operation_logs) return true;
+  await ensureFinanceTables();
+  await query(`
+    create table if not exists public.finance_operation_logs (
+      id uuid primary key default gen_random_uuid(),
+      occurred_at timestamptz not null default now(),
+      created_by uuid,
+      created_by_name text,
+      action text not null,
+      entity_type text not null,
+      entity_id uuid,
+      account_id uuid,
+      akinsoft_source_id text,
+      summary text not null default '',
+      payload jsonb not null default '{}'::jsonb,
+      is_active boolean not null default true
+    )
+  `);
+  await query(`
+    create index if not exists idx_finance_operation_logs_day
+      on public.finance_operation_logs (occurred_at desc)
+  `);
+  ensured.finance_operation_logs = true;
+  return true;
+}
+
+async function recordFinanceOperationLog({
+  user,
+  action,
+  entityType,
+  entityId,
+  accountId,
+  akinsoftSourceId,
+  summary,
+  payload,
+}) {
+  await ensureFinanceOperationLogs();
+  await query(
+    `
+      insert into public.finance_operation_logs (
+        created_by, created_by_name, action, entity_type, entity_id,
+        account_id, akinsoft_source_id, summary, payload
+      ) values (
+        $1, $2, $3, $4, $5::uuid, $6::uuid, $7, $8, $9::jsonb
+      )
+    `,
+    [
+      user?.auth_user_id || user?.id || null,
+      String(user?.full_name || user?.email || '').trim() || null,
+      String(action || 'update'),
+      String(entityType || 'movement'),
+      entityId || null,
+      accountId || null,
+      akinsoftSourceId || null,
+      String(summary || '').trim() || 'Finans işlemi',
+      JSON.stringify(payload || {}),
+    ],
+  );
 }
 
 async function ensureWorkOrderCloseNotesTable() {
@@ -2648,6 +2743,8 @@ module.exports = {
   ensureWorkOrdersPaymentRequiredColumn,
   ensureWorkOrdersStatusCheckConstraint,
   ensureFinanceTables,
+  ensureFinanceOperationLogs,
+  recordFinanceOperationLog,
   ensureApplicationFormsApprovalColumns,
   ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,

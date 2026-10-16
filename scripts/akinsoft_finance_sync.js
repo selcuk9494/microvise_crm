@@ -179,6 +179,51 @@ function createAkinsoftFinanceHandlers(ctx) {
     }));
   }
 
+  async function loadMovements(pool, limit = 250) {
+    if (!(await akinsoftTableExists(pool, 'BANKAHR'))) return [];
+    const lim = Math.min(Math.max(Number(limit) || 250, 1), 500);
+    const rows = await pool.request().query(`
+      select top ${lim}
+        cast(hr.BLKODU as nvarchar(32)) as sourceId,
+        cast(hr.BLHSKODU as nvarchar(32)) as accountSourceId,
+        convert(nvarchar(32), hr.EVRAK_NO) as evrakNo,
+        hr.TARIHI as tarihi,
+        convert(nvarchar(160), hr.ACIKLAMA) as aciklama,
+        convert(nvarchar(40), hr.OZEL_KODU) as ozelKodu,
+        cast(isnull(hr.TUTAR_BORC, 0) as float) as borc,
+        cast(isnull(hr.TUTAR_ALACAK, 0) as float) as alacak,
+        convert(nvarchar(80), a.BANKA_ADI) as bankName,
+        convert(nvarchar(40), h.TANIMI) as tanimi,
+        convert(nvarchar(8), h.HESAP_TURU) as hesapTuru
+      from dbo.BANKAHR hr
+      left join dbo.BANKA_HESAP h on h.BLKODU = hr.BLHSKODU
+      left join dbo.BANKA_ADI a on a.BLKODU = h.BLBNKODU
+      where coalesce(hr.SILINDI, 0) = 0
+      order by hr.TARIHI desc, hr.BLKODU desc
+    `);
+    return (rows.recordset || []).map((row) => {
+      const borc = numberOrZero(row.borc);
+      const alacak = numberOrZero(row.alacak);
+      const signed = borc - alacak;
+      return {
+        sourceId: String(row.sourceId),
+        accountSourceId: textOrNull(row.accountSourceId),
+        evrakNo: textOrNull(row.evrakNo),
+        date: row.tarihi || null,
+        description: textOrNull(row.aciklama),
+        ozelKodu: textOrNull(row.ozelKodu),
+        borc,
+        alacak,
+        amount: signed,
+        direction: signed >= 0 ? 'in' : 'out',
+        bankName: textOrNull(row.bankName) || '',
+        tanimi: textOrNull(row.tanimi) || '',
+        currency: currencyFromHesapTuru(row.hesapTuru),
+        origin: 'sap',
+      };
+    });
+  }
+
   async function loadKasas(pool) {
     const kasas = await pool.request().query(`
       select
@@ -519,13 +564,15 @@ function createAkinsoftFinanceHandlers(ctx) {
             kasas,
             transfers: [],
             masraf: [],
+            movements: [],
             catalogOnly: true,
             pulledAt: new Date().toISOString(),
           };
         }
-        const [transfers, masraf] = await Promise.all([
+        const [transfers, masraf, movements] = await Promise.all([
           loadTransfers(pool, body.transferLimit || 80),
           loadMasraf(pool, body.masrafLimit || 60),
+          loadMovements(pool, body.movementLimit || 250),
         ]);
         return {
           banks,
@@ -533,6 +580,7 @@ function createAkinsoftFinanceHandlers(ctx) {
           kasas,
           transfers,
           masraf,
+          movements,
           pulledAt: new Date().toISOString(),
           tables: {
             BANKA_ADI: true,
@@ -1906,16 +1954,15 @@ function createAkinsoftFinanceHandlers(ctx) {
     return { sourceId: String(sourceId), action: 'soft_deleted', faturaNo, evrak };
   }
 
-  function wrapMutator(mutator) {
+  function wrapMutator(_mutator) {
     return async function handler(req, res) {
       if (req.method !== 'POST') return jsonErr(res, 405, 'POST gerekli.');
-      const body = await readJson(req);
-      try {
-        const result = await withPool(body, (pool) => mutator(pool, body));
-        return jsonOk(res, { result });
-      } catch (error) {
-        return jsonErr(res, error.statusCode || 500, error.message || error);
-      }
+      await readJson(req);
+      return jsonErr(
+        res,
+        409,
+        'Finans işlemleri artık SAP’a yazılmıyor. Kayıt CRM’de tutulur; işlem günlüğünden açılıp düzeltilebilir.',
+      );
     };
   }
 

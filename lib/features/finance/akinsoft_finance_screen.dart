@@ -4,14 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
+import '../../core/api/api_client.dart';
 import '../../core/format/currency_format.dart';
 import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
+import 'finance_open_link.dart';
 
 Uri _akinsoftFinanceUri(String path) {
   var normalizedPath = path.startsWith('/') ? path.substring(1) : path;
@@ -67,6 +70,13 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
   List<Map<String, dynamic>> _kasas = const [];
   List<Map<String, dynamic>> _transfers = const [];
   List<Map<String, dynamic>> _masraf = const [];
+  List<Map<String, dynamic>> _movements = const [];
+  List<Map<String, dynamic>> _crmBanks = const [];
+  List<Map<String, dynamic>> _crmAccounts = const [];
+  List<Map<String, dynamic>> _crmTransactions = const [];
+  String? _selectedAccountKey;
+  String? _pendingMovementId;
+  String? _handledHareket;
 
   @override
   void initState() {
@@ -79,6 +89,26 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.section != widget.section) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _pull());
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final q = GoRouterState.of(context).uri.queryParameters;
+    final hesap = q['hesap']?.trim();
+    final hareket = q['hareket']?.trim();
+    if (hesap != null && hesap.isNotEmpty && hesap != _selectedAccountKey) {
+      _selectedAccountKey = hesap;
+    }
+    if (hareket != null &&
+        hareket.isNotEmpty &&
+        hareket != _handledHareket) {
+      _handledHareket = hareket;
+      _pendingMovementId = hareket;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openMovementById(hareket);
+      });
     }
   }
 
@@ -123,6 +153,151 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     return decoded;
   }
 
+  Future<List<Map<String, dynamic>>> _crmItems(String resource) async {
+    final api = ref.read(apiClientProvider);
+    if (api == null) return const [];
+    final response = await api.getJson(
+      '/data',
+      queryParameters: {'resource': resource, 'includePassive': 'true'},
+    );
+    return ((response['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<void> _loadCrmFinance() async {
+    try {
+      final banks = await _crmItems('finance_banks');
+      final accounts = await _crmItems('finance_accounts');
+      final txs = await _crmItems('finance_transactions');
+      if (!mounted) return;
+      setState(() {
+        _crmBanks = banks;
+        _crmAccounts = accounts;
+        _crmTransactions = txs;
+      });
+    } catch (_) {}
+  }
+
+  String _accountKey(Map<String, dynamic> row) {
+    final sap = _text(row['sourceId']);
+    if (sap.isNotEmpty) return sap;
+    return _text(row['id']);
+  }
+
+  Map<String, dynamic>? _selectedAccount() {
+    final key = _selectedAccountKey;
+    if (key == null || key.isEmpty) return null;
+    for (final a in _accounts) {
+      if (_accountKey(a) == key) return a;
+    }
+    for (final a in _crmAccounts) {
+      if (_text(a['id']) == key || _text(a['akinsoft_source_id']) == key) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _movementsForSelected() {
+    final key = _selectedAccountKey;
+    if (key == null || key.isEmpty) return const [];
+    final sap = _movements
+        .where((m) => _text(m['accountSourceId']) == key)
+        .toList();
+    final crm = _crmTransactions.where((t) {
+      final accountId = _text(t['account_id']);
+      final sapId = _text(t['akinsoft_source_id']);
+      if (sapId == key) return true;
+      for (final a in _crmAccounts) {
+        if (_text(a['id']) == accountId &&
+            (_text(a['id']) == key || _text(a['akinsoft_source_id']) == key)) {
+          return true;
+        }
+      }
+      return accountId == key;
+    }).map((t) {
+      final amount = (t['amount'] is num)
+          ? (t['amount'] as num).toDouble()
+          : double.tryParse('${t['amount']}') ?? 0;
+      final direction = _text(t['direction']).isEmpty ? 'in' : _text(t['direction']);
+      return {
+        ...t,
+        'sourceId': _text(t['id']),
+        'accountSourceId': key,
+        'date': t['transaction_date'],
+        'description': t['description'],
+        'evrakNo': t['reference_no'],
+        'amount': direction == 'out' ? -amount.abs() : amount.abs(),
+        'direction': direction,
+        'origin': 'crm',
+        'currency': t['currency'],
+      };
+    });
+    final all = [...sap, ...crm];
+    all.sort((a, b) {
+      final da = DateTime.tryParse(_text(a['date'])) ?? DateTime(1970);
+      final db = DateTime.tryParse(_text(b['date'])) ?? DateTime(1970);
+      return db.compareTo(da);
+    });
+    return all;
+  }
+
+  Future<String?> _ensureCrmAccount(Map<String, dynamic> sapOrCrm) async {
+    final existingId = _text(sapOrCrm['id']);
+    if (existingId.contains('-') && existingId.length > 20) return existingId;
+    final sapId = _text(sapOrCrm['sourceId']);
+    for (final a in _crmAccounts) {
+      if (sapId.isNotEmpty && _text(a['akinsoft_source_id']) == sapId) {
+        return _text(a['id']);
+      }
+    }
+    final api = ref.read(apiClientProvider);
+    if (api == null) return null;
+    final result = await api.postJson(
+      '/mutate',
+      body: {
+        'op': 'upsert',
+        'table': 'finance_accounts',
+        'values': {
+          'name': _text(sapOrCrm['label']).isEmpty
+              ? (_text(sapOrCrm['tanimi']).isEmpty
+                    ? _text(sapOrCrm['name'])
+                    : _text(sapOrCrm['tanimi']))
+              : _text(sapOrCrm['label']),
+          'account_type': 'bank',
+          'bank_name': _text(sapOrCrm['bankName']),
+          'account_no': _text(sapOrCrm['hesapNo']),
+          'iban': _text(sapOrCrm['iban']),
+          'currency': _text(sapOrCrm['currency']).isEmpty
+              ? 'TRY'
+              : _text(sapOrCrm['currency']),
+          'akinsoft_source_id': sapId.isEmpty ? null : sapId,
+          'akinsoft_bank_source_id': _text(sapOrCrm['bankSourceId']),
+          'is_active': sapOrCrm['isActive'] != false,
+        },
+      },
+    );
+    await _loadCrmFinance();
+    return _text(result['id']);
+  }
+
+  void _openMovementById(String id) {
+    for (final m in _movementsForSelected()) {
+      if (_text(m['sourceId']) == id || _text(m['id']) == id) {
+        _showMovementDialog(existing: m);
+        return;
+      }
+    }
+    for (final t in _crmTransactions) {
+      if (_text(t['id']) == id) {
+        _showMovementDialog(existing: t);
+        return;
+      }
+    }
+  }
+
   Future<void> _pull() async {
     setState(() {
       _loading = true;
@@ -131,7 +306,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     });
     try {
       final data = await _post('finance/pull');
+      await _loadCrmFinance();
       if (!mounted) return;
+      final q = GoRouterState.of(context).uri.queryParameters;
       setState(() {
         _banks = ((data['banks'] as List?) ?? const [])
             .whereType<Map>()
@@ -153,17 +330,32 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
+        _movements = ((data['movements'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
         _pulledAt = DateTime.tryParse(_text(data['pulledAt']));
+        _selectedAccountKey =
+            q['hesap']?.trim().isNotEmpty == true ? q['hesap']!.trim() : _selectedAccountKey;
+        _pendingMovementId = q['hareket']?.trim();
         _status =
-            'Senkron: ${_banks.length} banka, ${_accounts.length} hesap, ${_kasas.length} kasa';
+            'SAP çekildi (yazım kapalı). ${_banks.length} banka, ${_accounts.length} hesap · işlemler CRM günlüğünde';
         _loading = false;
       });
+      final pending = _pendingMovementId;
+      if (pending != null && pending.isNotEmpty) {
+        _pendingMovementId = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openMovementById(pending);
+        });
+      }
     } catch (error) {
+      await _loadCrmFinance();
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = error.toString();
-        _status = null;
+        _status = 'SAP çekilemedi; CRM kayıtları gösteriliyor.';
       });
     }
   }
@@ -176,15 +368,21 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _status = 'SAP’a yazılıyor…';
+      _status = 'CRM’ye kaydediliyor (SAP’a gönderilmiyor)…';
     });
     try {
-      await _post(path, body);
+      await _saveCrmFinance(path, body);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(successMessage)));
-      await _pull();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$successMessage (SAP’a yazılmadı)')),
+      );
+      await _loadCrmFinance();
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _status = 'Kayıt CRM işlem günlüğünde.';
+        });
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -193,6 +391,124 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         _status = null;
       });
     }
+  }
+
+  Future<void> _saveCrmFinance(String path, Map<String, dynamic> body) async {
+    final api = ref.read(apiClientProvider);
+    if (api == null) throw Exception('API yok.');
+    final action = _text(body['action']).toLowerCase();
+    if (path == 'finance/bank') {
+      if (action == 'delete') {
+        final id = _crmBankId(body);
+        if (id == null) {
+          throw Exception('SAP bankası silinemez. CRM kopyası yok.');
+        }
+        await api.postJson(
+          '/mutate',
+          body: {'op': 'delete', 'table': 'finance_banks', 'id': id},
+        );
+        return;
+      }
+      await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_banks',
+          'values': {
+            if (_crmBankId(body) != null) 'id': _crmBankId(body),
+            'name': _text(body['bankName']),
+            'branch': _text(body['branch']),
+            'phone': _text(body['phone']),
+            'address': _text(body['address']),
+            'akinsoft_source_id': _text(body['sourceId']).isEmpty
+                ? null
+                : _text(body['sourceId']),
+            'is_active': true,
+          },
+        },
+      );
+      return;
+    }
+    if (path == 'finance/bank-account') {
+      if (action == 'delete') {
+        final id = await _ensureCrmAccount({
+          'sourceId': body['sourceId'],
+          ...?_accountById(_text(body['sourceId'])),
+        });
+        if (id == null) throw Exception('Hesap bulunamadı.');
+        await api.postJson(
+          '/mutate',
+          body: {'op': 'delete', 'table': 'finance_accounts', 'id': id},
+        );
+        return;
+      }
+      final bank = _banks.cast<Map<String, dynamic>?>().firstWhere(
+        (b) => _text(b?['sourceId']) == _text(body['bankSourceId']),
+        orElse: () => null,
+      );
+      await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_accounts',
+          'values': {
+            if (_text(body['crmId']).isNotEmpty) 'id': body['crmId'],
+            'name': _text(body['tanimi']).isEmpty
+                ? _text(body['hesapNo'])
+                : _text(body['tanimi']),
+            'account_type': 'bank',
+            'bank_name': _text(bank?['bankName']),
+            'account_no': _text(body['hesapNo']),
+            'iban': _text(body['iban']),
+            'currency': _text(body['currency']).isEmpty
+                ? 'TRY'
+                : _text(body['currency']),
+            'akinsoft_source_id': _text(body['sourceId']).isEmpty
+                ? null
+                : _text(body['sourceId']),
+            'akinsoft_bank_source_id': _text(body['bankSourceId']),
+            'is_active': true,
+          },
+        },
+      );
+      return;
+    }
+    if (path == 'finance/kasa') {
+      await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_accounts',
+          'values': {
+            'name': _text(body['kasaAdi']),
+            'account_type': 'cash',
+            'notes': _text(body['aciklama1']),
+            'currency': 'TRY',
+            'akinsoft_source_id': _text(body['sourceId']).isEmpty
+                ? null
+                : _text(body['sourceId']),
+            'is_active': action != 'delete',
+          },
+        },
+      );
+      return;
+    }
+    if (path == 'finance/transfer' || path == 'finance/masraf') {
+      throw Exception(
+        'Bu işlem SAP’a yazılmıyor. Banka hareketi olarak CRM’den ekleyin; günlükten düzeltilebilir.',
+      );
+    }
+    throw Exception('Desteklenmeyen işlem: $path');
+  }
+
+  String? _crmBankId(Map<String, dynamic> body) {
+    final sourceId = _text(body['sourceId']);
+    for (final b in _crmBanks) {
+      if (_text(b['id']) == sourceId || _text(b['akinsoft_source_id']) == sourceId) {
+        return _text(b['id']);
+      }
+    }
+    return null;
   }
 
   String get _title {
@@ -205,7 +521,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         return 'SAP Masraf Faturaları';
       case 'bankalar':
       default:
-        return 'SAP Bankalar / Hesaplar';
+        return 'Bankalar / Hesaplar';
     }
   }
 
@@ -221,7 +537,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       case 'masraf':
         return 'MSF / FATURA_DURUMU=7 — $when';
       default:
-        return 'BANKA_ADI + BANKA_HESAP — $when';
+        return 'Hareketler bu ekranda. Yeni işlem SAP’a gitmez, günlüğe yazılır — $when';
     }
   }
 
@@ -251,6 +567,19 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
             icon: const Icon(LucideIcons.walletCards, size: 18),
             label: const Text('Hesap'),
           ),
+        if (widget.section == 'bankalar')
+          FilledButton.tonalIcon(
+            onPressed: _loading || _selectedAccountKey == null
+                ? null
+                : () => _showMovementDialog(),
+            icon: const Icon(LucideIcons.listPlus, size: 18),
+            label: const Text('Hareket'),
+          ),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/finans/log'),
+          icon: const Icon(LucideIcons.scrollText, size: 18),
+          label: const Text('Günlük'),
+        ),
         if (widget.section == 'kasa')
           FilledButton.icon(
             onPressed: _loading ? null : () => _showKasaDialog(),
@@ -328,20 +657,224 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       case 'bankalar':
       default:
         return _BanksAccountsPane(
-          banks: _banks,
-          accounts: _accounts,
+          banks: _visibleBanks(),
+          accounts: _visibleAccounts(),
+          movements: _movementsForSelected(),
+          selectedAccountKey: _selectedAccountKey,
+          onSelectAccount: (key) => setState(() => _selectedAccountKey = key),
           onEditBank: (row) => _showBankDialog(existing: row),
           onDeleteBank: (row) => _mutate('finance/bank', {
             'action': 'delete',
-            'sourceId': row['sourceId'],
-          }, successMessage: 'Banka SAP’tan silindi.'),
+            'sourceId': row['sourceId'] ?? row['id'],
+          }, successMessage: 'Banka CRM’de silindi.'),
           onEditAccount: (row) => _showAccountDialog(existing: row),
           onDeleteAccount: (row) => _mutate(
             'finance/bank-account',
-            {'action': 'delete', 'sourceId': row['sourceId']},
-            successMessage: 'Hesap silindi veya kapatıldı.',
+            {'action': 'delete', 'sourceId': row['sourceId'] ?? row['id']},
+            successMessage: 'Hesap CRM’de silindi.',
           ),
+          onOpenMovement: (row) => _showMovementDialog(existing: row),
         );
+    }
+  }
+
+  List<Map<String, dynamic>> _visibleBanks() {
+    final sapIds = {for (final b in _banks) _text(b['sourceId'])};
+    final extra = _crmBanks.where((b) {
+      final sap = _text(b['akinsoft_source_id']);
+      return sap.isEmpty || !sapIds.contains(sap);
+    }).map((b) => {
+          ...b,
+          'sourceId': _text(b['akinsoft_source_id']).isEmpty
+              ? _text(b['id'])
+              : _text(b['akinsoft_source_id']),
+          'bankName': b['name'],
+          'origin': 'crm',
+        });
+    return [..._banks, ...extra];
+  }
+
+  List<Map<String, dynamic>> _visibleAccounts() {
+    final sapIds = {for (final a in _accounts) _text(a['sourceId'])};
+    final extra = _crmAccounts.where((a) {
+      final sap = _text(a['akinsoft_source_id']);
+      return sap.isEmpty || !sapIds.contains(sap);
+    }).map((a) => {
+          ...a,
+          'sourceId': _text(a['akinsoft_source_id']).isEmpty
+              ? _text(a['id'])
+              : _text(a['akinsoft_source_id']),
+          'label': _text(a['name']),
+          'balance': a['current_balance'] ?? 0,
+          'origin': 'crm',
+        });
+    return [..._accounts, ...extra];
+  }
+
+  Future<void> _showMovementDialog({Map<String, dynamic>? existing}) async {
+    final account = _selectedAccount();
+    if (account == null) {
+      setState(() => _error = 'Önce bir hesap seçin.');
+      return;
+    }
+    final isCrm = _text(existing?['origin']) == 'crm' ||
+        _text(existing?['id']).contains('-');
+    if (existing != null && !isCrm) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'SAP hareketi yalnızca CRM kopyası üzerinden düzeltilir. Kayıt CRM’ye alınacak.',
+          ),
+        ),
+      );
+    }
+    DateTime date =
+        DateTime.tryParse(_text(existing?['date'] ?? existing?['transaction_date'])) ??
+            DateTime.now();
+    String direction = _text(existing?['direction']).isEmpty
+        ? ((existing?['amount'] is num && (existing?['amount'] as num) < 0)
+              ? 'out'
+              : 'in')
+        : _text(existing?['direction']);
+    final amountCtrl = TextEditingController(
+      text: existing == null
+          ? ''
+          : ((existing['amount'] is num)
+                    ? (existing['amount'] as num).abs()
+                    : double.tryParse('${existing['amount']}')?.abs() ?? 0)
+                .toStringAsFixed(2)
+                .replaceAll('.', ','),
+    );
+    final descCtrl = TextEditingController(
+      text: _text(existing?['description']),
+    );
+    final refCtrl = TextEditingController(
+      text: _text(existing?['evrakNo'] ?? existing?['reference_no']),
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: Text(existing == null ? 'Hareket Ekle' : 'Hareketi Düzelt'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Tarih'),
+                  subtitle: Text(DateFormat('dd.MM.yyyy').format(date)),
+                  trailing: IconButton(
+                    icon: const Icon(LucideIcons.calendarDays),
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: date,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) setLocal(() => date = picked);
+                    },
+                  ),
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: direction,
+                  decoration: const InputDecoration(labelText: 'Yön'),
+                  items: const [
+                    DropdownMenuItem(value: 'in', child: Text('Giriş')),
+                    DropdownMenuItem(value: 'out', child: Text('Çıkış')),
+                  ],
+                  onChanged: (v) => setLocal(() => direction = v ?? 'in'),
+                ),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: moneyDecimalInputFormatters,
+                  decoration: const InputDecoration(labelText: 'Tutar'),
+                ),
+                TextField(
+                  controller: refCtrl,
+                  decoration: const InputDecoration(labelText: 'Evrak / referans'),
+                ),
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(labelText: 'Açıklama'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Kaydet'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final api = ref.read(apiClientProvider);
+    if (api == null) return;
+    final accountId = await _ensureCrmAccount(account);
+    if (accountId == null) {
+      setState(() => _error = 'Hesap CRM’ye alınamadı.');
+      return;
+    }
+    final amount = parseCurrencyValue(amountCtrl.text) ?? 0;
+    if (amount <= 0) {
+      setState(() => _error = 'Tutar girin.');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_transactions',
+          'values': {
+            if (isCrm && _text(existing?['id']).isNotEmpty) 'id': existing!['id'],
+            'account_id': accountId,
+            'transaction_date': DateFormat('yyyy-MM-dd').format(date),
+            'direction': direction,
+            'transaction_type': 'manual',
+            'payment_method': 'bank',
+            'amount': amount,
+            'currency': _text(account['currency']).isEmpty
+                ? 'TRY'
+                : _text(account['currency']),
+            'description': descCtrl.text.trim(),
+            'reference_no': refCtrl.text.trim(),
+            'source': 'crm',
+            'akinsoft_source_id': _text(existing?['sourceId']).isEmpty
+                ? null
+                : _text(existing?['sourceId']),
+            'is_active': true,
+          },
+        },
+      );
+      await _loadCrmFinance();
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hareket CRM’ye kaydedildi (SAP’a yazılmadı).')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error.toString();
+      });
     }
   }
 
@@ -1161,18 +1694,44 @@ class _BanksAccountsPane extends StatelessWidget {
   const _BanksAccountsPane({
     required this.banks,
     required this.accounts,
+    required this.movements,
+    required this.selectedAccountKey,
+    required this.onSelectAccount,
     required this.onEditBank,
     required this.onDeleteBank,
     required this.onEditAccount,
     required this.onDeleteAccount,
+    required this.onOpenMovement,
   });
 
   final List<Map<String, dynamic>> banks;
   final List<Map<String, dynamic>> accounts;
+  final List<Map<String, dynamic>> movements;
+  final String? selectedAccountKey;
+  final ValueChanged<String> onSelectAccount;
   final ValueChanged<Map<String, dynamic>> onEditBank;
   final ValueChanged<Map<String, dynamic>> onDeleteBank;
   final ValueChanged<Map<String, dynamic>> onEditAccount;
   final ValueChanged<Map<String, dynamic>> onDeleteAccount;
+  final ValueChanged<Map<String, dynamic>> onOpenMovement;
+
+  String _keyOf(Map<String, dynamic> row) {
+    final sap = _text(row['sourceId']);
+    if (sap.isNotEmpty) return sap;
+    return _text(row['id']);
+  }
+
+  String _accountHref(Map<String, dynamic> row) {
+    return '/finans/akinsoft/bankalar?hesap=${Uri.encodeQueryComponent(_keyOf(row))}';
+  }
+
+  String _movementHref(Map<String, dynamic> row) {
+    final hesap = _text(row['accountSourceId']).isEmpty
+        ? (selectedAccountKey ?? '')
+        : _text(row['accountSourceId']);
+    final id = _text(row['id']).isEmpty ? _text(row['sourceId']) : _text(row['id']);
+    return '/finans/akinsoft/bankalar?hesap=${Uri.encodeQueryComponent(hesap)}&hareket=${Uri.encodeQueryComponent(id)}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1180,23 +1739,24 @@ class _BanksAccountsPane extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          width: 320,
+          width: 260,
           child: _SimpleList(
             title: 'Bankalar (${banks.length})',
-            empty: 'Banka yok — SAP’tan çekin.',
+            empty: 'Banka yok — SAP’tan çekin veya ekleyin.',
             itemCount: banks.length,
             itemBuilder: (context, index) {
               final row = banks[index];
+              final crm = _text(row['origin']) == 'crm';
               return _DenseRow(
                 index: index,
-                title: _text(row['bankName']),
+                title: _text(row['bankName'] ?? row['name']),
                 subtitle: [
                   if (_text(row['branch']).isNotEmpty) _text(row['branch']),
-                  'BLKODU ${_text(row['sourceId'])}',
+                  crm ? 'CRM' : 'BLKODU ${_text(row['sourceId'])}',
                 ].join(' · '),
                 trailing: AppBadge(
-                  label: 'SAP',
-                  tone: AppBadgeTone.success,
+                  label: crm ? 'CRM' : 'SAP',
+                  tone: crm ? AppBadgeTone.primary : AppBadgeTone.success,
                   dense: true,
                 ),
                 onEdit: () => onEditBank(row),
@@ -1205,7 +1765,7 @@ class _BanksAccountsPane extends StatelessWidget {
             },
           ),
         ),
-        const Gap(12),
+        const Gap(10),
         Expanded(
           child: _SimpleList(
             title: 'Hesaplar (${accounts.length})',
@@ -1214,18 +1774,70 @@ class _BanksAccountsPane extends StatelessWidget {
             itemBuilder: (context, index) {
               final row = accounts[index];
               final active = row['isActive'] != false;
-              return _DenseRow(
-                index: index,
-                title: _text(row['label']),
-                subtitle:
-                    '${_text(row['currency'])} · bakiye ${_money(row['balance'] as num? ?? 0)}',
-                trailing: AppBadge(
-                  label: active ? 'Açık' : 'Kapalı',
-                  tone: active ? AppBadgeTone.success : AppBadgeTone.neutral,
-                  dense: true,
+              final selected = selectedAccountKey == _keyOf(row);
+              return FinanceOpenLink(
+                location: _accountHref(row),
+                onTap: () => onSelectAccount(_keyOf(row)),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppTheme.primary.withValues(alpha: 0.08)
+                        : null,
+                  ),
+                  child: _DenseRow(
+                    index: index,
+                    title: _text(row['label'] ?? row['name']),
+                    subtitle:
+                        '${_text(row['currency'])} · bakiye ${_money(row['balance'] as num? ?? row['current_balance'] as num? ?? 0)}',
+                    trailing: AppBadge(
+                      label: active ? 'Açık' : 'Kapalı',
+                      tone: active
+                          ? AppBadgeTone.success
+                          : AppBadgeTone.neutral,
+                      dense: true,
+                    ),
+                    onEdit: () => onEditAccount(row),
+                    onDelete: () => onDeleteAccount(row),
+                  ),
                 ),
-                onEdit: () => onEditAccount(row),
-                onDelete: () => onDeleteAccount(row),
+              );
+            },
+          ),
+        ),
+        const Gap(10),
+        Expanded(
+          flex: 2,
+          child: _SimpleList(
+            title: selectedAccountKey == null
+                ? 'Hareketler'
+                : 'Hareketler (${movements.length})',
+            empty: selectedAccountKey == null
+                ? 'Hesap seçin — hareketler burada görünür.'
+                : 'Bu hesapta hareket yok.',
+            itemCount: movements.length,
+            itemBuilder: (context, index) {
+              final row = movements[index];
+              final amount = row['amount'] as num? ?? 0;
+              final crm = _text(row['origin']) == 'crm';
+              return FinanceOpenLink(
+                location: _movementHref(row),
+                onTap: () => onOpenMovement(row),
+                child: _DenseRow(
+                  index: index,
+                  title:
+                      '${amount >= 0 ? '+' : '−'}${_money(amount.abs())}  ${_text(row['currency'])}',
+                  subtitle: [
+                    _date(row['date']),
+                    _text(row['evrakNo']),
+                    _text(row['description']),
+                  ].where((p) => p.trim().isNotEmpty).join(' · '),
+                  trailing: AppBadge(
+                    label: crm ? 'CRM' : 'SAP',
+                    tone: crm ? AppBadgeTone.primary : AppBadgeTone.neutral,
+                    dense: true,
+                  ),
+                  onEdit: () => onOpenMovement(row),
+                ),
               );
             },
           ),
@@ -1427,7 +2039,7 @@ class _DenseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final row = Container(
       color: AppDenseList.rowFill(index),
       padding: const EdgeInsets.symmetric(
         horizontal: AppDenseList.rowH,
@@ -1477,5 +2089,6 @@ class _DenseRow extends StatelessWidget {
         ],
       ),
     );
+    return row;
   }
 }

@@ -18,6 +18,7 @@ import '../features/quotes/quote_settings_screen.dart';
 import '../features/finance/finance_screen.dart';
 import '../features/finance/akinsoft_finance_screen.dart';
 import '../features/finance/closed_payments_screen.dart';
+import '../features/finance/finance_log_screen.dart';
 import '../features/products/products_screen.dart';
 import '../features/definitions/definitions_screen.dart';
 import '../features/forms/forms_screen.dart';
@@ -316,6 +317,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               pageBuilder: (context, state) => const NoTransitionPage(
                 child: AkinsoftFinanceScreen(section: 'masraf'),
               ),
+            ),
+            GoRoute(
+              path: 'log',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: FinanceLogScreen()),
             ),
           ],
         ),

@@ -34,6 +34,7 @@ const {
   ensureServiceRecordsStatusCheckConstraint,
   ensureServiceActivityLogsTable,
   ensureFinanceTables,
+  recordFinanceOperationLog,
   ensureApplicationFormsApprovalColumns,
   ensureApplicationFormsCreatedByRepair,
   ensureApplicationFormActivityLogsTable,
@@ -2216,6 +2217,7 @@ const allowedTables = new Set([
   'transactions',
   'finance_accounts',
   'finance_transactions',
+  'finance_banks',
   'transfer_forms',
   'fault_forms',
   'device_registries',
@@ -2271,6 +2273,7 @@ const tablePermissions = {
   transactions: ['faturalama', 'e_fatura'],
   finance_accounts: 'finans',
   finance_transactions: 'finans',
+  finance_banks: 'finans',
   users: 'personel',
   mutakabat_records: 'mutakabat',
   mutakabat_price_settings: 'mutakabat',
@@ -4179,7 +4182,11 @@ module.exports = async (req, res) => {
     if (table === 'work_order_signatures') {
       await ensureWorkOrderSignaturesTable();
     }
-    if (table === 'finance_accounts' || table === 'finance_transactions') {
+    if (
+      table === 'finance_accounts' ||
+      table === 'finance_transactions' ||
+      table === 'finance_banks'
+    ) {
       await ensureFinanceTables();
     }
     if (table === 'invoices') {
@@ -4277,6 +4284,43 @@ module.exports = async (req, res) => {
           };
         }
       } else if (
+        ['finance_accounts', 'finance_transactions', 'finance_banks'].includes(
+          table,
+        )
+      ) {
+        const entityType =
+          table === 'finance_accounts'
+            ? 'account'
+            : table === 'finance_banks'
+              ? 'bank'
+              : 'movement';
+        await recordFinanceOperationLog({
+          user,
+          action: values?.id ? 'update' : 'create',
+          entityType,
+          entityId: result.id,
+          accountId:
+            table === 'finance_transactions'
+              ? values?.account_id || result.row?.account_id
+              : table === 'finance_accounts'
+                ? result.id
+                : null,
+          akinsoftSourceId: values?.akinsoft_source_id || null,
+          summary:
+            table === 'finance_transactions'
+              ? `${values?.id ? 'Hareket güncellendi' : 'Hareket eklendi'}: ${
+                  values?.description || values?.amount || ''
+                }`
+              : table === 'finance_banks'
+                ? `${values?.id ? 'Banka güncellendi' : 'Banka eklendi'}: ${
+                    values?.name || ''
+                  }`
+                : `${values?.id ? 'Hesap güncellendi' : 'Hesap eklendi'}: ${
+                    values?.name || ''
+                  }`,
+          payload: values || {},
+        });
+      } else if (
         ['scrap_forms', 'fault_forms', 'transfer_forms'].includes(table) &&
         result.id &&
         !textOrEmpty(values?.id)
@@ -4313,6 +4357,25 @@ module.exports = async (req, res) => {
         await assertInvoicesHardDeleteDenied();
       }
       await deleteRow({ table, id });
+      if (
+        ['finance_accounts', 'finance_transactions', 'finance_banks'].includes(
+          table,
+        )
+      ) {
+        await recordFinanceOperationLog({
+          user,
+          action: 'delete',
+          entityType:
+            table === 'finance_accounts'
+              ? 'account'
+              : table === 'finance_banks'
+                ? 'bank'
+                : 'movement',
+          entityId: id,
+          summary: `${table} silindi`,
+          payload: { id },
+        });
+      }
       if (table === 'application_forms' && before) {
         await insertApplicationFormLog({
           formId: id,
