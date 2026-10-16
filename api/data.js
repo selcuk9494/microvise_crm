@@ -49,6 +49,7 @@ const {
   ensureInvoicesCustomerSentColumn,
   ensureInvoicesListNoteColumn,
   ensureHatLisansPriorCollectionsTable,
+  ensureMaliyeInvoiceContentLock,
 } = require('./_lib/schema');
 const { buildSystemReports } = require('./_lib/reports');
 const { ensureBrandIntegrations } = require('./_lib/mutakabat_processor');
@@ -1865,6 +1866,7 @@ module.exports = async (req, res) => {
         await ensureInvoicesBillingSourceColumn();
         await ensureInvoicesCustomerSentColumn();
         await ensureInvoicesListNoteColumn();
+        await ensureMaliyeInvoiceContentLock();
         await ensureCustomerListNoteColumn();
         await ensureCustomerListSortColumn();
         const values = [];

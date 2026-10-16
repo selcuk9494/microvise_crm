@@ -73,6 +73,10 @@ function invoiceContentLockReason(row) {
   return null;
 }
 
+function shouldPreserveInvoiceContentOnAkinsoftPull(row) {
+  return Boolean(invoiceContentLockReason(row));
+}
+
 function invoiceProtectionReason(row, { includeCustomerSent = true } = {}) {
   if (!row) return null;
   const contentLock = invoiceContentLockReason(row);
@@ -288,6 +292,7 @@ module.exports = {
   isProtectedInvoice,
   invoiceProtectionReason,
   invoiceContentLockReason,
+  shouldPreserveInvoiceContentOnAkinsoftPull,
   isSapLinkedInvoice,
   uniqueIds,
   idsFromFilterList,

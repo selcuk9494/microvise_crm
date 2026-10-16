@@ -43,6 +43,7 @@ const ensured = {
   hat_lisans_billing_settings: false,
   hat_lisans_prior_collections: false,
   akinsoft_invoice_sync: false,
+  maliye_invoice_content_lock: false,
   mutakabat_records: false,
   mutakabat_price_settings: false,
 };
@@ -2278,6 +2279,113 @@ async function ensureAkinsoftInvoiceSyncColumns() {
   return true;
 }
 
+const MALIYE_SALES_LOCK_SQL = `
+  coalesce(inv.invoice_type, 'sales') = 'sales'
+  and (
+    lower(trim(coalesce(inv.e_invoice_status, ''))) in (
+      'sent', 'manual', 'manual_sent', 'prepared'
+    )
+    or coalesce(inv.e_invoice_uuid::text, '') <> ''
+    or coalesce(nullif(trim(inv.e_invoice_number), ''), '') <> ''
+  )
+`;
+
+async function ensureMaliyeInvoiceContentLock() {
+  if (ensured.maliye_invoice_content_lock) return true;
+  if (!(await tableExists('invoices'))) {
+    ensured.maliye_invoice_content_lock = true;
+    return true;
+  }
+  await query(`
+    create or replace function public.prevent_maliye_sales_invoice_content_update()
+    returns trigger
+    language plpgsql
+    as $fn$
+    begin
+      if current_setting('microvise.bypass_maliye_lock', true) = 'on' then
+        return new;
+      end if;
+      if not (
+        ${MALIYE_SALES_LOCK_SQL.replaceAll('inv.', 'old.')}
+      ) then
+        return new;
+      end if;
+      if new.grand_total is distinct from old.grand_total
+         or new.subtotal is distinct from old.subtotal
+         or new.tax_total is distinct from old.tax_total
+         or new.discount_total is distinct from old.discount_total
+         or new.currency is distinct from old.currency
+         or new.customer_id is distinct from old.customer_id
+         or new.invoice_date is distinct from old.invoice_date
+         or new.due_date is distinct from old.due_date
+         or new.prices_include_vat is distinct from old.prices_include_vat
+         or new.invoice_type is distinct from old.invoice_type
+      then
+        raise exception 'Maliye e-faturası içeriği değiştirilemez.'
+          using errcode = 'P0001';
+      end if;
+      return new;
+    end;
+    $fn$
+  `);
+  await query(`
+    create or replace function public.prevent_maliye_sales_invoice_item_mutation()
+    returns trigger
+    language plpgsql
+    as $fn$
+    declare
+      inv record;
+      locked_invoice_id uuid;
+    begin
+      if current_setting('microvise.bypass_maliye_lock', true) = 'on' then
+        return coalesce(new, old);
+      end if;
+      locked_invoice_id := coalesce(new.invoice_id, old.invoice_id);
+      select
+        i.invoice_type,
+        i.e_invoice_status,
+        i.e_invoice_uuid,
+        i.e_invoice_number
+      into inv
+      from public.invoices i
+      where i.id = locked_invoice_id;
+      if not found then
+        return coalesce(new, old);
+      end if;
+      if ${MALIYE_SALES_LOCK_SQL} then
+        raise exception 'Maliye e-faturasının kalemleri değiştirilemez.'
+          using errcode = 'P0001';
+      end if;
+      return coalesce(new, old);
+    end;
+    $fn$
+  `);
+  await query(`
+    drop trigger if exists trg_prevent_maliye_sales_invoice_content_update
+      on public.invoices
+  `);
+  await query(`
+    create trigger trg_prevent_maliye_sales_invoice_content_update
+      before update on public.invoices
+      for each row
+      execute procedure public.prevent_maliye_sales_invoice_content_update()
+  `);
+  if (await tableExists('invoice_items')) {
+    await query(`
+      drop trigger if exists trg_prevent_maliye_sales_invoice_item_mutation
+        on public.invoice_items
+    `);
+    await query(`
+      create trigger trg_prevent_maliye_sales_invoice_item_mutation
+        before insert or update or delete on public.invoice_items
+        for each row
+        execute procedure public.prevent_maliye_sales_invoice_item_mutation()
+    `);
+  }
+  ensured.maliye_invoice_content_lock = true;
+  return true;
+}
+
 async function ensureMutakabatRecordsTable() {
   if (ensured.mutakabat_records) return true;
 
@@ -2550,6 +2658,7 @@ module.exports = {
   ensureHatLisansBillingSettingsTable,
   ensureHatLisansPriorCollectionsTable,
   ensureAkinsoftInvoiceSyncColumns,
+  ensureMaliyeInvoiceContentLock,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,
   ensureQuotesTables,

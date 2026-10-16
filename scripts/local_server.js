@@ -14,7 +14,26 @@ const {
   resolveAkinsoftInvoicePayment,
   buildAkinsoftInvoiceCancelAssignments,
 } = require(path.join(rootDir, 'api', '_lib', 'akinsoft_invoice_status.js'));
+const {
+  shouldPreserveInvoiceContentOnAkinsoftPull,
+  PROTECTED_E_INVOICE_STATUSES,
+} = require(path.join(rootDir, 'api', '_lib', 'invoice_guard.js'));
+const {
+  ensureMaliyeInvoiceContentLock,
+} = require(path.join(rootDir, 'api', '_lib', 'schema.js'));
 const akinsoftJobs = new Map();
+
+function maliyePullContentLockedSql(alias = 'public.invoices') {
+  const statuses = [...PROTECTED_E_INVOICE_STATUSES]
+    .map((status) => `'${status}'`)
+    .join(', ');
+  return `(
+    lower(trim(coalesce(${alias}.e_invoice_status, ''))) in (${statuses})
+    or coalesce(${alias}.e_invoice_uuid, '') <> ''
+    or coalesce(${alias}.e_invoice_number, '') <> ''
+  )`;
+}
+const MALIYE_PULL_LOCKED_SQL = maliyePullContentLockedSql('public.invoices');
 
 function loadEnvFile(filePath, { override = false } = {}) {
   if (!fs.existsSync(filePath)) return;
@@ -1330,6 +1349,7 @@ async function findExistingCrmInvoiceForAkinsoft(
     const mapped = await query(
       `
         select i.id, i.invoice_number, i.erp_invoice_number, i.e_invoice_number,
+               i.e_invoice_status, i.e_invoice_uuid, i.paid_amount,
                i.is_active, i.status, i.currency,
                round(coalesce(i.grand_total, 0)::numeric, 2)::text as grand_total,
                m.local_id as mapped_local_id
@@ -1368,6 +1388,7 @@ async function findExistingCrmInvoiceForAkinsoft(
     `
       select
         id, invoice_number, erp_invoice_number, e_invoice_number,
+        e_invoice_status, e_invoice_uuid, paid_amount,
         is_active, status, currency,
         round(coalesce(grand_total, 0)::numeric, 2)::text as grand_total
       from public.invoices
@@ -1882,6 +1903,14 @@ function selectAkinsoftPayment(row, movements, currency, grandTotal) {
 }
 
 async function ensureAkinsoftSyncMap(query) {
+  try {
+    await ensureMaliyeInvoiceContentLock();
+  } catch (error) {
+    console.warn(
+      '[akinsoft] Maliye içerik kilidi kurulamadı:',
+      error instanceof Error ? error.message : String(error),
+    );
+  }
   await query(`
     alter table public.products
       add column if not exists akinsoft_group text,
@@ -3794,6 +3823,7 @@ async function importAkinsoftDataset(data, onProgress) {
   let invoicesImported = 0;
   let invoicesCreated = 0;
   let invoicesUpdated = 0;
+  let invoicesPreserved = 0;
   let invoiceItemsImported = 0;
   let customersMatchedBySource = 0;
   let customersMatchedByTax = 0;
@@ -4254,7 +4284,9 @@ async function importAkinsoftDataset(data, onProgress) {
           (textOrNull(invoice.existingInvoiceId)
             ? await tx(
                 `
-                  select id, invoice_number, erp_invoice_number, e_invoice_number
+                  select
+                    id, invoice_number, erp_invoice_number, e_invoice_number,
+                    e_invoice_status, e_invoice_uuid, paid_amount, status
                   from public.invoices
                   where id = $1::uuid
                   limit 1
@@ -4274,6 +4306,55 @@ async function importAkinsoftDataset(data, onProgress) {
 
         let id = textOrNull(existing?.id);
         let action = id ? 'updated' : 'created';
+        let currentRow = existing || null;
+        if (id) {
+          const lockedCheck = await tx(
+            `
+              select
+                id, invoice_number, erp_invoice_number, e_invoice_number,
+                e_invoice_status, e_invoice_uuid, paid_amount, status,
+                akinsoft_sync_status
+              from public.invoices
+              where id = $1::uuid
+              limit 1
+            `,
+            [id],
+          );
+          currentRow = { ...existing, ...(lockedCheck.rows[0] || {}) };
+        }
+
+        const linkAkinsoftOnly = async () => {
+          await upsertAkinsoftSyncMap(tx, {
+            sourceType: 'invoice',
+            sourceId: invoice.sourceId,
+            sourceCode: invoiceNumber,
+            sourceName: invoice.customerName,
+            localTable: 'invoices',
+            localId: id,
+          });
+          await tx(
+            `
+              update public.invoices
+              set erp_invoice_number = coalesce(nullif(trim(erp_invoice_number), ''), $2)
+              where id = $1
+                and (
+                  erp_invoice_number is null
+                  or erp_invoice_number = ''
+                )
+            `,
+            [id, invoiceNumber],
+          );
+        };
+
+        if (id && shouldPreserveInvoiceContentOnAkinsoftPull(currentRow)) {
+          await linkAkinsoftOnly();
+          return {
+            id,
+            action: 'preserved',
+            itemCount: 0,
+            matchMethod: existing?.matchMethod || null,
+          };
+        }
 
         if (id) {
           const updated = await tx(
@@ -4344,34 +4425,71 @@ async function importAkinsoftDataset(data, onProgress) {
                 'manual'
               )
               on conflict (invoice_number) do update set
-                customer_id = excluded.customer_id,
-                invoice_date = excluded.invoice_date,
-                due_date = excluded.due_date,
-                currency = excluded.currency,
-                subtotal = excluded.subtotal,
-                tax_total = excluded.tax_total,
-                discount_total = excluded.discount_total,
-                grand_total = excluded.grand_total,
+                customer_id = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.customer_id
+                  else excluded.customer_id
+                end,
+                invoice_date = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.invoice_date
+                  else excluded.invoice_date
+                end,
+                due_date = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.due_date
+                  else excluded.due_date
+                end,
+                currency = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.currency
+                  else excluded.currency
+                end,
+                subtotal = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.subtotal
+                  else excluded.subtotal
+                end,
+                tax_total = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.tax_total
+                  else excluded.tax_total
+                end,
+                discount_total = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.discount_total
+                  else excluded.discount_total
+                end,
+                grand_total = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.grand_total
+                  else excluded.grand_total
+                end,
                 paid_amount = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.paid_amount
                   when $13::boolean then excluded.paid_amount
                   else public.invoices.paid_amount
                 end,
                 status = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.status
                   when $13::boolean then excluded.status
                   else public.invoices.status
                 end,
-                notes = excluded.notes,
+                notes = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.notes
+                  else excluded.notes
+                end,
                 erp_invoice_number = coalesce(
                   nullif(trim(public.invoices.erp_invoice_number), ''),
                   excluded.erp_invoice_number
                 ),
                 e_invoice_status = case
                   when public.invoices.e_invoice_status = 'sent' then public.invoices.e_invoice_status
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.e_invoice_status
                   else 'manual'
                 end,
-                is_active = true,
-                updated_at = now()
-              returning id, (xmax = 0) as inserted_new
+                is_active = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.is_active
+                  else true
+                end,
+                updated_at = case
+                  when ${MALIYE_PULL_LOCKED_SQL} then public.invoices.updated_at
+                  else now()
+                end
+              returning id, (xmax = 0) as inserted_new,
+                e_invoice_status, e_invoice_uuid, e_invoice_number, paid_amount, status
             `,
             [
               invoiceNumber,
@@ -4394,7 +4512,19 @@ async function importAkinsoftDataset(data, onProgress) {
             throw new Error(`Fatura oluşturulamadı: ${invoiceNumber}`);
           }
           // on conflict path → update say.
-          if (inserted.rows[0]?.inserted_new === false) action = 'updated';
+          if (inserted.rows[0]?.inserted_new === false) {
+            action = 'updated';
+            currentRow = { ...currentRow, ...inserted.rows[0], id };
+            if (shouldPreserveInvoiceContentOnAkinsoftPull(currentRow)) {
+              await linkAkinsoftOnly();
+              return {
+                id,
+                action: 'preserved',
+                itemCount: 0,
+                matchMethod: existing?.matchMethod || 'number',
+              };
+            }
+          }
         }
 
         await upsertAkinsoftSyncMap(tx, {
@@ -4524,6 +4654,7 @@ async function importAkinsoftDataset(data, onProgress) {
     }
 
     if (writeAction === 'created') invoicesCreated += 1;
+    else if (writeAction === 'preserved') invoicesPreserved += 1;
     else invoicesUpdated += 1;
     invoicesImported += 1;
     invoiceItemsImported += itemsWritten;
@@ -4541,7 +4672,7 @@ async function importAkinsoftDataset(data, onProgress) {
   }
 
   console.log(
-    `[akinsoft-import] invoices created=${invoicesCreated} updated=${invoicesUpdated} skipped_customer=${invoicesSkippedMissingCustomerMatch} skipped_error=${invoicesSkippedErrors} items=${invoiceItemsImported}`,
+    `[akinsoft-import] invoices created=${invoicesCreated} updated=${invoicesUpdated} preserved_maliye=${invoicesPreserved} skipped_customer=${invoicesSkippedMissingCustomerMatch} skipped_error=${invoicesSkippedErrors} items=${invoiceItemsImported}`,
   );
 
   return {
@@ -4553,6 +4684,7 @@ async function importAkinsoftDataset(data, onProgress) {
     invoices: invoicesImported,
     invoicesCreated,
     invoicesUpdated,
+    invoicesPreserved,
     invoiceItems: invoiceItemsImported,
     customerMatches: {
       source: customersMatchedBySource,

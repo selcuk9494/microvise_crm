@@ -5,6 +5,7 @@ const {
   isProtectedInvoice,
   invoiceProtectionReason,
   invoiceContentLockReason,
+  shouldPreserveInvoiceContentOnAkinsoftPull,
   blockedProtectedUpdateKeys,
   assertInvoiceIdFilters,
 } = require('../api/_lib/invoice_guard');
@@ -80,6 +81,30 @@ test('SAP’a gitmiş kapalı fatura içerik olarak düzenlenebilir', () => {
       paid_amount: 100,
     }),
     'SAP kaydı var',
+  );
+});
+
+test('SAP çekme Maliye gönderilmiş fatura kalemlerini ezmez', () => {
+  assert.equal(
+    shouldPreserveInvoiceContentOnAkinsoftPull({
+      e_invoice_status: 'sent',
+      akinsoft_sync_status: 'synced',
+    }),
+    true,
+  );
+  assert.equal(
+    shouldPreserveInvoiceContentOnAkinsoftPull({
+      e_invoice_uuid: '01a0d6fa-cb0f-7a65-9916-9f568293c0d7',
+    }),
+    true,
+  );
+  assert.equal(
+    shouldPreserveInvoiceContentOnAkinsoftPull({
+      akinsoft_sync_status: 'synced',
+      status: 'open',
+      paid_amount: 0,
+    }),
+    false,
   );
 });
 

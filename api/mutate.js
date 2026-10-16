@@ -42,6 +42,7 @@ const {
   ensureInvoicesListNoteColumn,
   ensureCustomerListNoteColumn,
   ensureCustomerListSortColumn,
+  ensureMaliyeInvoiceContentLock,
   ensureMutakabatRecordsTable,
   ensureMutakabatPriceSettingsTable,
   ensureQuotesTables,
@@ -4186,6 +4187,7 @@ module.exports = async (req, res) => {
       await ensureIssuedSourceInvoiceColumns();
       await ensureInvoicesCustomerSentColumn();
       await ensureInvoicesListNoteColumn();
+      await ensureMaliyeInvoiceContentLock();
       columnsCache.delete('invoices');
       columnsMetaCache.delete('invoices');
     }
