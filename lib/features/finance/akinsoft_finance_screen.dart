@@ -460,6 +460,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       await _importFromErp(showErrors: false);
       return;
     }
+    // Önceki aktarımdan kalan çift hesapları temizle.
+    await _dedupeCrmAccounts();
+    if (!mounted) return;
     await _finishCrmView();
   }
 
@@ -554,6 +557,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         'masrafLimit': 120,
       });
       await _importErpSnapshotIntoCrm(data);
+      await _dedupeCrmAccounts();
       await _loadCrmFinance();
       if (!mounted) return;
       await _finishCrmView(
@@ -639,16 +643,10 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         net += _num(m['amount']);
       }
       final sapBalance = _num(a['balance']);
+      // Açılış = ERP bakiyesi − bu çekimde gelen hareketler (çift sayım olmasın).
       final opening = sapBalance - net;
-      String? crmId;
-      var existingOpening = 0.0;
-      for (final existing in _crmAccounts) {
-        if (_text(existing['akinsoft_source_id']) == sourceId) {
-          crmId = _text(existing['id']);
-          existingOpening = _num(existing['opening_balance']);
-          break;
-        }
-      }
+      final match = _matchCrmAccount(a);
+      final crmId = match == null ? null : _text(match['id']);
       final values = <String, dynamic>{
         if (crmId != null && crmId.isNotEmpty) 'id': crmId,
         'name': _text(a['label']).isEmpty
@@ -658,15 +656,13 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         'bank_name': _text(a['bankName']),
         'account_no': _text(a['hesapNo']),
         'iban': _text(a['iban']),
-        'currency': _text(a['currency']).isEmpty ? 'TRY' : _text(a['currency']),
+        'currency': _normalizeCurrency(_text(a['currency'])),
+        'opening_balance': opening,
+        'current_balance': sapBalance,
         'akinsoft_source_id': sourceId,
         'akinsoft_bank_source_id': _text(a['bankSourceId']),
         'is_active': a['isActive'] != false,
       };
-      if (existingOpening.abs() < 0.009) {
-        values['opening_balance'] = opening;
-        values['current_balance'] = sapBalance;
-      }
       final result = await api.postJson(
         '/mutate',
         body: {
@@ -1413,6 +1409,237 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     }
   }
 
+  String _normalizeCurrency(String value) {
+    final t = value.trim().toUpperCase();
+    if (t.isEmpty || t == 'TL' || t == 'TRY' || t == '₺') return 'TRY';
+    if (t == r'$' || t == r'US$' || t == 'USD') return 'USD';
+    if (t == '€' || t == 'EUR') return 'EUR';
+    if (t == '£' || t == 'GBP' || t == 'STG' || t == 'STERLIN') return 'GBP';
+    return t;
+  }
+
+  String _normalizeBankName(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll('ı', 'i')
+        .replaceAll('İ', 'i')
+        .replaceAll('i\u0307', 'i') // Dart İ → i + combining dot
+        .replaceAll('ş', 's')
+        .replaceAll('ğ', 'g')
+        .replaceAll('ü', 'u')
+        .replaceAll('ö', 'o')
+        .replaceAll('ç', 'c')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  /// HALK BANK / Halk Bank STG / İŞBANK → aynı kök.
+  String _bankStem(String value) {
+    var n = _normalizeBankName(value);
+    if (n.isEmpty) return '';
+    n = n.replaceAll(
+      RegExp(r'(try|tl|usd|eur|euro|gbp|stg|sterlin|usdollari?)$'),
+      '',
+    );
+    if (n.contains('halk')) return 'halkbank';
+    if (n.contains('garanti')) return 'garanti';
+    if (n.contains('isbank') ||
+        n.contains('isbankasi') ||
+        n == 'ibank' ||
+        (n.startsWith('is') && n.contains('bank'))) {
+      return 'isbank';
+    }
+    if (n.contains('akbank')) return 'akbank';
+    if (n.contains('yapikredi') || n.contains('ykb')) return 'yapikredi';
+    if (n.contains('ziraat')) return 'ziraat';
+    if (n.contains('vakif')) return 'vakifbank';
+    return n;
+  }
+
+  String _accountBankStem(Map<String, dynamic> a) {
+    final bankName = _text(a['bank_name']);
+    if (bankName.isNotEmpty) return _bankStem(bankName);
+    return _bankStem(_text(a['name']));
+  }
+
+  String _accountDedupeKey(Map<String, dynamic> a) {
+    final currency = _normalizeCurrency(_text(a['currency']));
+    final bank = _accountBankStem(a);
+    final iban = _text(a['iban']).replaceAll(' ', '').toUpperCase();
+    final no = _text(a['account_no'] ?? a['hesapNo']).replaceAll(' ', '');
+    if (iban.isNotEmpty) return '$currency|iban:$iban';
+    if (no.isNotEmpty && bank.isNotEmpty) return '$currency|$bank|no:$no';
+    // Aynı banka + döviz = tek hesap (eski CRM adı ≠ ERP etiketi)
+    if (bank.isNotEmpty) return '$currency|$bank';
+    final name = _normalizeBankName(_text(a['name']));
+    return '$currency|name:$name';
+  }
+
+  Map<String, dynamic>? _matchCrmAccount(Map<String, dynamic> sapAccount) {
+    final sourceId = _text(sapAccount['sourceId']);
+    for (final existing in _crmAccounts) {
+      if (sourceId.isNotEmpty &&
+          _text(existing['akinsoft_source_id']) == sourceId) {
+        return existing;
+      }
+    }
+    final key = _accountDedupeKey({
+      'bank_name': sapAccount['bankName'],
+      'name': sapAccount['label'] ?? sapAccount['tanimi'],
+      'currency': sapAccount['currency'],
+      'iban': sapAccount['iban'],
+      'account_no': sapAccount['hesapNo'],
+    });
+    for (final existing in _crmAccounts) {
+      if (_text(existing['account_type']) == 'cash') continue;
+      if (existing['is_active'] == false) continue;
+      if (_accountDedupeKey(existing) == key) return existing;
+    }
+    // banka + döviz (birden fazla varsa ERP bakiyesi olan / kaynaklı tercih)
+    final bank = _bankStem(_text(sapAccount['bankName']));
+    final currency = _normalizeCurrency(_text(sapAccount['currency']));
+    final sameBankCurrency = _crmAccounts.where((existing) {
+      if (_text(existing['account_type']) == 'cash') return false;
+      if (existing['is_active'] == false) return false;
+      if (_normalizeCurrency(_text(existing['currency'])) != currency) {
+        return false;
+      }
+      return _accountBankStem(existing) == bank && bank.isNotEmpty;
+    }).toList();
+    if (sameBankCurrency.isEmpty) return null;
+    sameBankCurrency.sort((a, b) {
+      final aSap = _text(a['akinsoft_source_id']).isNotEmpty ? 0 : 1;
+      final bSap = _text(b['akinsoft_source_id']).isNotEmpty ? 0 : 1;
+      if (aSap != bSap) return aSap - bSap;
+      return _num(b['current_balance']).abs().compareTo(_num(a['current_balance']).abs());
+    });
+    return sameBankCurrency.first;
+  }
+
+  /// ERP aktarımından kalan çift hesapları birleştirir.
+  Future<void> _dedupeCrmAccounts() async {
+    final api = ref.read(apiClientProvider);
+    if (api == null) return;
+    await _loadCrmFinance();
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final a in _crmAccounts) {
+      if (_text(a['account_type']) == 'cash') continue;
+      if (a['is_active'] == false) continue;
+      final key = _accountDedupeKey(a);
+      groups.putIfAbsent(key, () => []).add(Map<String, dynamic>.from(a));
+    }
+
+    for (final group in groups.values) {
+      if (group.length < 2) continue;
+      group.sort((a, b) {
+        final aSap = _text(a['akinsoft_source_id']).isNotEmpty ? 0 : 1;
+        final bSap = _text(b['akinsoft_source_id']).isNotEmpty ? 0 : 1;
+        if (aSap != bSap) return aSap - bSap;
+        final aBal = _num(a['current_balance']).abs();
+        final bBal = _num(b['current_balance']).abs();
+        return bBal.compareTo(aBal);
+      });
+      final keeper = group.first;
+      final keeperId = _text(keeper['id']);
+      if (keeperId.isEmpty) continue;
+      for (final orphan in group.skip(1)) {
+        final orphanId = _text(orphan['id']);
+        if (orphanId.isEmpty || orphanId == keeperId) continue;
+        for (final t in _crmTransactions) {
+          if (_text(t['account_id']) != orphanId) continue;
+          await api.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'finance_transactions',
+              'values': {
+                'id': t['id'],
+                'account_id': keeperId,
+              },
+            },
+          );
+        }
+        // ERP kaynağını koru
+        if (_text(keeper['akinsoft_source_id']).isEmpty &&
+            _text(orphan['akinsoft_source_id']).isNotEmpty) {
+          await api.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'finance_accounts',
+              'values': {
+                'id': keeperId,
+                'akinsoft_source_id': orphan['akinsoft_source_id'],
+                'akinsoft_bank_source_id': orphan['akinsoft_bank_source_id'],
+                'name': orphan['name'],
+                'bank_name': orphan['bank_name'],
+                'account_no': orphan['account_no'],
+                'iban': orphan['iban'],
+              },
+            },
+          );
+        }
+        try {
+          await api.postJson(
+            '/mutate',
+            body: {'op': 'delete', 'table': 'finance_accounts', 'id': orphanId},
+          );
+        } catch (_) {
+          await api.postJson(
+            '/mutate',
+            body: {
+              'op': 'upsert',
+              'table': 'finance_accounts',
+              'values': {'id': orphanId, 'is_active': false, 'name': orphan['name']},
+            },
+          );
+        }
+      }
+    }
+    // Hareketler taşındıktan sonra bakiyeleri yeniden hesapla.
+    await _loadCrmFinance();
+    final keeperIds = <String>{};
+    for (final group in groups.values) {
+      if (group.length < 2) continue;
+      final id = _text(group.first['id']);
+      if (id.isNotEmpty) keeperIds.add(id);
+    }
+    for (final id in keeperIds) {
+      await _recalcAccountBalance(id);
+    }
+    await _loadCrmFinance();
+  }
+
+  Future<void> _recalcAccountBalance(String accountId) async {
+    final api = ref.read(apiClientProvider);
+    if (api == null || accountId.isEmpty) return;
+    Map<String, dynamic>? account;
+    for (final a in _crmAccounts) {
+      if (_text(a['id']) == accountId) {
+        account = a;
+        break;
+      }
+    }
+    final opening = _num(account?['opening_balance']);
+    var txSum = 0.0;
+    for (final t in _crmTransactions) {
+      if (_text(t['account_id']) != accountId) continue;
+      if (t['is_active'] == false) continue;
+      final amount = _num(t['amount']).abs();
+      txSum += _text(t['direction']) == 'out' ? -amount : amount;
+    }
+    await api.postJson(
+      '/mutate',
+      body: {
+        'op': 'upsert',
+        'table': 'finance_accounts',
+        'values': {
+          'id': accountId,
+          'current_balance': opening + txSum,
+        },
+      },
+    );
+  }
+
   List<Map<String, dynamic>> _crmBankRows() {
     final fromTable = _crmBanks
         .map(
@@ -1431,6 +1658,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     final names = <String>{};
     for (final a in _crmAccounts) {
       if (_text(a['account_type']) == 'cash') continue;
+      if (a['is_active'] == false) continue;
       final name = _text(a['bank_name']);
       if (name.isNotEmpty) names.add(name);
     }
@@ -1447,8 +1675,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
   }
 
   List<Map<String, dynamic>> _crmAccountRows({String? accountType}) {
-    return _crmAccounts
+    final rows = _crmAccounts
         .where((a) {
+          if (a['is_active'] == false) return false;
           if (accountType == null) {
             return _text(a['account_type']) != 'cash';
           }
@@ -1467,6 +1696,36 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           },
         )
         .toList();
+    // Aynı banka+döviz için ERP kaynaklı / dolu bakiyeli olanı göster.
+    final best = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final bank = _accountBankStem(row);
+      final currency = _normalizeCurrency(_text(row['currency']));
+      final key = bank.isEmpty
+          ? '$currency|id:${_text(row['id'])}'
+          : '$currency|$bank';
+      final prev = best[key];
+      if (prev == null) {
+        best[key] = row;
+        continue;
+      }
+      final prevSap = _text(prev['akinsoft_source_id']).isNotEmpty;
+      final rowSap = _text(row['akinsoft_source_id']).isNotEmpty;
+      if (rowSap && !prevSap) {
+        best[key] = row;
+      } else if (rowSap == prevSap &&
+          _num(row['current_balance']).abs() >
+              _num(prev['current_balance']).abs()) {
+        best[key] = row;
+      }
+    }
+    final list = best.values.toList();
+    list.sort((a, b) {
+      final bank = _text(a['bank_name']).compareTo(_text(b['bank_name']));
+      if (bank != 0) return bank;
+      return _text(a['name']).compareTo(_text(b['name']));
+    });
+    return list;
   }
 
   List<Map<String, dynamic>> _visibleBanks() {
