@@ -1106,7 +1106,7 @@ String _stripCommissionFromDescription(String? description) {
       .trim();
 }
 
-class _CollectionDialog extends StatefulWidget {
+class _CollectionDialog extends ConsumerStatefulWidget {
   const _CollectionDialog({
     required this.invoices,
     required this.total,
@@ -1124,10 +1124,10 @@ class _CollectionDialog extends StatefulWidget {
   final _CollectionSeed? seed;
 
   @override
-  State<_CollectionDialog> createState() => _CollectionDialogState();
+  ConsumerState<_CollectionDialog> createState() => _CollectionDialogState();
 }
 
-class _CollectionDialogState extends State<_CollectionDialog> {
+class _CollectionDialogState extends ConsumerState<_CollectionDialog> {
   late String _method;
   late bool _postToSap;
   late bool _closeInvoice;
@@ -1148,6 +1148,8 @@ class _CollectionDialogState extends State<_CollectionDialog> {
       widget.currencies.length == 1 ? widget.currencies.first : 'TRY';
   bool get _isFx => _currency != 'TRY' && _currency != 'TL';
   bool get _isPosMethod => _method == 'pos' || _method == 'credit_card';
+  /// Döviz tahsilatta bankaya TL yansıdığı için TRY hesapları tercih et.
+  String get _preferredBankCurrency => _isFx ? 'TRY' : _normalizeMoneyCurrency(_currency);
   double get _invoiceRate {
     if (widget.invoices.length == 1) {
       final rate = widget.invoices.first.exchangeRate;
@@ -1188,11 +1190,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
     _amount.addListener(_onMoneyChanged);
     _tlAmount.addListener(_onMoneyChanged);
     _commission.addListener(_onMoneyChanged);
-    if (kAkinsoftBridgeEnabled) {
-      _loadCatalog();
-    } else {
-      _loading = false;
-    }
+    _loadCatalog();
   }
 
   void _onMoneyChanged() {
@@ -1212,7 +1210,24 @@ class _CollectionDialogState extends State<_CollectionDialog> {
     super.dispose();
   }
 
+  String _normalizeMoneyCurrency(String value) {
+    final t = value.trim().toUpperCase();
+    if (t.isEmpty || t == 'TL' || t == 'TRY' || t == '₺') return 'TRY';
+    if (t == r'$' || t == r'US$' || t == 'USD') return 'USD';
+    if (t == '€' || t == 'EUR') return 'EUR';
+    if (t == '£' || t == 'GBP' || t == 'STG' || t == 'STERLIN') return 'GBP';
+    return t;
+  }
+
   Future<void> _loadCatalog() async {
+    if (kAkinsoftBridgeEnabled) {
+      await _loadSapCatalog();
+    } else {
+      await _loadCrmCatalog();
+    }
+  }
+
+  Future<void> _loadSapCatalog() async {
     try {
       final data = await _postAkinsoftFinance('finance/pull', {
         'catalogOnly': true,
@@ -1228,12 +1243,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
           .map((e) => Map<String, dynamic>.from(e))
           .where((e) => e['isActive'] != false && (e['sourceId']?.toString().isNotEmpty ?? false))
           .toList();
-      accounts.sort((a, b) {
-        final aMatch = a['currency']?.toString() == _currency ? 0 : 1;
-        final bMatch = b['currency']?.toString() == _currency ? 0 : 1;
-        if (aMatch != bMatch) return aMatch - bMatch;
-        return (a['label']?.toString() ?? '').compareTo(b['label']?.toString() ?? '');
-      });
+      _sortBankAccounts(accounts);
       setState(() {
         _kasas = kasas;
         _accounts = accounts;
@@ -1253,6 +1263,101 @@ class _CollectionDialogState extends State<_CollectionDialog> {
         _loadError = _akinsoftBridgeError(error);
       });
     }
+  }
+
+  Future<void> _loadCrmCatalog() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      if (api == null) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _loadError = 'Oturum yok; banka hesapları yüklenemedi.';
+        });
+        return;
+      }
+      final response = await api.getJson(
+        '/data',
+        queryParameters: {'resource': 'finance_accounts'},
+      );
+      if (!mounted) return;
+      final items = ((response['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((e) => e['is_active'] != false)
+          .toList();
+      final kasas = <Map<String, dynamic>>[];
+      final accounts = <Map<String, dynamic>>[];
+      for (final row in items) {
+        final id = row['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final type = (row['account_type']?.toString() ?? 'bank').toLowerCase();
+        final name = (row['name']?.toString() ?? '').trim();
+        final bankName = (row['bank_name']?.toString() ?? '').trim();
+        final currency = _normalizeMoneyCurrency(row['currency']?.toString() ?? 'TRY');
+        if (type == 'cash') {
+          kasas.add({
+            'sourceId': id,
+            'kasaAdi': name.isEmpty ? 'Kasa' : name,
+            'value': id,
+            'crmId': id,
+          });
+          continue;
+        }
+        final label = name.isEmpty
+            ? (bankName.isEmpty ? 'Hesap' : bankName)
+            : (bankName.isEmpty || name.toLowerCase().contains(bankName.toLowerCase())
+                  ? name
+                  : '$bankName · $name');
+        accounts.add({
+          'sourceId': id,
+          'label': '$label ($currency)',
+          'tanimi': name,
+          'bankName': bankName,
+          'currency': currency,
+          'crmId': id,
+        });
+      }
+      _sortBankAccounts(accounts);
+      setState(() {
+        _kasas = kasas;
+        _accounts = accounts;
+        _kasaAdi ??= kasas.isEmpty
+            ? null
+            : (kasas.first['value'] ?? kasas.first['kasaAdi'])?.toString();
+        _bankAccountId ??= accounts.isEmpty
+            ? null
+            : accounts.first['sourceId']?.toString();
+        _loading = false;
+        _loadError = accounts.isEmpty && kasas.isEmpty
+            ? 'CRM’de banka/kasa hesabı yok. Bankalar ekranından ekleyin.'
+            : '';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = error.toString();
+      });
+    }
+  }
+
+  String? _kasaItemValue(Map<String, dynamic> kasa) {
+    final value = kasa['value']?.toString();
+    if (value != null && value.isNotEmpty) return value;
+    return kasa['kasaAdi']?.toString();
+  }
+
+  void _sortBankAccounts(List<Map<String, dynamic>> accounts) {
+    final prefer = _preferredBankCurrency;
+    accounts.sort((a, b) {
+      final aCur = _normalizeMoneyCurrency(a['currency']?.toString() ?? '');
+      final bCur = _normalizeMoneyCurrency(b['currency']?.toString() ?? '');
+      final aMatch = aCur == prefer ? 0 : 1;
+      final bMatch = bCur == prefer ? 0 : 1;
+      if (aMatch != bMatch) return aMatch - bMatch;
+      return (a['label']?.toString() ?? '').compareTo(b['label']?.toString() ?? '');
+    });
   }
 
   List<Map<String, dynamic>> get _bankItems {
@@ -1301,14 +1406,21 @@ class _CollectionDialogState extends State<_CollectionDialog> {
       );
       return;
     }
-    if (_postToSap && _method == 'cash' && (_kasaAdi ?? '').isEmpty) {
+    if (_method == 'cash' && (_kasaAdi ?? '').isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nakit için kasa seçin.')),
+        SnackBar(
+          content: Text(
+            _loading
+                ? 'Kasalar yükleniyor, biraz bekleyin.'
+                : _loadError.isNotEmpty
+                    ? _loadError
+                    : 'Nakit için kasa seçin.',
+          ),
+        ),
       );
       return;
     }
-    if (_postToSap &&
-        (_method == 'bank' || _method == 'pos' || _method == 'credit_card') &&
+    if ((_method == 'bank' || _method == 'pos' || _method == 'credit_card') &&
         (_bankAccountId ?? '').isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1355,7 +1467,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
         banks.any((a) => a['sourceId']?.toString() == _bankAccountId)
         ? _bankAccountId
         : null;
-    final kasaValue = _kasas.any((k) => k['kasaAdi']?.toString() == _kasaAdi)
+    final kasaValue = _kasas.any((k) => _kasaItemValue(k) == _kasaAdi)
         ? _kasaAdi
         : null;
     final totalLabel = widget.currencies.length == 1
@@ -1429,7 +1541,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   if (_isPosMethod) _closeInvoice = true;
                 }),
               ),
-              if (kAkinsoftBridgeEnabled && _method == 'cash') ...[
+              if (_method == 'cash') ...[
                 const Gap(10),
                 DropdownButtonFormField<String>(
                   key: ValueKey('kasa-${_kasas.length}-$kasaValue'),
@@ -1445,7 +1557,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   items: [
                     for (final kasa in _kasas)
                       DropdownMenuItem(
-                        value: kasa['kasaAdi']?.toString(),
+                        value: _kasaItemValue(kasa),
                         child: Text(kasa['kasaAdi']?.toString() ?? 'Kasa'),
                       ),
                   ],
@@ -1454,10 +1566,9 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                       : (v) => setState(() => _kasaAdi = v),
                 ),
               ],
-              if (kAkinsoftBridgeEnabled &&
-                  (_method == 'bank' ||
-                      _method == 'pos' ||
-                      _method == 'credit_card')) ...[
+              if (_method == 'bank' ||
+                  _method == 'pos' ||
+                  _method == 'credit_card') ...[
                 const Gap(10),
                 DropdownButtonFormField<String>(
                   key: ValueKey('bank-${banks.length}-$bankValue'),
@@ -1471,7 +1582,9 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                             ? (_loadError.isEmpty
                                   ? 'Banka hesabı bulunamadı.'
                                   : _loadError)
-                            : null,
+                            : (_isFx
+                                  ? 'Döviz tahsilatta bankaya yansıyan TL bu hesaba yazılır.'
+                                  : null),
                   ),
                   items: [
                     for (final account in banks)
@@ -5607,6 +5720,58 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           },
         );
         crmOk += 1;
+        // CRM-only: seçilen banka/kasaya finans hareketi yaz.
+        if (!kAkinsoftBridgeEnabled) {
+          final financeAccountId = details.method == 'cash'
+              ? details.kasaAdi
+              : (details.method == 'bank' ||
+                      details.method == 'pos' ||
+                      details.method == 'credit_card')
+                  ? details.bankAccountId
+                  : null;
+          if (financeAccountId != null && financeAccountId.isNotEmpty) {
+            final isFx =
+                invoice.currency != 'TRY' && invoice.currency != 'TL';
+            final isPos =
+                details.method == 'pos' || details.method == 'credit_card';
+            final bankAmount = isFx || isPos ? kpbAmount : amount;
+            final net = isPos
+                ? (bankAmount - commission).clamp(0.0, double.infinity)
+                : bankAmount;
+            if (net > 0.009) {
+              try {
+                await apiClient.postJson(
+                  '/mutate',
+                  body: {
+                    'op': 'upsert',
+                    'table': 'finance_transactions',
+                    'values': {
+                      'account_id': financeAccountId,
+                      'customer_id': invoice.customerId,
+                      'invoice_id': invoice.id,
+                      'transaction_date': DateTime.now()
+                          .toIso8601String()
+                          .substring(0, 10),
+                      'direction': invoice.invoiceType == 'purchase'
+                          ? 'out'
+                          : 'in',
+                      'transaction_type': invoice.invoiceType == 'purchase'
+                          ? 'payment'
+                          : 'collection',
+                      'payment_method': details.method,
+                      'amount': net,
+                      'currency': isFx || isPos ? 'TRY' : invoice.currency,
+                      'description': description,
+                      'reference_no': invoice.invoiceNumber,
+                      'source': 'e_invoice',
+                      'is_active': true,
+                    },
+                  },
+                );
+              } catch (_) {}
+            }
+          }
+        }
         if (!kAkinsoftBridgeEnabled || !details.postToSap) continue;
         try {
           await _postAkinsoftFinance('finance/collection', {
