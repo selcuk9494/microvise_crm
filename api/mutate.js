@@ -59,6 +59,7 @@ const {
   createInvoicePaymentLink,
   refundInvoicePosPayment,
   reverseInvoiceCollection,
+  cleanupOrphanEInvoiceFinance,
   markPosPaymentSettled,
   dismissPosCollection,
 } = require('./_lib/invoice_payment');
@@ -4053,6 +4054,25 @@ module.exports = async (req, res) => {
             transactionId: body.transactionId || null,
             createdBy: user?.id || null,
             allowPos: body.allowPos === true || body.allowPos === 'true',
+          }),
+        );
+      } catch (error) {
+        if (error?.statusCode === 400) return badRequest(req, res, error.message);
+        throw error;
+      }
+    }
+    if (op === 'cleanupOrphanEInvoiceFinance') {
+      if (
+        !requireAnyPage(req, user, ['faturalama', 'e_fatura', 'finans'], res)
+      ) {
+        return;
+      }
+      try {
+        return ok(
+          req,
+          res,
+          await cleanupOrphanEInvoiceFinance({
+            invoiceId: body.invoiceId || null,
           }),
         );
       } catch (error) {

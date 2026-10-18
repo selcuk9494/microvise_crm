@@ -181,6 +181,16 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     } catch (_) {}
   }
 
+  Future<void> _cleanupOrphanEInvoiceFinance() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      await api?.postJson(
+        '/mutate',
+        body: {'op': 'cleanupOrphanEInvoiceFinance'},
+      );
+    } catch (_) {}
+  }
+
   String _accountKey(Map<String, dynamic> row) {
     final sap = _text(row['sourceId']);
     if (sap.isNotEmpty) return sap;
@@ -449,6 +459,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       _error = null;
       _status = 'CRM finans kayıtları yükleniyor…';
     });
+    await _cleanupOrphanEInvoiceFinance();
     await _loadCrmFinance();
     if (!mounted) return;
     if (_accounts.isNotEmpty) {

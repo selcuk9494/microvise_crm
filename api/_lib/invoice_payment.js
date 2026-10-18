@@ -850,17 +850,13 @@ async function reverseInvoiceCollection({
     (sum, row) => sum + Number(row.amount || 0),
     0,
   );
+  const invoiceNumber = String(invoice.invoice_number || '').trim();
 
   if (collectionIds.length === 0) {
     if (posRows.length > 0) {
       const error = new Error(
         'Bu fatura sanal POS ile tahsil edilmiş. Geri almak için «Sanal POS iade» kullanın.',
       );
-      error.statusCode = 400;
-      throw error;
-    }
-    if (Number(invoice.paid_amount || 0) <= 0.009) {
-      const error = new Error('Bu faturada geri alınacak tahsilat yok.');
       error.statusCode = 400;
       throw error;
     }
@@ -873,6 +869,7 @@ async function reverseInvoiceCollection({
     await ensureInvoicePaymentLinksTable();
   }
 
+  let reversedFinanceCount = 0;
   await withTransaction(async (txQuery) => {
     if (collectionIds.length) {
       await txQuery(
@@ -890,6 +887,40 @@ async function reverseInvoiceCollection({
         [collectionIds],
       );
     }
+
+    // E-fatura tahsilatından yazılan banka/kasa hareketlerini de düş.
+    try {
+      const financeResult = await txQuery(
+        `
+          update public.finance_transactions
+          set
+            is_active = false,
+            description = trim(
+              both from coalesce(description, '') ||
+              ' [Tahsilat geri alındı ' || to_char(now(), 'YYYY-MM-DD HH24:MI') || ']'
+            ),
+            updated_at = now()
+          where coalesce(is_active, true) = true
+            and (
+              invoice_id = $1::uuid
+              or (
+                $2::text <> ''
+                and (
+                  reference_no = $2
+                  or description ilike '%' || $2 || '%'
+                )
+              )
+            )
+          returning id
+        `,
+        [invId, invoiceNumber],
+      );
+      reversedFinanceCount = financeResult.rowCount || 0;
+    } catch (_) {
+      // finance tablosu yoksa tahsilat geri almayı bozma
+      reversedFinanceCount = 0;
+    }
+
     await txQuery(`select public.refresh_invoice_paid_status($1::uuid)`, [invId]);
 
     if (reversedPos.length) {
@@ -936,6 +967,16 @@ async function reverseInvoiceCollection({
     }
   });
 
+  if (
+    collectionIds.length === 0 &&
+    reversedFinanceCount === 0 &&
+    Number(invoice.paid_amount || 0) <= 0.009
+  ) {
+    const error = new Error('Bu faturada geri alınacak tahsilat yok.');
+    error.statusCode = 400;
+    throw error;
+  }
+
   return {
     ok: true,
     invoiceId: invId,
@@ -943,16 +984,71 @@ async function reverseInvoiceCollection({
     reversedCount: collectionIds.length,
     reversedAmount,
     reversedTransactionIds: collectionIds,
+    reversedFinanceCount,
     remainingPosCount: collections.rows.filter(
       (row) =>
         isPosCollectionTransaction(row) && !collectionIds.includes(row.id),
     ).length,
     message:
-      collectionIds.length > 0
-        ? 'CRM tahsilatı geri alındı; fatura ödeme hareketi düşüldü.'
+      collectionIds.length > 0 || reversedFinanceCount > 0
+        ? 'CRM tahsilatı geri alındı; fatura ve banka hareketi düşüldü.'
         : 'Fatura tahsilat durumu açık olarak güncellendi.',
     createdBy: createdBy || null,
   };
+}
+
+/** Tahsilatı geri alınmış faturaların banka hareketlerini düşer. */
+async function cleanupOrphanEInvoiceFinance({ invoiceId = null } = {}) {
+  const invId = String(invoiceId || '').trim();
+  const params = [];
+  let invoiceFilter = '';
+  if (invId) {
+    params.push(invId);
+    invoiceFilter = ` and ft.invoice_id = $${params.length}::uuid`;
+  }
+  try {
+    const result = await query(
+      `
+        update public.finance_transactions ft
+        set
+          is_active = false,
+          description = trim(
+            both from coalesce(ft.description, '') ||
+            ' [Tahsilat geri alındı ' || to_char(now(), 'YYYY-MM-DD HH24:MI') || ']'
+          ),
+          updated_at = now()
+        where coalesce(ft.is_active, true) = true
+          and coalesce(ft.source, '') = 'e_invoice'
+          and ft.invoice_id is not null
+          ${invoiceFilter}
+          and not exists (
+            select 1
+            from public.transactions t
+            where t.invoice_id = ft.invoice_id
+              and coalesce(t.is_active, true) = true
+              and t.transaction_type in ('collection', 'payment')
+          )
+          and exists (
+            select 1
+            from public.invoices i
+            where i.id = ft.invoice_id
+              and coalesce(i.paid_amount, 0) <= 0.009
+          )
+        returning ft.id, ft.account_id
+      `,
+      params,
+    );
+    return {
+      ok: true,
+      cleaned: result.rowCount || 0,
+      ids: result.rows.map((row) => row.id),
+    };
+  } catch (error) {
+    if (String(error?.message || '').includes('finance_transactions')) {
+      return { ok: true, cleaned: 0, ids: [] };
+    }
+    throw error;
+  }
 }
 
 async function refundInvoicePosPayment({
@@ -3249,6 +3345,7 @@ module.exports = {
   handlePaymentCallback,
   refundInvoicePosPayment,
   reverseInvoiceCollection,
+  cleanupOrphanEInvoiceFinance,
   selectCollectionsToReverse,
   isPosCollectionTransaction,
   markPosPaymentSettled,
