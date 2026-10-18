@@ -466,12 +466,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       await _migrateSapBalancesIntoCrm();
       if (!mounted) return;
     }
-    // Yazım kapalı ama çekim açıksa ERP’den CRM’ye bir kez aktar.
-    if (!kAkinsoftBridgeEnabled && kAkinsoftBridgePullEnabled) {
-      await _importFromErp(showErrors: false);
-      return;
-    }
-    // Önceki aktarımdan kalan çift hesapları temizle.
+    // ERP aktarımı yalnızca «ERP'den Aktar» ile; sayfa her açılışta çekmesin.
     await _dedupeCrmAccounts();
     if (!mounted) return;
     await _finishCrmView();
