@@ -1033,7 +1033,7 @@ async function cleanupOrphanEInvoiceFinance({ invoiceId = null } = {}) {
           updated_at = now()
         where coalesce(ft.is_active, true) = true
           and (
-            coalesce(ft.source, '') = 'e_invoice'
+            coalesce(ft.source, '') in ('e_invoice', 'erp_import')
             or ft.description ilike '%E-Fatura tahsilat%'
           )
           ${invoiceFilter}
@@ -1047,21 +1047,15 @@ async function cleanupOrphanEInvoiceFinance({ invoiceId = null } = {}) {
                   and coalesce(t.is_active, true) = true
                   and t.transaction_type in ('collection', 'payment')
               )
-              and exists (
-                select 1
-                from public.invoices i
-                where i.id = ft.invoice_id
-                  and coalesce(i.paid_amount, 0) <= 0.009
-              )
             )
             or (
-              -- invoice_id yazılmamış eski kayıtlar: açıklama/referanstaki fatura no
+              -- invoice_id yok (ERP import): açıklamadaki fatura no ile eşle
               ft.invoice_id is null
+              and ft.description ilike '%E-Fatura tahsilat%'
               and exists (
                 select 1
                 from public.invoices i
-                where coalesce(i.paid_amount, 0) <= 0.009
-                  and (
+                where (
                     ft.reference_no = i.invoice_number
                     or ft.description ilike '%' || i.invoice_number || '%'
                   )
