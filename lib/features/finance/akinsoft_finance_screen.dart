@@ -261,6 +261,75 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     return _text(row['id']);
   }
 
+  /// Hareketi olan hesap hard-delete edilemez; önce hareketleri pasife al / sil.
+  Future<void> _deleteCrmAccountById(String accountId) async {
+    final api = ref.read(apiClientProvider);
+    if (api == null || accountId.isEmpty) {
+      throw Exception('Hesap silinemedi.');
+    }
+    // Bağlı hareketleri kaldır (pasif olanlar dahil — FK engeller).
+    final linked = _crmTransactions
+        .where((t) => _text(t['account_id']) == accountId)
+        .toList();
+    for (final t in linked) {
+      final txId = _text(t['id']);
+      if (txId.isEmpty) continue;
+      try {
+        await api.postJson(
+          '/mutate',
+          body: {'op': 'delete', 'table': 'finance_transactions', 'id': txId},
+        );
+      } catch (_) {
+        await api.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'finance_transactions',
+            'values': {'id': txId, 'is_active': false},
+          },
+        );
+      }
+    }
+    // API’den de kalanları temizle (bellekte olmayanlar).
+    try {
+      final response = await api.getJson(
+        '/data',
+        queryParameters: {
+          'resource': 'finance_transactions',
+          'accountId': accountId,
+          'includePassive': 'true',
+        },
+      );
+      for (final row in ((response['items'] as List?) ?? const [])) {
+        if (row is! Map) continue;
+        final txId = _text(row['id']);
+        if (txId.isEmpty) continue;
+        try {
+          await api.postJson(
+            '/mutate',
+            body: {'op': 'delete', 'table': 'finance_transactions', 'id': txId},
+          );
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    try {
+      await api.postJson(
+        '/mutate',
+        body: {'op': 'delete', 'table': 'finance_accounts', 'id': accountId},
+      );
+    } catch (_) {
+      await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_accounts',
+          'values': {'id': accountId, 'is_active': false},
+        },
+      );
+    }
+  }
+
   Map<String, dynamic>? _selectedAccount() {
     final key = _selectedAccountKey;
     if (key == null || key.isEmpty) return null;
@@ -1028,10 +1097,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           ...?_accountById(_text(body['sourceId'])),
         });
         if (id == null) throw Exception('Hesap bulunamadı.');
-        await api.postJson(
-          '/mutate',
-          body: {'op': 'delete', 'table': 'finance_accounts', 'id': id},
-        );
+        await _deleteCrmAccountById(id);
         return;
       }
       Map<String, dynamic>? bank;
@@ -1654,21 +1720,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
             },
           );
         }
-        try {
-          await api.postJson(
-            '/mutate',
-            body: {'op': 'delete', 'table': 'finance_accounts', 'id': orphanId},
-          );
-        } catch (_) {
-          await api.postJson(
-            '/mutate',
-            body: {
-              'op': 'upsert',
-              'table': 'finance_accounts',
-              'values': {'id': orphanId, 'is_active': false, 'name': orphan['name']},
-            },
-          );
-        }
+        await _deleteCrmAccountById(orphanId);
       }
     }
     // Hareketler taşındıktan sonra bakiyeleri yeniden hesapla.
