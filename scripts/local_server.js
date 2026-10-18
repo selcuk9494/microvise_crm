@@ -8486,9 +8486,25 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
   );
 }
 
+const AKINSOFT_BRIDGE_ENABLED = false;
+const AKINSOFT_BRIDGE_CLOSED_MESSAGE =
+  'SAP / Akınsoft bağlantısı kapatıldı. Kayıtlar yalnızca CRM’de tutulur; aktarım yapılmaz.';
+
 async function handleAkinsoftRequest(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return send(res, 204, {}, null);
+  if (!AKINSOFT_BRIDGE_ENABLED) {
+    return send(
+      res,
+      409,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({
+        ok: false,
+        disabled: true,
+        error: AKINSOFT_BRIDGE_CLOSED_MESSAGE,
+      }),
+    );
+  }
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   let pathname = url.pathname || '/';
   if (!pathname.startsWith('/api/akinsoft/')) {

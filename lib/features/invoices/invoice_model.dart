@@ -1,4 +1,5 @@
 import '../../core/format/app_date_time.dart';
+import '../e_invoice/akinsoft_bridge.dart';
 
 double _jsonDouble(dynamic value, {double fallback = 0}) {
   return _jsonNullableDouble(value) ?? fallback;
@@ -302,13 +303,17 @@ class Invoice {
     return false;
   }
 
-  /// Maliye, SAP veya tahsilatı olan fatura yanlışlıkla silinmesin / boşalmasın.
+  /// Maliye veya tahsilatı olan fatura yanlışlıkla silinmesin / boşalmasın.
   bool get isRecordProtected {
     if (isContentLocked) return true;
-    if (isLinkedToAkinsoft || akinsoftSyncStatusEffective == 'synced') {
-      return true;
+    if (kAkinsoftBridgeEnabled) {
+      if (isLinkedToAkinsoft || akinsoftSyncStatusEffective == 'synced') {
+        return true;
+      }
+      if (Invoice._looksLikeAkinsoftInvoiceNumber(erpInvoiceNumber)) {
+        return true;
+      }
     }
-    if (Invoice._looksLikeAkinsoftInvoiceNumber(erpInvoiceNumber)) return true;
     return false;
   }
 
@@ -325,10 +330,11 @@ class Invoice {
         eInvoiceStatus == 'prepared') {
       return 'Maliye / e-fatura kaydı var';
     }
-    if (isLinkedToAkinsoft ||
-        akinsoftSyncStatusEffective == 'synced' ||
-        Invoice._looksLikeAkinsoftInvoiceNumber(erpInvoiceNumber)) {
-      return 'SAP kaydı var';
+    if (kAkinsoftBridgeEnabled &&
+        (isLinkedToAkinsoft ||
+            akinsoftSyncStatusEffective == 'synced' ||
+            Invoice._looksLikeAkinsoftInvoiceNumber(erpInvoiceNumber))) {
+      return 'ERP kaydı var';
     }
     if (paidAmount > 0.009 ||
         isPaidViaPos ||

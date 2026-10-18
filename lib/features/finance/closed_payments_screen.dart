@@ -17,6 +17,7 @@ import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/app_phone_scroll.dart';
 import '../../core/ui/empty_state_card.dart';
+import '../e_invoice/akinsoft_bridge.dart';
 import '../e_invoice/pos_collections_tab.dart';
 import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
@@ -383,7 +384,9 @@ class _ClosedPaymentsScreenState extends ConsumerState<ClosedPaymentsScreen> {
       row.paymentMethod,
       description: row.description,
     );
-    final sapNote = row.isLinkedToAkinsoft && row.isLastInvoicePayment
+    final sapNote = !kAkinsoftBridgeEnabled
+        ? ''
+        : row.isLinkedToAkinsoft && row.isLastInvoicePayment
         ? '\n\nSAP’a yazılmışsa Wolvox tahsilatı da silinmeye çalışılır.'
         : row.isLinkedToAkinsoft
         ? '\n\nFaturada başka CRM ödemesi kaldığı için SAP kaydı silinmez.'
@@ -423,7 +426,8 @@ class _ClosedPaymentsScreenState extends ConsumerState<ClosedPaymentsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     String? sapError;
     try {
-      if (row.isLinkedToAkinsoft &&
+      if (kAkinsoftBridgeEnabled &&
+          row.isLinkedToAkinsoft &&
           row.isLastInvoicePayment &&
           (row.invoiceId ?? '').isNotEmpty) {
         try {

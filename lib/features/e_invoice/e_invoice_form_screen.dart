@@ -21,6 +21,7 @@ import '../invoices/invoice_providers.dart';
 import '../products/products_screen.dart'
     show issuedLinesProvider, issuedLicensesProvider;
 import '../work_orders/currency_service.dart';
+import 'akinsoft_bridge.dart';
 import 'e_invoice_screen.dart';
 
 const _invoiceCurrencies = ['TRY', 'USD', 'EUR', 'GBP'];
@@ -301,7 +302,11 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
 
   Widget? _sapCorrectionBanner() {
     final invoice = widget.initialInvoice;
-    if (invoice == null || !invoice.canReplaceAkinsoftRecord) return null;
+    if (!kAkinsoftBridgeEnabled ||
+        invoice == null ||
+        !invoice.canReplaceAkinsoftRecord) {
+      return null;
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Material(
@@ -972,7 +977,8 @@ class _EInvoiceFormScreenState extends ConsumerState<EInvoiceFormScreen> {
               if (issuedGmp3 > 0) '$issuedGmp3 GMP3',
             ].join(' ve ');
       var sapNote = '';
-      if (widget.initialInvoice?.canReplaceAkinsoftRecord == true) {
+      if (kAkinsoftBridgeEnabled &&
+          widget.initialInvoice?.canReplaceAkinsoftRecord == true) {
         try {
           final settings = await ref.read(eInvoiceSettingsProvider.future);
           final decoded = await postAkinsoftPushInvoices(

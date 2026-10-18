@@ -12,6 +12,7 @@ import '../../core/ui/app_card.dart';
 import '../billing/application_form_invoice_link.dart';
 import '../customers/customers_providers.dart';
 import '../work_orders/currency_service.dart';
+import '../e_invoice/akinsoft_bridge.dart';
 import '../e_invoice/e_invoice_screen.dart';
 import 'invoice_model.dart';
 import 'invoice_providers.dart';
@@ -639,7 +640,8 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
       }
 
       var sapNote = '';
-      if (widget.editInvoice?.canReplaceAkinsoftRecord == true) {
+      if (kAkinsoftBridgeEnabled &&
+          widget.editInvoice?.canReplaceAkinsoftRecord == true) {
         try {
           final settings = await ref.read(eInvoiceSettingsProvider.future);
           final decoded = await postAkinsoftPushInvoices(

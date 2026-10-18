@@ -26,6 +26,7 @@ import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../../core/ui/app_phosphor_icons.dart';
 import '../../core/ui/empty_state_card.dart';
+import 'akinsoft_bridge.dart';
 import '../customers/customer_detail_screen.dart';
 import '../customers/customer_model.dart';
 import '../customers/customers_providers.dart';
@@ -918,7 +919,7 @@ Future<String> cancelLinkedAkinsoftInvoice({
   required Map<String, dynamic> settings,
   required Invoice invoice,
 }) async {
-  if (!invoice.isLinkedToAkinsoft) return '';
+  if (!kAkinsoftBridgeEnabled || !invoice.isLinkedToAkinsoft) return '';
   try {
     final decoded = await postAkinsoftCancelInvoices(
       settings: settings,
@@ -1170,7 +1171,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
       seed?.method ?? (posPaid || widget.correcting ? 'pos' : 'cash'),
     );
     _closeInvoice = widget.correcting || posPaid || _isPosMethod;
-    _postToSap = widget.linkedCount > 0;
+    _postToSap = kAkinsoftBridgeEnabled && widget.linkedCount > 0;
     _checkNo = TextEditingController();
     _desc = TextEditingController(text: seed?.description ?? '');
     final amount = seed?.amount ?? widget.total;
@@ -1187,7 +1188,11 @@ class _CollectionDialogState extends State<_CollectionDialog> {
     _amount.addListener(_onMoneyChanged);
     _tlAmount.addListener(_onMoneyChanged);
     _commission.addListener(_onMoneyChanged);
-    _loadCatalog();
+    if (kAkinsoftBridgeEnabled) {
+      _loadCatalog();
+    } else {
+      _loading = false;
+    }
   }
 
   void _onMoneyChanged() {
@@ -1368,7 +1373,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
             children: [
               Text(
                 '${widget.invoices.length} fatura · $totalLabel'
-                '${widget.linkedCount > 0 ? ' · ${widget.linkedCount} SAP bağlı' : ''}'
+                '${kAkinsoftBridgeEnabled && widget.linkedCount > 0 ? ' · ${widget.linkedCount} ERP bağlı' : ''}'
                 '${widget.correcting ? ' · mevcut tahsilat değiştirilecek' : ''}',
               ),
               const Gap(12),
@@ -1424,7 +1429,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                   if (_isPosMethod) _closeInvoice = true;
                 }),
               ),
-              if (_method == 'cash') ...[
+              if (kAkinsoftBridgeEnabled && _method == 'cash') ...[
                 const Gap(10),
                 DropdownButtonFormField<String>(
                   key: ValueKey('kasa-${_kasas.length}-$kasaValue'),
@@ -1449,9 +1454,10 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                       : (v) => setState(() => _kasaAdi = v),
                 ),
               ],
-              if (_method == 'bank' ||
-                  _method == 'pos' ||
-                  _method == 'credit_card') ...[
+              if (kAkinsoftBridgeEnabled &&
+                  (_method == 'bank' ||
+                      _method == 'pos' ||
+                      _method == 'credit_card')) ...[
                 const Gap(10),
                 DropdownButtonFormField<String>(
                   key: ValueKey('bank-${banks.length}-$bankValue'),
@@ -1552,6 +1558,7 @@ class _CollectionDialogState extends State<_CollectionDialog> {
                 controller: _desc,
                 decoration: const InputDecoration(labelText: 'Açıklama'),
               ),
+              if (kAkinsoftBridgeEnabled)
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Akınsoft’ta da kapat'),
@@ -1691,13 +1698,17 @@ class EInvoiceScreen extends ConsumerWidget {
       _ => const _SettingsTab(),
     };
     final subtitle = switch (section) {
-      'stok' => 'Stok ve hizmet tanımları, SAP grup/alt grup ayrımı.',
+      'stok' => kAkinsoftBridgeEnabled
+          ? 'Stok ve hizmet tanımları, SAP grup/alt grup ayrımı.'
+          : 'Stok ve hizmet tanımları.',
       'cari' => 'Cari borç, tahsilat ve ödeme takibi.',
       'sanal_pos' =>
         'Ödeme linki ile sanal POS tahsilatları: ödendi, ödeme bekleniyor, hesaba yattı.',
       'tekrarlayan' =>
         'Kayıtlı firmalara fatura gününde fatura kesip ödeme linkini mail gönderin.',
-      _ => 'Maliye, SMTP mail ve SAP entegrasyon ayarları.',
+      _ => kAkinsoftBridgeEnabled
+          ? 'Maliye, SMTP mail ve SAP entegrasyon ayarları.'
+          : 'Maliye ve SMTP mail ayarları.',
     };
 
     return AppPageLayout(
@@ -2208,7 +2219,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       context,
       title: 'Cari etiketi',
       subtitle:
-          'Carinin üzerine yazılır; açık fatura listesinde ismin yanında durur. Maliye ve SAP’a gitmez. Örn. “Muhtarın arkadaşı”.',
+          'Carinin üzerine yazılır; açık fatura listesinde ismin yanında durur. Maliye’ye gitmez. Örn. “Muhtarın arkadaşı”.',
       initialNote: group.listNote,
       initialColor: group.listNoteColor,
     );
@@ -3476,9 +3487,12 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Henüz fatura yok. Yeni Fatura veya Fatura Çek ve Güncelle ile başlayın.',
+                        Text(
+                          kAkinsoftBridgeEnabled
+                              ? 'Henüz fatura yok. Yeni Fatura veya Fatura Çek ve Güncelle ile başlayın.'
+                              : 'Henüz fatura yok. Yeni Fatura ile başlayın.',
                         ),
+                        if (kAkinsoftBridgeEnabled) ...[
                         const Gap(12),
                         OutlinedButton.icon(
                           onPressed: _pullingAkinsoft
@@ -3498,15 +3512,19 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                 ),
                           label: const Text('Fatura Çek ve Güncelle'),
                         ),
+                        ],
                       ],
                     )
                   : Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Henüz fatura yok. Yeni Fatura veya Fatura Çek ve Güncelle ile başlayın.',
+                            kAkinsoftBridgeEnabled
+                                ? 'Henüz fatura yok. Yeni Fatura veya Fatura Çek ve Güncelle ile başlayın.'
+                                : 'Henüz fatura yok. Yeni Fatura ile başlayın.',
                           ),
                         ),
+                        if (kAkinsoftBridgeEnabled)
                         OutlinedButton.icon(
                           onPressed: _pullingAkinsoft
                               ? null
@@ -3742,6 +3760,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                       bulkManualUndo ? 'Geri Al' : 'Manuel',
                                     ),
                                   ),
+                                  if (kAkinsoftBridgeEnabled) ...[
                                   const Gap(8),
                                   OutlinedButton.icon(
                                     onPressed:
@@ -3776,6 +3795,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     ),
                                     label: const Text('SAP’a Gönder'),
                                   ),
+                                  ],
                                   const Gap(8),
                                   OutlinedButton.icon(
                                     onPressed:
@@ -4080,6 +4100,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                               : 'Manuel',
                                         ),
                                       ),
+                                      if (kAkinsoftBridgeEnabled) ...[
                                       OutlinedButton.icon(
                                         onPressed:
                                             selectedErpPushCount == 0 ||
@@ -4113,6 +4134,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                         ),
                                         label: const Text('SAP gönder'),
                                       ),
+                                      ],
                                       OutlinedButton.icon(
                                         onPressed:
                                             selectedSendableCount == 0 ||
@@ -4350,7 +4372,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           content: Text(
             locked == 1
                 ? 'Bu fatura ${selected.first.recordProtectionReason} nedeniyle pasife alınamaz. Kayıt korunur.'
-                : 'Seçilen faturalar Maliye, SAP veya tahsilat kaydı nedeniyle pasife alınamaz.',
+                : 'Seçilen faturalar Maliye veya tahsilat kaydı nedeniyle pasife alınamaz.',
           ),
         ),
       );
@@ -4369,7 +4391,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             children: [
               Text(
                 '${eligible.length} fatura kalıcı silinmez; Pasif filtresine alınır ve oradan geri getirilir.'
-                '${locked > 0 ? ' $locked fatura Maliye/SAP/tahsilat nedeniyle atlanır.' : ''}\n\n'
+                '${locked > 0 ? ' $locked fatura Maliye/tahsilat nedeniyle atlanır.' : ''}\n\n'
                 'Onay için PASİF yazın.',
               ),
               const Gap(12),
@@ -5331,11 +5353,11 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                 ? '${selected.first.invoiceNumberDisplay} faturasındaki '
                       'CRM tahsilatı (${money.format(selected.first.paidAmount)}) '
                       'geri alınacak; fatura tekrar açık görünecek.'
-                      '${linkedCount > 0 ? ' SAP’a yazılmışsa Wolvox tahsilatı da silinmeye çalışılır.' : ''}'
+                      '${kAkinsoftBridgeEnabled && linkedCount > 0 ? ' SAP’a yazılmışsa Wolvox tahsilatı da silinmeye çalışılır.' : ''}'
                       '\n\nKarttan otomatik iade yapılmaz.'
                 : '${selected.length} faturanın CRM tahsilatı '
                       '(${money.format(totalPaid)}) geri alınacak.'
-                      '${linkedCount > 0 ? ' $linkedCount fatura için SAP kaydı da silinmeye çalışılır.' : ''}'
+                      '${kAkinsoftBridgeEnabled && linkedCount > 0 ? ' $linkedCount fatura için SAP kaydı da silinmeye çalışılır.' : ''}'
                       '\n\nKarttan otomatik iade yapılmaz.',
           ),
           actions: [
@@ -5362,7 +5384,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     String? lastSapError;
     try {
       for (final invoice in selected) {
-        if (invoice.isLinkedToAkinsoft) {
+        if (kAkinsoftBridgeEnabled && invoice.isLinkedToAkinsoft) {
           try {
             await _postAkinsoftFinance('finance/collection', {
               'action': 'reverse',
@@ -5393,7 +5415,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       }
       if (!mounted) return crmOk == selected.length;
       if (notify) {
-        final sapPart = linkedCount == 0
+        final sapPart = !kAkinsoftBridgeEnabled || linkedCount == 0
             ? ''
             : (sapFail == 0
                   ? ' SAP: $sapOk geri alındı.'
@@ -5484,15 +5506,17 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       confirm: false,
       notify: false,
       manageBusy: false,
-      requireSap: true,
+      requireSap: kAkinsoftBridgeEnabled,
     );
     if (!reversed || !mounted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Tahsilat düzeltilemedi. SAP tahsilatı geri alınamadıysa '
-              'Wolvox kaydını kontrol edip tekrar deneyin.',
+              kAkinsoftBridgeEnabled
+                  ? 'Tahsilat düzeltilemedi. ERP tahsilatı geri alınamadıysa '
+                        'kaydı kontrol edip tekrar deneyin.'
+                  : 'Tahsilat düzeltilemedi. CRM kaydını kontrol edip tekrar deneyin.',
             ),
           ),
         );
@@ -5583,7 +5607,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           },
         );
         crmOk += 1;
-        if (!details.postToSap) continue;
+        if (!kAkinsoftBridgeEnabled || !details.postToSap) continue;
         try {
           await _postAkinsoftFinance('finance/collection', {
             'invoiceSourceId': invoice.akinsoftSourceId,
@@ -5613,17 +5637,17 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ref.invalidate(invoicesProvider);
       ref.invalidate(accountBalancesProvider);
       if (!mounted) return;
-      final sapPart = details.postToSap
+      final sapPart = kAkinsoftBridgeEnabled && details.postToSap
           ? (sapFail == 0
-                ? ' SAP: $sapOk kapandı.'
-                : ' SAP: $sapOk kapandı, $sapFail hata${lastSapError == null ? '.' : ': $lastSapError'}')
+                ? ' ERP: $sapOk kapandı.'
+                : ' ERP: $sapOk kapandı, $sapFail hata${lastSapError == null ? '.' : ': $lastSapError'}')
           : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             replacing
                 ? '$crmOk faturanın tahsilatı düzeltildi.$sapPart'
-                : '$crmOk fatura CRM’de işlendi.$sapPart',
+                : '$crmOk fatura kapatıldı / tahsil edildi.$sapPart',
           ),
         ),
       );
@@ -5891,7 +5915,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         content: Text(
           '${selected.length} fatura önce Maliye e-fatura sisteminden iptal edilecek, '
           'sonra CRM’de İptal durumuna alınacak.'
-          '${selected.any((invoice) => invoice.isLinkedToAkinsoft) ? ' SAP’ta kaydı olanlar Wolvox’ta da iptal işaretlenir.' : ''}\n\n'
+          '${kAkinsoftBridgeEnabled && selected.any((invoice) => invoice.isLinkedToAkinsoft) ? ' SAP’ta kaydı olanlar Wolvox’ta da iptal işaretlenir.' : ''}\n\n'
           'Bu işlem geri alınamaz.',
         ),
         actions: [
@@ -6703,7 +6727,12 @@ class _InvoiceFiltersCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 6,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: [incomingButton, pullButton, ?sapButton, ...fields],
+            children: [
+              incomingButton,
+              if (kAkinsoftBridgeEnabled) pullButton,
+              if (kAkinsoftBridgeEnabled) ?sapButton,
+              ...fields,
+            ],
           );
         },
       ),
@@ -7328,7 +7357,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             tone: _InvoiceActionTone.success,
             onPressed: _busy ? null : _openMaliyeLink,
           ),
-        if ((invoice.needsAkinsoftNumberSync ||
+        if (kAkinsoftBridgeEnabled &&
+            (invoice.needsAkinsoftNumberSync ||
                 !invoice.isLinkedToAkinsoft ||
                 invoice.canReplaceAkinsoftRecord) &&
             invoice.isActive &&
@@ -7402,9 +7432,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               child: Text('Hatırlatıcı not'),
             ),
             if (widget.onCollect != null)
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'collect',
-                child: Text('Tahsilat (CRM + Akınsoft)'),
+                child: Text(
+                  kAkinsoftBridgeEnabled
+                      ? 'Tahsilat (CRM + Akınsoft)'
+                      : 'Tahsilat',
+                ),
               ),
             if (widget.onCorrectCollect != null)
               const PopupMenuItem(
@@ -7549,7 +7583,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
           tone: _InvoiceActionTone.success,
           onPressed: _busy ? null : _openMaliyeLink,
         ),
-      if ((invoice.needsAkinsoftNumberSync ||
+      if (kAkinsoftBridgeEnabled &&
+          (invoice.needsAkinsoftNumberSync ||
               !invoice.isLinkedToAkinsoft ||
               invoice.canReplaceAkinsoftRecord) &&
           invoice.isActive &&
@@ -7623,9 +7658,13 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
             child: Text('Hatırlatıcı not'),
           ),
           if (widget.onCollect != null)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'collect',
-              child: Text('Tahsilat (CRM + Akınsoft)'),
+              child: Text(
+                kAkinsoftBridgeEnabled
+                    ? 'Tahsilat (CRM + Akınsoft)'
+                    : 'Tahsilat',
+              ),
             ),
           if (widget.onCorrectCollect != null)
             const PopupMenuItem(
@@ -7932,20 +7971,21 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                       label: _eInvoiceStatusLabel(invoice),
                       tone: _eInvoiceStatusTone(invoice),
                     ),
-                    Tooltip(
-                      message:
-                          invoice.akinsoftSyncStatusEffective == 'error' &&
-                              (invoice.akinsoftSyncError?.trim().isNotEmpty ??
-                                  false)
-                          ? invoice.akinsoftSyncError!.trim()
-                          : _akinsoftSyncStatusLabel(invoice),
-                      waitDuration: const Duration(milliseconds: 250),
-                      child: AppBadge(
-                        dense: true,
-                        label: _akinsoftSyncStatusLabel(invoice),
-                        tone: _akinsoftSyncStatusTone(invoice),
+                    if (kAkinsoftBridgeEnabled)
+                      Tooltip(
+                        message:
+                            invoice.akinsoftSyncStatusEffective == 'error' &&
+                                (invoice.akinsoftSyncError?.trim().isNotEmpty ??
+                                    false)
+                            ? invoice.akinsoftSyncError!.trim()
+                            : _akinsoftSyncStatusLabel(invoice),
+                        waitDuration: const Duration(milliseconds: 250),
+                        child: AppBadge(
+                          dense: true,
+                          label: _akinsoftSyncStatusLabel(invoice),
+                          tone: _akinsoftSyncStatusTone(invoice),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -8178,7 +8218,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                         label: statusLabel,
                         tone: statusTone,
                       ),
-                      if (syncError)
+                      if (kAkinsoftBridgeEnabled && syncError)
                         Tooltip(
                           message: invoice.akinsoftSyncError!.trim(),
                           child: AppBadge(
@@ -8414,9 +8454,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         content: Text(
           onMaliye
               ? '${invoice.invoiceNumberDisplay} Maliye e-fatura sisteminden iptal edilecek, ardından CRM’de İptal olacak.'
-                    '${invoice.isLinkedToAkinsoft ? ' SAP kaydı da Wolvox’ta iptal işaretlenir.' : ''}\n\nBu işlem geri alınamaz.'
+                    '${kAkinsoftBridgeEnabled && invoice.isLinkedToAkinsoft ? ' SAP kaydı da Wolvox’ta iptal işaretlenir.' : ''}\n\nBu işlem geri alınamaz.'
               : '${invoice.invoiceNumberDisplay} CRM’de iptal edilecek. Maliye’ye gönderilmemiş.'
-                    '${invoice.isLinkedToAkinsoft ? ' SAP kaydı da Wolvox’ta iptal işaretlenir.' : ''}',
+                    '${kAkinsoftBridgeEnabled && invoice.isLinkedToAkinsoft ? ' SAP kaydı da Wolvox’ta iptal işaretlenir.' : ''}',
         ),
         actions: [
           TextButton(
@@ -8631,7 +8671,7 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       context,
       title: 'Hatırlatıcı not',
       subtitle:
-          'Bu faturanın listesinde görünür. Cari kaydından bağımsızdır; Maliye ve SAP’a gitmez. Örn. “Muhtarın arkadaşı”.',
+          'Bu faturanın listesinde görünür. Cari kaydından bağımsızdır; Maliye’ye gitmez. Örn. “Muhtarın arkadaşı”.',
       initialNote: invoice.listNote,
       initialColor: invoice.listNoteColor,
     );
@@ -9781,6 +9821,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                   ),
                 ),
                 const Gap(10),
+                if (kAkinsoftBridgeEnabled)
                 FilledButton.tonalIcon(
                   onPressed: _pullingErp ? null : _pullAkinsoftProducts,
                   icon: _pullingErp
@@ -11884,11 +11925,15 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'SAP MSSQL / VPN Bağlantısı',
+                              kAkinsoftBridgeEnabled
+                                  ? 'SAP MSSQL / VPN Bağlantısı'
+                                  : 'Eski ERP bağlantısı (kapalı)',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             Text(
-                              'WOLVOX MSSQL veritabanından fatura, cari ve stok senkronu için bağlantı bilgileri.',
+                              kAkinsoftBridgeEnabled
+                                  ? 'WOLVOX MSSQL veritabanından fatura, cari ve stok senkronu için bağlantı bilgileri.'
+                                  : 'Bağlantı kapatıldı. Fatura, cari ve finans aktarımı yapılmaz; kayıtlar CRM’de kalır.',
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
@@ -11990,7 +12035,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       OutlinedButton.icon(
-                        onPressed: _testingAkinsoft
+                        onPressed: !kAkinsoftBridgeEnabled || _testingAkinsoft
                             ? null
                             : _testAkinsoftConnection,
                         icon: _testingAkinsoft
@@ -12006,7 +12051,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                       ),
                       const Gap(10),
                       OutlinedButton.icon(
-                        onPressed: _analyzingAkinsoft
+                        onPressed: !kAkinsoftBridgeEnabled || _analyzingAkinsoft
                             ? null
                             : _analyzeAkinsoftTables,
                         icon: _analyzingAkinsoft
@@ -12022,7 +12067,9 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                       ),
                       const Gap(10),
                       OutlinedButton.icon(
-                        onPressed: _pullingAkinsoft ? null : _pullAkinsoftData,
+                        onPressed: !kAkinsoftBridgeEnabled || _pullingAkinsoft
+                            ? null
+                            : _pullAkinsoftData,
                         icon: _pullingAkinsoft
                             ? const SizedBox(
                                 width: 16,
@@ -12039,7 +12086,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                       ),
                       const Gap(10),
                       OutlinedButton.icon(
-                        onPressed: _bulkMatchingCustomers
+                        onPressed:
+                            !kAkinsoftBridgeEnabled || _bulkMatchingCustomers
                             ? null
                             : _bulkMatchAkinsoftCustomers,
                         icon: _bulkMatchingCustomers

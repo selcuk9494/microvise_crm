@@ -14,6 +14,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_card.dart';
 import '../../core/ui/app_phosphor_icons.dart';
 import '../../core/ui/empty_state_card.dart';
+import 'akinsoft_bridge.dart';
 import '../invoices/invoice_model.dart';
 import '../invoices/invoice_providers.dart';
 
@@ -614,8 +615,8 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
         builder: (context) => AlertDialog(
           title: const Text('İşareti geri al'),
           content: Text(
-            row.sapSettledAt != null
-                ? 'Hesaba yattı işareti kaldırılacak. SAP tahsilatı da geri alınacak.'
+            kAkinsoftBridgeEnabled && row.sapSettledAt != null
+                ? 'Hesaba yattı işareti kaldırılacak. ERP tahsilatı da geri alınacak.'
                 : 'Hesaba yattı işareti kaldırılacak.',
           ),
           actions: [
@@ -634,7 +635,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
       await _applySettle(
         row,
         settled: false,
-        reverseSap: row.sapSettledAt != null,
+        reverseSap: kAkinsoftBridgeEnabled && row.sapSettledAt != null,
       );
       return;
     }
@@ -665,7 +666,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      if (reverseSap) {
+      if (kAkinsoftBridgeEnabled && reverseSap) {
         for (final invoice in row.sapInvoices) {
           await _postAkinsoftFinance('finance/collection', {
             'action': 'reverse',
@@ -693,7 +694,10 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
           },
         );
       }
-      if (settled && details != null && details.postToSap) {
+      if (kAkinsoftBridgeEnabled &&
+          settled &&
+          details != null &&
+          details.postToSap) {
         try {
           sapPosted = await _postSapPosCollection(row, details);
         } catch (error) {
@@ -1741,7 +1745,7 @@ class _PosCollectionsTabState extends ConsumerState<PosCollectionsTab> {
                             ],
                             if (row.listStatus == 'settled') ...[
                               const Gap(4),
-                              if (row.needsSapPost)
+                              if (kAkinsoftBridgeEnabled && row.needsSapPost)
                                 TextButton(
                                   onPressed: _busy
                                       ? null
@@ -1876,6 +1880,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
   double get _bankNet =>
       (_grossAmount - _commissionAmount).clamp(0, double.infinity);
   bool get _hasSap => widget.row.sapInvoices.isNotEmpty;
+  bool get _postSap => kAkinsoftBridgeEnabled && _hasSap;
 
   @override
   void initState() {
@@ -1898,7 +1903,11 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
     _gross.addListener(_onGrossChanged);
     _rate.addListener(_onRateChanged);
     _commission.addListener(_onCommissionChanged);
-    _loadBanks();
+    if (_postSap) {
+      _loadBanks();
+    } else {
+      _loadingBanks = false;
+    }
   }
 
   @override
@@ -2034,7 +2043,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
       );
       return;
     }
-    if (_hasSap && (_bankAccountId ?? '').isEmpty) {
+    if (_postSap && (_bankAccountId ?? '').isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -2052,7 +2061,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
         commission: double.parse(commission.toStringAsFixed(2)),
         rate: _rateAmount,
         kpbAmount: gross,
-        postToSap: _hasSap,
+        postToSap: _postSap,
         bankAccountId: _bankAccountId,
       ),
     );
@@ -2132,7 +2141,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
                 '${_commissionAmount > 0 ? ' · komisyon ${_commissionAmount.toStringAsFixed(2).replaceAll('.', ',')} TL' : ''}.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              if (_hasSap) ...[
+              if (_postSap) ...[
                 const Gap(12),
                 DropdownButtonFormField<String>(
                   key: ValueKey('settle-bank-${banks.length}-$bankValue'),
@@ -2168,7 +2177,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: Text(
-                    'Bu fatura SAP’a bağlı değil. Yalnızca CRM’de hesaba yattı işaretlenir.',
+                    'Yalnızca CRM’de hesaba yattı işaretlenir.',
                     style: Theme.of(
                       context,
                     ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
@@ -2188,7 +2197,7 @@ class _PosSettleDialogState extends State<_PosSettleDialog> {
           child: Text(
             widget.sapOnly
                 ? 'SAP’a yaz'
-                : (_hasSap ? 'Hesaba yattı ve SAP’a yaz' : 'Hesaba yattı'),
+                : (_postSap ? 'Hesaba yattı ve SAP’a yaz' : 'Hesaba yattı'),
           ),
         ),
       ],
