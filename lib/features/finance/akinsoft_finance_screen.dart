@@ -15,7 +15,7 @@ import '../../core/ui/app_badge.dart';
 import '../../core/ui/app_dense_list.dart';
 import '../../core/ui/app_page_layout.dart';
 import '../e_invoice/akinsoft_bridge.dart';
-import 'finance_open_link.dart';
+import '../e_invoice/e_invoice_screen.dart' show eInvoiceSettingsProvider;
 
 Uri _akinsoftFinanceUri(String path) {
   var normalizedPath = path.startsWith('/') ? path.substring(1) : path;
@@ -420,19 +420,8 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     _pulledAt = null;
   }
 
-  Future<void> _loadLocal() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-      _status = 'CRM finans kayıtları yükleniyor…';
-    });
-    await _loadCrmFinance();
+  Future<void> _finishCrmView({String? status, String? error}) async {
     if (!mounted) return;
-    // Bellekte kalan son ERP bakiyelerini CRM’ye açılış bakiyesi olarak al.
-    if (_accounts.isNotEmpty) {
-      await _migrateSapBalancesIntoCrm();
-      if (!mounted) return;
-    }
     final q = GoRouterState.of(context).uri.queryParameters;
     setState(() {
       _clearSapCaches();
@@ -440,8 +429,9 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           ? q['hesap']!.trim()
           : _selectedAccountKey;
       _pendingMovementId = q['hareket']?.trim();
-      _status =
-          '${_crmBanks.length} banka, ${_crmAccounts.length} hesap · bakiyeler CRM hareketleriyle güncellenir';
+      _status = status ??
+          '${_visibleBanks().length} banka, ${_visibleAccounts().length} hesap · bakiyeler CRM’de';
+      _error = error;
       _loading = false;
     });
     final pending = _pendingMovementId;
@@ -453,7 +443,31 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     }
   }
 
+  Future<void> _loadLocal() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _status = 'CRM finans kayıtları yükleniyor…';
+    });
+    await _loadCrmFinance();
+    if (!mounted) return;
+    if (_accounts.isNotEmpty) {
+      await _migrateSapBalancesIntoCrm();
+      if (!mounted) return;
+    }
+    // Yazım kapalı ama çekim açıksa ERP’den CRM’ye bir kez aktar.
+    if (!kAkinsoftBridgeEnabled && kAkinsoftBridgePullEnabled) {
+      await _importFromErp(showErrors: false);
+      return;
+    }
+    await _finishCrmView();
+  }
+
   Future<void> _pull() async {
+    if (!kAkinsoftBridgeEnabled && kAkinsoftBridgePullEnabled) {
+      await _importFromErp(showErrors: true);
+      return;
+    }
     if (!kAkinsoftBridgeEnabled) {
       await _loadLocal();
       return;
@@ -461,10 +475,16 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _status = 'SAP finans verileri çekiliyor…';
+      _status = 'ERP finans verileri çekiliyor…';
     });
     try {
-      final data = await _post('finance/pull');
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
+      final data = await _post('finance/pull', {
+        ...settings,
+        'movementLimit': 500,
+        'transferLimit': 200,
+        'masrafLimit': 120,
+      });
       await _loadCrmFinance();
       if (!mounted) return;
       final q = GoRouterState.of(context).uri.queryParameters;
@@ -498,7 +518,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
             q['hesap']?.trim().isNotEmpty == true ? q['hesap']!.trim() : _selectedAccountKey;
         _pendingMovementId = q['hareket']?.trim();
         _status =
-            'SAP çekildi (yazım kapalı). ${_banks.length} banka, ${_accounts.length} hesap · işlemler CRM günlüğünde';
+            'ERP çekildi. ${_banks.length} banka, ${_accounts.length} hesap';
         _loading = false;
       });
       final pending = _pendingMovementId;
@@ -514,8 +534,348 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       setState(() {
         _loading = false;
         _error = error.toString();
-        _status = 'SAP çekilemedi; CRM kayıtları gösteriliyor.';
+        _status = 'ERP çekilemedi; CRM kayıtları gösteriliyor.';
       });
+    }
+  }
+
+  Future<void> _importFromErp({required bool showErrors}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _status = 'ERP’den CRM’ye aktarılıyor…';
+    });
+    try {
+      final settings = await ref.read(eInvoiceSettingsProvider.future);
+      final data = await _post('finance/pull', {
+        ...settings,
+        'movementLimit': 500,
+        'transferLimit': 200,
+        'masrafLimit': 120,
+      });
+      await _importErpSnapshotIntoCrm(data);
+      await _loadCrmFinance();
+      if (!mounted) return;
+      await _finishCrmView(
+        status:
+            'ERP aktarıldı → CRM: ${_visibleBanks().length} banka, ${_visibleAccounts().length} hesap, ${_crmTransactions.length} hareket',
+      );
+    } catch (error) {
+      await _loadCrmFinance();
+      if (!mounted) return;
+      await _finishCrmView(
+        status:
+            'CRM kayıtları gösteriliyor (${_visibleBanks().length} banka, ${_visibleAccounts().length} hesap)',
+        error: showErrors ? error.toString() : null,
+      );
+    }
+  }
+
+  Future<void> _importErpSnapshotIntoCrm(Map<String, dynamic> data) async {
+    final api = ref.read(apiClientProvider);
+    if (api == null) return;
+
+    final banks = ((data['banks'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final accounts = ((data['accounts'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final kasas = ((data['kasas'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final movements = ((data['movements'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final transfers = ((data['transfers'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final masraf = ((data['masraf'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+
+    for (final b in banks) {
+      final sourceId = _text(b['sourceId']);
+      if (sourceId.isEmpty) continue;
+      String? crmId;
+      for (final existing in _crmBanks) {
+        if (_text(existing['akinsoft_source_id']) == sourceId) {
+          crmId = _text(existing['id']);
+          break;
+        }
+      }
+      await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_banks',
+          'values': {
+            if (crmId != null && crmId.isNotEmpty) 'id': crmId,
+            'name': _text(b['bankName']).isEmpty ? 'Banka' : _text(b['bankName']),
+            'branch': _text(b['branch']),
+            'phone': _text(b['phone']),
+            'address': _text(b['address']),
+            'akinsoft_source_id': sourceId,
+            'is_active': true,
+          },
+        },
+      );
+    }
+    await _loadCrmFinance();
+
+    final accountIdBySap = <String, String>{};
+    for (final a in accounts) {
+      final sourceId = _text(a['sourceId']);
+      if (sourceId.isEmpty) continue;
+      final related = movements.where((m) => _text(m['accountSourceId']) == sourceId);
+      var net = 0.0;
+      for (final m in related) {
+        net += _num(m['amount']);
+      }
+      final sapBalance = _num(a['balance']);
+      final opening = sapBalance - net;
+      String? crmId;
+      var existingOpening = 0.0;
+      for (final existing in _crmAccounts) {
+        if (_text(existing['akinsoft_source_id']) == sourceId) {
+          crmId = _text(existing['id']);
+          existingOpening = _num(existing['opening_balance']);
+          break;
+        }
+      }
+      final values = <String, dynamic>{
+        if (crmId != null && crmId.isNotEmpty) 'id': crmId,
+        'name': _text(a['label']).isEmpty
+            ? (_text(a['tanimi']).isEmpty ? 'Hesap' : _text(a['tanimi']))
+            : _text(a['label']),
+        'account_type': 'bank',
+        'bank_name': _text(a['bankName']),
+        'account_no': _text(a['hesapNo']),
+        'iban': _text(a['iban']),
+        'currency': _text(a['currency']).isEmpty ? 'TRY' : _text(a['currency']),
+        'akinsoft_source_id': sourceId,
+        'akinsoft_bank_source_id': _text(a['bankSourceId']),
+        'is_active': a['isActive'] != false,
+      };
+      if (existingOpening.abs() < 0.009) {
+        values['opening_balance'] = opening;
+        values['current_balance'] = sapBalance;
+      }
+      final result = await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_accounts',
+          'values': values,
+        },
+      );
+      final id = _text(result['id']).isEmpty ? crmId : _text(result['id']);
+      if (id != null && id.isNotEmpty) accountIdBySap[sourceId] = id;
+    }
+
+    for (final k in kasas) {
+      final sourceId = _text(k['sourceId']);
+      final name = _text(k['kasaAdi']);
+      if (name.isEmpty) continue;
+      String? crmId;
+      for (final existing in _crmAccounts) {
+        if (_text(existing['akinsoft_source_id']) == sourceId ||
+            (_text(existing['account_type']) == 'cash' &&
+                _text(existing['name']) == name)) {
+          crmId = _text(existing['id']);
+          break;
+        }
+      }
+      final result = await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_accounts',
+          'values': {
+            if (crmId != null && crmId.isNotEmpty) 'id': crmId,
+            'name': name,
+            'account_type': 'cash',
+            'currency': 'TRY',
+            'notes': _text(k['aciklama1']),
+            'opening_balance': _num(k['balance']),
+            'akinsoft_source_id': sourceId.isEmpty ? null : sourceId,
+            'is_active': k['isActive'] != false,
+          },
+        },
+      );
+      final id = _text(result['id']).isEmpty ? crmId : _text(result['id']);
+      if (id != null && id.isNotEmpty && sourceId.isNotEmpty) {
+        accountIdBySap[sourceId] = id;
+      }
+    }
+    await _loadCrmFinance();
+    for (final a in _crmAccounts) {
+      final sap = _text(a['akinsoft_source_id']);
+      if (sap.isNotEmpty) accountIdBySap[sap] = _text(a['id']);
+    }
+
+    final existingSapTx = <String>{
+      for (final t in _crmTransactions)
+        if (_text(t['akinsoft_source_id']).isNotEmpty) _text(t['akinsoft_source_id']),
+    };
+
+    Future<void> writeMovement(Map<String, dynamic> m, {String type = 'manual'}) async {
+      final sapTxId = _text(m['sourceId']);
+      if (sapTxId.isEmpty || existingSapTx.contains(sapTxId)) return;
+      final accountSap = _text(m['accountSourceId']);
+      var accountId = accountIdBySap[accountSap];
+      if (accountId == null || accountId.isEmpty) {
+        for (final a in accounts) {
+          if (_text(a['sourceId']) == accountSap) {
+            accountId = await _ensureCrmAccount(a);
+            break;
+          }
+        }
+      }
+      if (accountId == null || accountId.isEmpty) return;
+      final amount = _num(m['amount']).abs();
+      if (amount < 0.009) return;
+      final direction = _text(m['direction']).isEmpty
+          ? (_num(m['amount']) < 0 ? 'out' : 'in')
+          : _text(m['direction']);
+      final date = DateTime.tryParse(_text(m['date'])) ?? DateTime.now();
+      await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_transactions',
+          'values': {
+            'account_id': accountId,
+            'transaction_date': DateFormat('yyyy-MM-dd').format(date),
+            'direction': direction == 'out' ? 'out' : 'in',
+            'transaction_type': type,
+            'payment_method': 'bank',
+            'amount': amount,
+            'currency': _text(m['currency']).isEmpty ? 'TRY' : _text(m['currency']),
+            'description': _text(m['description']),
+            'reference_no': _text(m['evrakNo']),
+            'source': 'erp_import',
+            'akinsoft_source_id': sapTxId,
+            'is_active': true,
+          },
+        },
+      );
+      existingSapTx.add(sapTxId);
+    }
+
+    for (final m in movements) {
+      await writeMovement(m, type: 'manual');
+    }
+    for (final t in transfers) {
+      // Transfer satırları hareketlerde de olabilir; yoksa özet kayıt.
+      final sapTxId = _text(t['sourceId']);
+      if (sapTxId.isEmpty || existingSapTx.contains(sapTxId)) continue;
+      final fromId = accountIdBySap[_text(t['fromAccountId'])];
+      final toId = accountIdBySap[_text(t['toAccountId'])];
+      final amount = _num(t['amount']).abs();
+      if (amount < 0.009) continue;
+      final date = DateTime.tryParse(_text(t['date'] ?? t['tarihi'])) ?? DateTime.now();
+      final dateStr = DateFormat('yyyy-MM-dd').format(date);
+      final desc = _text(t['description'] ?? t['aciklama']);
+      if (fromId != null && fromId.isNotEmpty) {
+        await api.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'finance_transactions',
+            'values': {
+              'account_id': fromId,
+              'transaction_date': dateStr,
+              'direction': 'out',
+              'transaction_type': 'transfer',
+              'payment_method': 'bank',
+              'amount': amount,
+              'currency': _text(t['currency']).isEmpty ? 'TRY' : _text(t['currency']),
+              'description': desc.isEmpty ? 'Transfer' : desc,
+              'reference_no': _text(t['evrakNo']),
+              'source': 'erp_import',
+              'akinsoft_source_id': sapTxId,
+              'is_active': true,
+            },
+          },
+        );
+        existingSapTx.add(sapTxId);
+      }
+      final pairId = _text(t['pairSourceId']);
+      if (toId != null && toId.isNotEmpty && pairId.isNotEmpty && !existingSapTx.contains(pairId)) {
+        await api.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'finance_transactions',
+            'values': {
+              'account_id': toId,
+              'transaction_date': dateStr,
+              'direction': 'in',
+              'transaction_type': 'transfer',
+              'payment_method': 'bank',
+              'amount': amount,
+              'currency': _text(t['currency']).isEmpty ? 'TRY' : _text(t['currency']),
+              'description': desc.isEmpty ? 'Transfer' : desc,
+              'reference_no': _text(t['evrakNo']),
+              'source': 'erp_import',
+              'akinsoft_source_id': pairId,
+              'is_active': true,
+            },
+          },
+        );
+        existingSapTx.add(pairId);
+      }
+    }
+    for (final m in masraf) {
+      final sapTxId = 'masraf-${_text(m['sourceId'])}';
+      if (_text(m['sourceId']).isEmpty || existingSapTx.contains(sapTxId)) continue;
+      final payAccount = _text(m['bankAccountId'] ?? m['accountSourceId']);
+      var accountId = accountIdBySap[payAccount];
+      if (accountId == null || accountId.isEmpty) {
+        // kasa adı ile eşle
+        final kasaAdi = _text(m['kasaAdi'] ?? m['payLabel']);
+        for (final a in _crmAccounts) {
+          if (_text(a['account_type']) == 'cash' && _text(a['name']) == kasaAdi) {
+            accountId = _text(a['id']);
+            break;
+          }
+        }
+      }
+      if (accountId == null || accountId.isEmpty) continue;
+      final amount = _num(m['total'] ?? m['amount']).abs();
+      if (amount < 0.009) continue;
+      final date = DateTime.tryParse(_text(m['date'] ?? m['tarihi'])) ?? DateTime.now();
+      await api.postJson(
+        '/mutate',
+        body: {
+          'op': 'upsert',
+          'table': 'finance_transactions',
+          'values': {
+            'account_id': accountId,
+            'transaction_date': DateFormat('yyyy-MM-dd').format(date),
+            'direction': 'out',
+            'transaction_type': 'masraf',
+            'payment_method': _text(m['payMethod']).isEmpty ? 'cash' : _text(m['payMethod']),
+            'amount': amount,
+            'currency': 'TRY',
+            'description': _text(m['description'] ?? m['cariUnvan']).isEmpty
+                ? 'Masraf ${_text(m['faturaNo'])}'
+                : _text(m['description'] ?? m['cariUnvan']),
+            'reference_no': _text(m['faturaNo'] ?? m['evrakNo']),
+            'source': 'erp_import',
+            'akinsoft_source_id': sapTxId,
+            'is_active': true,
+          },
+        },
+      );
+      existingSapTx.add(sapTxId);
     }
   }
 
@@ -918,9 +1278,15 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         OutlinedButton.icon(
           onPressed: _loading
               ? null
-              : (kAkinsoftBridgeEnabled ? _pull : _loadLocal),
+              : (kAkinsoftBridgePullEnabled || kAkinsoftBridgeEnabled
+                    ? _pull
+                    : _loadLocal),
           icon: const Icon(LucideIcons.refreshCw, size: 18),
-          label: Text(kAkinsoftBridgeEnabled ? 'SAP’tan Çek' : 'Yenile'),
+          label: Text(
+            !kAkinsoftBridgeEnabled && kAkinsoftBridgePullEnabled
+                ? 'ERP’den Aktar'
+                : (kAkinsoftBridgeEnabled ? 'ERP’den Çek' : 'Yenile'),
+          ),
         ),
         if (widget.section == 'bankalar')
           FilledButton.icon(
@@ -1016,7 +1382,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         );
       case 'masraf':
         return _MasrafList(
-          items: kAkinsoftBridgeEnabled ? _masraf : const [],
+          items: kAkinsoftBridgeEnabled ? _masraf : _visibleMasraf(),
           onDelete: (row) => _mutate(
             'finance/masraf',
             {'action': 'delete', 'sourceId': row['sourceId']},
@@ -1048,7 +1414,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
   }
 
   List<Map<String, dynamic>> _crmBankRows() {
-    return _crmBanks
+    final fromTable = _crmBanks
         .map(
           (b) => {
             ...b,
@@ -1060,6 +1426,24 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
           },
         )
         .toList();
+    if (fromTable.isNotEmpty) return fromTable;
+    // finance_banks boşsa hesaplardaki banka adlarından üret.
+    final names = <String>{};
+    for (final a in _crmAccounts) {
+      if (_text(a['account_type']) == 'cash') continue;
+      final name = _text(a['bank_name']);
+      if (name.isNotEmpty) names.add(name);
+    }
+    return [
+      for (final name in names)
+        {
+          'id': 'derived-$name',
+          'sourceId': 'derived-$name',
+          'name': name,
+          'bankName': name,
+          'origin': 'crm',
+        },
+    ];
   }
 
   List<Map<String, dynamic>> _crmAccountRows({String? accountType}) {
@@ -1135,6 +1519,31 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       return db.compareTo(da);
     });
     return transfers;
+  }
+
+  List<Map<String, dynamic>> _visibleMasraf() {
+    final items = _crmTransactions
+        .where((t) => _text(t['transaction_type']) == 'masraf')
+        .map((t) {
+          final amount = _num(t['amount']).abs();
+          return {
+            ...t,
+            'sourceId': _text(t['id']),
+            'date': t['transaction_date'],
+            'faturaNo': t['reference_no'],
+            'cariUnvan': t['description'],
+            'total': amount,
+            'amount': amount,
+            'origin': 'crm',
+          };
+        })
+        .toList();
+    items.sort((a, b) {
+      final da = DateTime.tryParse(_text(a['date'])) ?? DateTime(1970);
+      final db = DateTime.tryParse(_text(b['date'])) ?? DateTime(1970);
+      return db.compareTo(da);
+    });
+    return items;
   }
 
   Future<void> _showMovementDialog({Map<String, dynamic>? existing}) async {
@@ -2199,18 +2608,6 @@ class _BanksAccountsPane extends StatelessWidget {
     return _text(row['id']);
   }
 
-  String _accountHref(Map<String, dynamic> row) {
-    return '/finans/akinsoft/bankalar?hesap=${Uri.encodeQueryComponent(_keyOf(row))}';
-  }
-
-  String _movementHref(Map<String, dynamic> row) {
-    final hesap = _text(row['accountSourceId']).isEmpty
-        ? (selectedAccountKey ?? '')
-        : _text(row['accountSourceId']);
-    final id = _text(row['id']).isEmpty ? _text(row['sourceId']) : _text(row['id']);
-    return '/finans/akinsoft/bankalar?hesap=${Uri.encodeQueryComponent(hesap)}&hareket=${Uri.encodeQueryComponent(id)}';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -2250,31 +2647,39 @@ class _BanksAccountsPane extends StatelessWidget {
             itemCount: accounts.length,
             itemBuilder: (context, index) {
               final row = accounts[index];
-              final active = row['isActive'] != false;
+              final active =
+                  row['isActive'] != false && row['is_active'] != false;
               final selected = selectedAccountKey == _keyOf(row);
-              return FinanceOpenLink(
-                location: _accountHref(row),
-                onTap: () => onSelectAccount(_keyOf(row)),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? AppTheme.primary.withValues(alpha: 0.08)
-                        : null,
-                  ),
-                  child: _DenseRow(
-                    index: index,
-                    title: _text(row['label'] ?? row['name']),
-                    subtitle:
-                        '${_text(row['currency'])} · bakiye ${_money(row['balance'] as num? ?? row['current_balance'] as num? ?? 0)}',
-                    trailing: AppBadge(
-                      label: active ? 'Açık' : 'Kapalı',
-                      tone: active
-                          ? AppBadgeTone.success
-                          : AppBadgeTone.neutral,
-                      dense: true,
+              final title = _text(row['label']).isEmpty
+                  ? _text(row['name'])
+                  : _text(row['label']);
+              final balanceRaw = row['balance'] ?? row['current_balance'] ?? 0;
+              final balance = balanceRaw is num
+                  ? balanceRaw.toDouble()
+                  : double.tryParse('$balanceRaw'.replaceAll(',', '.')) ?? 0;
+              return Material(
+                color: selected
+                    ? AppTheme.primary.withValues(alpha: 0.08)
+                    : Colors.transparent,
+                child: InkWell(
+                  onTap: () => onSelectAccount(_keyOf(row)),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _DenseRow(
+                      index: index,
+                      title: title.isEmpty ? 'Hesap' : title,
+                      subtitle:
+                          '${_text(row['currency']).isEmpty ? 'TRY' : _text(row['currency'])} · bakiye ${_money(balance)}',
+                      trailing: AppBadge(
+                        label: active ? 'Açık' : 'Kapalı',
+                        tone: active
+                            ? AppBadgeTone.success
+                            : AppBadgeTone.neutral,
+                        dense: true,
+                      ),
+                      onEdit: () => onEditAccount(row),
+                      onDelete: () => onDeleteAccount(row),
                     ),
-                    onEdit: () => onEditAccount(row),
-                    onDelete: () => onDeleteAccount(row),
                   ),
                 ),
               );
@@ -2294,28 +2699,36 @@ class _BanksAccountsPane extends StatelessWidget {
             itemCount: movements.length,
             itemBuilder: (context, index) {
               final row = movements[index];
-              final amount = row['amount'] as num? ?? 0;
+              final amountRaw = row['amount'];
+              final amount = amountRaw is num
+                  ? amountRaw.toDouble()
+                  : double.tryParse('$amountRaw'.replaceAll(',', '.')) ?? 0;
               final inbound = amount >= 0;
-              return FinanceOpenLink(
-                location: _movementHref(row),
-                onTap: () => onOpenMovement(row),
-                child: _DenseRow(
-                  index: index,
-                  title:
-                      '${inbound ? '+' : '−'}${_money(amount.abs())}  ${_text(row['currency'])}',
-                  subtitle: [
-                    _date(row['date']),
-                    _text(row['evrakNo']),
-                    _text(row['description']),
-                  ].where((p) => p.trim().isNotEmpty).join(' · '),
-                  trailing: AppBadge(
-                    label: inbound ? 'Giriş' : 'Çıkış',
-                    tone: inbound
-                        ? AppBadgeTone.success
-                        : AppBadgeTone.neutral,
-                    dense: true,
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => onOpenMovement(row),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _DenseRow(
+                      index: index,
+                      title:
+                          '${inbound ? '+' : '−'}${_money(amount.abs())}  ${_text(row['currency'])}',
+                      subtitle: [
+                        _date(row['date']),
+                        _text(row['evrakNo']),
+                        _text(row['description']),
+                      ].where((p) => p.trim().isNotEmpty).join(' · '),
+                      trailing: AppBadge(
+                        label: inbound ? 'Giriş' : 'Çıkış',
+                        tone: inbound
+                            ? AppBadgeTone.success
+                            : AppBadgeTone.neutral,
+                        dense: true,
+                      ),
+                      onEdit: () => onOpenMovement(row),
+                    ),
                   ),
-                  onEdit: () => onOpenMovement(row),
                 ),
               );
             },
@@ -2373,7 +2786,8 @@ class _TransferList extends StatelessWidget {
   Widget build(BuildContext context) {
     return _SimpleList(
       title: 'Son transferler (${items.length})',
-      empty: 'Transfer yok.',
+      empty:
+          'Transfer yok. “ERP’den Aktar” ile eski kayıtları alın veya yeni transfer ekleyin.',
       itemCount: items.length,
       itemBuilder: (context, index) {
         final row = items[index];
@@ -2416,7 +2830,8 @@ class _MasrafList extends StatelessWidget {
   Widget build(BuildContext context) {
     return _SimpleList(
       title: 'Masraf faturaları (${items.length})',
-      empty: 'Masraf faturası yok.',
+      empty:
+          'Masraf yok. “ERP’den Aktar” ile eski kayıtları alın veya Bankalar’dan hareket ekleyin.',
       itemCount: items.length,
       itemBuilder: (context, index) {
         final row = items[index];

@@ -8486,14 +8486,27 @@ async function handleAkinsoftPushInvoiceNumbers(req, res) {
   );
 }
 
-const AKINSOFT_BRIDGE_ENABLED = false;
+const AKINSOFT_BRIDGE_WRITE_ENABLED = false;
+const AKINSOFT_BRIDGE_PULL_ENABLED = true;
 const AKINSOFT_BRIDGE_CLOSED_MESSAGE =
-  'SAP / Akınsoft bağlantısı kapatıldı. Kayıtlar yalnızca CRM’de tutulur; aktarım yapılmaz.';
+  'SAP / Akınsoft yazımı kapatıldı. Kayıtlar yalnızca CRM’de tutulur.';
+const AKINSOFT_BRIDGE_PULL_PATHS = new Set([
+  '/api/akinsoft/finance/pull',
+  '/api/akinsoft/finance-pull',
+  '/api/akinsoft/test-connection',
+]);
 
 async function handleAkinsoftRequest(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return send(res, 204, {}, null);
-  if (!AKINSOFT_BRIDGE_ENABLED) {
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  let pathname = url.pathname || '/';
+  if (!pathname.startsWith('/api/akinsoft/')) {
+    pathname = `/api/akinsoft/${pathname.replace(/^\/+/, '')}`;
+  }
+  const pullAllowed =
+    AKINSOFT_BRIDGE_PULL_ENABLED && AKINSOFT_BRIDGE_PULL_PATHS.has(pathname);
+  if (!AKINSOFT_BRIDGE_WRITE_ENABLED && !pullAllowed) {
     return send(
       res,
       409,
@@ -8504,11 +8517,6 @@ async function handleAkinsoftRequest(req, res) {
         error: AKINSOFT_BRIDGE_CLOSED_MESSAGE,
       }),
     );
-  }
-  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-  let pathname = url.pathname || '/';
-  if (!pathname.startsWith('/api/akinsoft/')) {
-    pathname = `/api/akinsoft/${pathname.replace(/^\/+/, '')}`;
   }
   const { createAkinsoftFinanceHandlers } = require('./akinsoft_finance_sync');
   const mssql = require('mssql');
