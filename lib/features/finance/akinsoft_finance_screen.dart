@@ -181,14 +181,78 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     } catch (_) {}
   }
 
-  Future<void> _cleanupOrphanEInvoiceFinance() async {
+  Future<int> _cleanupOrphanEInvoiceFinance() async {
     try {
       final api = ref.read(apiClientProvider);
-      await api?.postJson(
+      if (api == null) return 0;
+      final result = await api.postJson(
         '/mutate',
         body: {'op': 'cleanupOrphanEInvoiceFinance'},
       );
-    } catch (_) {}
+      final cleaned = result['cleaned'];
+      if (cleaned is num) return cleaned.toInt();
+      return int.tryParse('$cleaned') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> _deleteCrmMovement(Map<String, dynamic> row) async {
+    final id = _text(row['id']).isEmpty ? _text(row['sourceId']) : _text(row['id']);
+    if (id.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hareketi sil'),
+        content: const Text('Bu banka hareketi silinsin mi?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final api = ref.read(apiClientProvider);
+    if (api == null) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      try {
+        await api.postJson(
+          '/mutate',
+          body: {'op': 'delete', 'table': 'finance_transactions', 'id': id},
+        );
+      } catch (_) {
+        await api.postJson(
+          '/mutate',
+          body: {
+            'op': 'upsert',
+            'table': 'finance_transactions',
+            'values': {'id': id, 'is_active': false},
+          },
+        );
+      }
+      await _loadCrmFinance();
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _status = 'Hareket silindi.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error.toString();
+      });
+    }
   }
 
   String _accountKey(Map<String, dynamic> row) {
@@ -231,6 +295,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
         ? _movements.where((m) => _text(m['accountSourceId']) == key).toList()
         : const <Map<String, dynamic>>[];
     final crm = _crmTransactions.where((t) {
+      if (t['is_active'] == false) return false;
       final accountId = _text(t['account_id']);
       final sapId = _text(t['akinsoft_source_id']);
       if (sapId == key) return true;
@@ -459,7 +524,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
       _error = null;
       _status = 'CRM finans kayıtları yükleniyor…';
     });
-    await _cleanupOrphanEInvoiceFinance();
+    final cleaned = await _cleanupOrphanEInvoiceFinance();
     await _loadCrmFinance();
     if (!mounted) return;
     if (_accounts.isNotEmpty) {
@@ -469,7 +534,11 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
     // ERP aktarımı yalnızca «ERP'den Aktar» ile; sayfa her açılışta çekmesin.
     await _dedupeCrmAccounts();
     if (!mounted) return;
-    await _finishCrmView();
+    await _finishCrmView(
+      status: cleaned > 0
+          ? 'Geri alınmış $cleaned e-fatura banka hareketi temizlendi.'
+          : null,
+    );
   }
 
   Future<void> _pull() async {
@@ -1411,6 +1480,7 @@ class _AkinsoftFinanceScreenState extends ConsumerState<AkinsoftFinanceScreen> {
             successMessage: 'Hesap CRM’de silindi.',
           ),
           onOpenMovement: (row) => _showMovementDialog(existing: row),
+          onDeleteMovement: _deleteCrmMovement,
         );
     }
   }
@@ -2854,6 +2924,7 @@ class _BanksAccountsPane extends StatelessWidget {
     required this.onEditAccount,
     required this.onDeleteAccount,
     required this.onOpenMovement,
+    required this.onDeleteMovement,
   });
 
   final List<Map<String, dynamic>> banks;
@@ -2866,6 +2937,7 @@ class _BanksAccountsPane extends StatelessWidget {
   final ValueChanged<Map<String, dynamic>> onEditAccount;
   final ValueChanged<Map<String, dynamic>> onDeleteAccount;
   final ValueChanged<Map<String, dynamic>> onOpenMovement;
+  final ValueChanged<Map<String, dynamic>> onDeleteMovement;
 
   String _keyOf(Map<String, dynamic> row) {
     final sap = _text(row['sourceId']);
@@ -2992,6 +3064,7 @@ class _BanksAccountsPane extends StatelessWidget {
                         dense: true,
                       ),
                       onEdit: () => onOpenMovement(row),
+                      onDelete: () => onDeleteMovement(row),
                     ),
                   ),
                 ),

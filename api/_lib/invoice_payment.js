@@ -1004,7 +1004,17 @@ async function cleanupOrphanEInvoiceFinance({ invoiceId = null } = {}) {
   let invoiceFilter = '';
   if (invId) {
     params.push(invId);
-    invoiceFilter = ` and ft.invoice_id = $${params.length}::uuid`;
+    invoiceFilter = ` and (
+      ft.invoice_id = $${params.length}::uuid
+      or exists (
+        select 1 from public.invoices i
+        where i.id = $${params.length}::uuid
+          and (
+            ft.reference_no = i.invoice_number
+            or ft.description ilike '%' || i.invoice_number || '%'
+          )
+      )
+    )`;
   }
   try {
     const result = await query(
@@ -1012,27 +1022,58 @@ async function cleanupOrphanEInvoiceFinance({ invoiceId = null } = {}) {
         update public.finance_transactions ft
         set
           is_active = false,
-          description = trim(
-            both from coalesce(ft.description, '') ||
-            ' [Tahsilat geri alındı ' || to_char(now(), 'YYYY-MM-DD HH24:MI') || ']'
-          ),
+          description = case
+            when coalesce(ft.description, '') ilike '%[Tahsilat geri alındı%'
+              then ft.description
+            else trim(
+              both from coalesce(ft.description, '') ||
+              ' [Tahsilat geri alındı ' || to_char(now(), 'YYYY-MM-DD HH24:MI') || ']'
+            )
+          end,
           updated_at = now()
         where coalesce(ft.is_active, true) = true
-          and coalesce(ft.source, '') = 'e_invoice'
-          and ft.invoice_id is not null
-          ${invoiceFilter}
-          and not exists (
-            select 1
-            from public.transactions t
-            where t.invoice_id = ft.invoice_id
-              and coalesce(t.is_active, true) = true
-              and t.transaction_type in ('collection', 'payment')
+          and (
+            coalesce(ft.source, '') = 'e_invoice'
+            or ft.description ilike '%E-Fatura tahsilat%'
           )
-          and exists (
-            select 1
-            from public.invoices i
-            where i.id = ft.invoice_id
-              and coalesce(i.paid_amount, 0) <= 0.009
+          ${invoiceFilter}
+          and (
+            (
+              ft.invoice_id is not null
+              and not exists (
+                select 1
+                from public.transactions t
+                where t.invoice_id = ft.invoice_id
+                  and coalesce(t.is_active, true) = true
+                  and t.transaction_type in ('collection', 'payment')
+              )
+              and exists (
+                select 1
+                from public.invoices i
+                where i.id = ft.invoice_id
+                  and coalesce(i.paid_amount, 0) <= 0.009
+              )
+            )
+            or (
+              -- invoice_id yazılmamış eski kayıtlar: açıklama/referanstaki fatura no
+              ft.invoice_id is null
+              and exists (
+                select 1
+                from public.invoices i
+                where coalesce(i.paid_amount, 0) <= 0.009
+                  and (
+                    ft.reference_no = i.invoice_number
+                    or ft.description ilike '%' || i.invoice_number || '%'
+                  )
+                  and not exists (
+                    select 1
+                    from public.transactions t
+                    where t.invoice_id = i.id
+                      and coalesce(t.is_active, true) = true
+                      and t.transaction_type in ('collection', 'payment')
+                  )
+              )
+            )
           )
         returning ft.id, ft.account_id
       `,
