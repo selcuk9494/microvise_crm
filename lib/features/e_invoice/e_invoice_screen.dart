@@ -6529,7 +6529,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 128,
+              width: 150,
               child: DropdownButtonFormField<String>(
                 key: ValueKey('type-${filter.invoiceType ?? ''}'),
                 initialValue: filter.invoiceType ?? '',
@@ -6568,7 +6568,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 120,
+              width: 150,
               child: DropdownButtonFormField<String>(
                 key: ValueKey('active-${filter.activeFilter}'),
                 initialValue: filter.activeFilter,
@@ -6610,7 +6610,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 158,
+              width: 192,
               child: DropdownButtonFormField<String>(
                 key: ValueKey('status-${filter.status ?? ''}'),
                 initialValue: filter.status ?? '',
@@ -6671,7 +6671,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 168,
+              width: 228,
               child: DropdownButtonFormField<String>(
                 key: ValueKey('einv-${filter.eInvoiceStatus ?? ''}'),
                 initialValue: filter.eInvoiceStatus ?? '',
@@ -6740,7 +6740,7 @@ class _InvoiceFiltersCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: 168,
+              width: 198,
               child: DropdownButtonFormField<String>(
                 key: ValueKey('sent-${filter.customerSent ?? ''}'),
                 initialValue: filter.customerSent ?? '',
