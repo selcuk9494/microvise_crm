@@ -70,6 +70,7 @@ class DsKpiTile extends StatelessWidget {
         ),
         boxShadow: AppTheme.cardShadow,
       ),
+      constraints: const BoxConstraints(minHeight: 74),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -91,46 +92,44 @@ class DsKpiTile extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  maxLines: 1,
+                  // İki satıra izin verilir: dar grid sütunlarında uzun
+                  // etiketler ("Yakında Süresi Dolacaklar") üç nokta ile
+                  // kesilmesin.
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textMuted,
                     fontWeight: FontWeight.w500,
+                    height: 1.2,
                   ),
                 ),
-                const Gap(2),
+                const Gap(3),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Flexible(
-                      child: Text(
-                        value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          fontFeatures: const [FontFeature.tabularFigures()],
+                    // Değer kutu genişliğine sığmazsa (uzun ₺ tutarları)
+                    // kesilmek yerine ölçeklenir — para rakamı her zaman
+                    // tam okunur.
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          value,
+                          maxLines: 1,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
                         ),
                       ),
                     ),
-                    if (subtitle != null) ...[
-                      const Gap(6),
-                      Flexible(
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 3),
-                          child: Text(
-                            subtitle!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: subtitleColor ?? AppTheme.textMuted,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                          ),
-                        ),
-                      ),
-                    ] else if (trendPercent != null && sparkline == null) ...[
+                    if (subtitle == null &&
+                        trendPercent != null &&
+                        sparkline == null) ...[
                       const Gap(6),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 3),
@@ -139,6 +138,20 @@ class DsKpiTile extends StatelessWidget {
                     ],
                   ],
                 ),
+                // İkincil tutar artık değerin yanında değil, altında kendi
+                // satırında — tam genişlik, kesilme yok.
+                if (subtitle != null) ...[
+                  const Gap(2),
+                  Text(
+                    subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: subtitleColor ?? AppTheme.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

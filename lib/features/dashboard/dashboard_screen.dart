@@ -338,15 +338,8 @@ List<_KpiItem> _buildOverviewItems({
         subtitle: money.format(metrics.totalInvoiceAmount),
         onTap: () => context.go('/faturalama'),
       ),
-    if (canSeeReports && canSeeTileRevenue)
-      _KpiItem(
-        label: 'Gelir (Bu Ay)',
-        value: money.format(metrics.revenue),
-        icon: LucideIcons.banknote,
-        tone: DsStatusTone.info,
-        trendPercent: metrics.revenueChangePercent,
-        onTap: () => context.go('/raporlar'),
-      ),
+    // "Gelir (Bu Ay)" burada tekrar edilmez — aşağıdaki büyük gelir kartı
+    // aynı metriği trend ve 14 günlük grafikle zaten gösteriyor.
     if (canSeeCustomers && canSeeTileTotalCustomers)
       _KpiItem(
         label: 'Toplam Müşteri',
@@ -1261,11 +1254,41 @@ class _RevenueChart extends StatelessWidget {
     final maxY = points.fold<double>(0, (m, p) => p.value > m ? p.value : m);
     if (maxY == 0) {
       return Center(
-        child: Text(
-          'Bu aralıkta gelir kaydı yok.',
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceSoft,
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                border: Border.all(
+                  color: AppTheme.border.withValues(alpha: 0.6),
+                ),
+              ),
+              child: Icon(
+                LucideIcons.chartLine,
+                size: 20,
+                color: AppTheme.textMuted,
+              ),
+            ),
+            const Gap(10),
+            Text(
+              'Bu aralıkta gelir kaydı yok',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppTheme.textSoft,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Gap(2),
+            Text(
+              'Tahsilat girildikçe grafik burada oluşur.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
+            ),
+          ],
         ),
       );
     }
