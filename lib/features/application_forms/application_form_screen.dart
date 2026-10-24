@@ -3531,7 +3531,6 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 final r = filtered[index - 2];
                 return _ApplicationRecordCard(
                   record: r,
-                  colorIndex: index - 2,
                   canEdit: canEditRecords,
                   canApprove: canApprove,
                   canArchive: canArchive,
@@ -3617,7 +3616,6 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               final r = filtered[recordIndex];
               return _ApplicationRecordCard(
                 record: r,
-                colorIndex: recordIndex,
                 canEdit: canEditRecords,
                 canApprove: canApprove,
                 canArchive: canArchive,
@@ -7789,7 +7787,6 @@ class _ApplicationFormLogChangeRow extends StatelessWidget {
 class _ApplicationRecordCard extends StatelessWidget {
   const _ApplicationRecordCard({
     required this.record,
-    required this.colorIndex,
     required this.canEdit,
     required this.canApprove,
     required this.canArchive,
@@ -7820,7 +7817,6 @@ class _ApplicationRecordCard extends StatelessWidget {
   });
 
   final ApplicationFormRecord record;
-  final int colorIndex;
   final bool canEdit;
   final bool canApprove;
   final bool canArchive;
@@ -7916,21 +7912,14 @@ class _ApplicationRecordCard extends StatelessWidget {
         !record.isActive && canDeletePermanently && !record.isApproved;
     final approvedRegistry = record.approvedRegistryNumber;
 
-    // Not const: AppTheme.softTint reads the current brightness so the
-    // pastel card backgrounds stay visible (instead of near-invisible
-    // pale-on-dark) when the app is in Dark tema.
-    final backgrounds = [
-      AppTheme.softTint(AppTheme.blue, alpha: 0.10),
-      AppTheme.softTint(AppTheme.green, alpha: 0.10),
-      AppTheme.softTint(AppTheme.orange, alpha: 0.10),
-      AppTheme.softTint(const Color(0xFFEC4899), alpha: 0.10),
-      AppTheme.softTint(AppTheme.purple, alpha: 0.10),
-    ];
-    final backgroundColor = !record.isActive
-        ? null
-        : isBankSubmission
-        ? AppTheme.softTint(bankAccent, alpha: 0.16)
-        : backgrounds[colorIndex % backgrounds.length];
+    // Kartlar diğer form ekranlarıyla (Hurda/Arıza/Devir) tutarlı olsun diye
+    // temiz/nötr zemin kullanır; satır satır değişen pastel ("rainbow")
+    // arka planlar kaldırıldı. Tür/durum ayrımı sol aksan çubuğu, kenarlık
+    // ve rozetlerle verilir. Yalnızca aktif banka başvuruları, operasyonel
+    // olarak ayırt edilebilsin diye çok hafif bir vurgu alır.
+    final backgroundColor = isBankSubmission && record.isActive
+        ? AppTheme.softTint(bankAccent, alpha: 0.10)
+        : null;
     final bankBorderColor = isBankSubmission && record.isActive
         ? bankAccent.withValues(alpha: 0.45)
         : null;

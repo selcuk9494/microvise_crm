@@ -251,6 +251,21 @@ class AppDenseListCard extends StatelessWidget {
                     ),
                   ),
                   if (badge != null) ...[const Gap(8), badge!],
+                  // Masaüstünde ikon aksiyonları ayrı bir satır yerine başlık
+                  // satırının sağında, satır içinde durur — kart bir satır
+                  // kısalır ve diğer liste ekranlarıyla dengeli görünür.
+                  if (!isMobile && actions.isNotEmpty) ...[
+                    const Gap(8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < actions.length; i++) ...[
+                          if (i > 0) const Gap(4),
+                          actions[i],
+                        ],
+                      ],
+                    ),
+                  ],
                 ],
               ),
               if (meta.isNotEmpty) ...[
@@ -268,7 +283,8 @@ class AppDenseListCard extends StatelessWidget {
                   ),
                 ),
               ],
-              if (actions.isNotEmpty) ...[
+              // Mobilde (dar ekran) aksiyonlar alt satırda yatay kaydırılır.
+              if (isMobile && actions.isNotEmpty) ...[
                 const Gap(6),
                 SizedBox(
                   height: AppDenseList.action,

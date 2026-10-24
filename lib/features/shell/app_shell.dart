@@ -176,17 +176,34 @@ String _desktopNavLabel(_NavItem item) {
   return item.label;
 }
 
+/// Tema duyarlı kenar menü paleti. Koyu modda mevcut kurumsal lacivert ray
+/// birebir korunur; açık modda içerikle uyumlu, profesyonel açık menü
+/// (Linear/Stripe tarzı) kullanılır — böylece açık/koyu arasında renk
+/// uyumsuzluğu kalmaz.
 class _CorporateNav {
   static const width = 248.0;
-  static const background = Color(0xFF07111F);
-  static const selected = Color(0xFF163056);
-  static const hover = Color(0xFF10243F);
-  static const field = Color(0xFF0C1A2E);
-  static const line = Color(0xFF243656);
-  static const muted = Color(0xFF8AA0B8);
-  static const faint = Color(0xFF6B8199);
-  static const text = Color(0xFFE8EEF6);
-  static const accent = Color(0xFF3B82F6);
+
+  static bool get _dark => AppTheme.isDark;
+
+  static Color get background =>
+      _dark ? const Color(0xFF07111F) : AppTheme.surface;
+  static Color get selected =>
+      _dark ? const Color(0xFF163056) : const Color(0xFFE8EEFF);
+  static Color get hover =>
+      _dark ? const Color(0xFF10243F) : AppTheme.surfaceSoft;
+  static Color get field =>
+      _dark ? const Color(0xFF0C1A2E) : AppTheme.surfaceMuted;
+  static Color get line => _dark ? const Color(0xFF243656) : AppTheme.border;
+  static Color get muted =>
+      _dark ? const Color(0xFF8AA0B8) : AppTheme.textMuted;
+  static Color get faint =>
+      _dark ? const Color(0xFF6B8199) : const Color(0xFF98A2B3);
+  static Color get text => _dark ? const Color(0xFFE8EEF6) : AppTheme.text;
+  static Color get accent => _dark ? const Color(0xFF3B82F6) : AppTheme.primary;
+
+  /// Aktif satırın yazı/ikon rengi — koyu ray üzerinde beyaz, açık menüde
+  /// okunur koyu mavi.
+  static Color get activeText => _dark ? Colors.white : AppTheme.primaryDeep;
 }
 
 class _CorporateNavEntry {
@@ -361,70 +378,80 @@ class _DesktopCorporateSidebarState
       );
     }();
     final pinned = favoritePaths.toSet();
+    // Favorilerde zaten görünen üst-düzey (alt menüsü olmayan) öğeler kendi
+    // bölümünde tekrar gösterilmez — hem görsel tekrar, hem aynı anda iki
+    // satırın birden "aktif" vurgulanması engellenir.
+    final shownFavoritePaths = visibleFavorites
+        .map((favorite) => favorite.path)
+        .toSet();
 
     return Material(
       color: _CorporateNav.background,
-      child: SizedBox(
-        width: _CorporateNav.width,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _CorporateBrandHeader(
-                  onTap: () => context.go(homePath),
-                ),
-                const Gap(14),
-                _CorporateSearchField(
-                  controller: _searchController,
-                  onChanged: (value) => setState(() => _query = value),
-                  onClear: () {
-                    _searchController.clear();
-                    setState(() => _query = '');
-                  },
-                ),
-                const Gap(14),
-                Expanded(
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    children: [
-                      if (visibleFavorites.isNotEmpty) ...[
-                        const _CorporateSectionLabel(title: 'FAVORİLER'),
-                        const Gap(4),
-                        for (final favorite in visibleFavorites) ...[
-                          _CorporateNavRow(
-                            label: favorite.label,
-                            icon: favorite.icon,
-                            active: _isActive(location, favorite.path),
-                            pinned: true,
-                            pinAlwaysVisible: true,
-                            onTap: () => context.go(favorite.path),
-                            onTogglePin: () => ref
-                                .read(navFavoritesProvider.notifier)
-                                .toggle(favorite.path),
-                          ),
-                          const Gap(2),
-                        ],
-                        const Gap(10),
-                      ],
-                      for (final section in sections)
-                        ..._sectionSlivers(
-                          section: section,
-                          location: location,
-                          query: query,
-                          searching: searching,
-                          pinned: pinned,
-                        ),
-                    ],
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(right: BorderSide(color: _CorporateNav.line)),
+        ),
+        child: SizedBox(
+          width: _CorporateNav.width,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _CorporateBrandHeader(onTap: () => context.go(homePath)),
+                  const Gap(14),
+                  _CorporateSearchField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _query = value),
+                    onClear: () {
+                      _searchController.clear();
+                      setState(() => _query = '');
+                    },
                   ),
-                ),
-                const Gap(10),
-                _CorporateAccountFooter(
-                  profile: profile,
-                  onSignOut: widget.onSignOut,
-                ),
-              ],
+                  const Gap(14),
+                  Expanded(
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        if (visibleFavorites.isNotEmpty) ...[
+                          const _CorporateSectionLabel(title: 'FAVORİLER'),
+                          const Gap(4),
+                          for (final favorite in visibleFavorites) ...[
+                            _CorporateNavRow(
+                              label: favorite.label,
+                              icon: favorite.icon,
+                              active: _isActive(location, favorite.path),
+                              pinned: true,
+                              pinAlwaysVisible: true,
+                              onTap: () => context.go(favorite.path),
+                              onTogglePin: () => ref
+                                  .read(navFavoritesProvider.notifier)
+                                  .toggle(favorite.path),
+                            ),
+                            const Gap(2),
+                          ],
+                          const Gap(10),
+                        ],
+                        for (final section in sections)
+                          ..._sectionSlivers(
+                            section: section,
+                            location: location,
+                            query: query,
+                            searching: searching,
+                            pinned: pinned,
+                            shownFavoritePaths: shownFavoritePaths,
+                          ),
+                      ],
+                    ),
+                  ),
+                  const Gap(10),
+                  _CorporateAccountFooter(
+                    profile: profile,
+                    onSignOut: widget.onSignOut,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -438,14 +465,16 @@ class _DesktopCorporateSidebarState
     required String query,
     required bool searching,
     required Set<String> pinned,
+    required Set<String> shownFavoritePaths,
   }) {
     final visible = <_CorporateNavEntry>[];
     final filteredSubs = <String, List<_FormsNavSubItem>>{};
     for (final entry in section.entries) {
-      final parentMatch = _navQueryMatches(
-        query,
-        _desktopNavLabel(entry.item),
-      );
+      // Alt menüsü olmayan ve favorilerde zaten görünen öğeyi atla.
+      if (entry.subs.isEmpty && shownFavoritePaths.contains(entry.item.path)) {
+        continue;
+      }
+      final parentMatch = _navQueryMatches(query, _desktopNavLabel(entry.item));
       final matchingSubs = entry.subs
           .where((sub) => _navQueryMatches(query, sub.label))
           .toList(growable: false);
@@ -482,8 +511,7 @@ class _DesktopCorporateSidebarState
     required Set<String> pinned,
   }) {
     final childActive = subs.any((sub) => _isActive(location, sub.path));
-    final parentActive =
-        _isActive(location, entry.item.path) && !childActive;
+    final parentActive = _isActive(location, entry.item.path) && !childActive;
     final expanded = subs.isEmpty
         ? false
         : _corporateGroupExpanded(ref, entry.item, force: searching);
@@ -498,9 +526,8 @@ class _DesktopCorporateSidebarState
           expandable: subs.isNotEmpty,
           expanded: expanded,
           pinned: pinned.contains(entry.item.path),
-          onTogglePin: () => ref
-              .read(navFavoritesProvider.notifier)
-              .toggle(entry.item.path),
+          onTogglePin: () =>
+              ref.read(navFavoritesProvider.notifier).toggle(entry.item.path),
           onTap: () {
             if (subs.isEmpty) {
               context.go(entry.item.path);
@@ -543,10 +570,26 @@ class _CorporateBrandHeader extends StatelessWidget {
   final VoidCallback onTap;
 
   static const _logoLift = ColorFilter.matrix(<double>[
-    1.25, 0, 0, 0, 22,
-    0, 1.25, 0, 0, 22,
-    0, 0, 1.25, 0, 22,
-    0, 0, 0, 1, 0,
+    1.25,
+    0,
+    0,
+    0,
+    22,
+    0,
+    1.25,
+    0,
+    0,
+    22,
+    0,
+    0,
+    1.25,
+    0,
+    22,
+    0,
+    0,
+    0,
+    1,
+    0,
   ]);
 
   @override
@@ -561,20 +604,26 @@ class _CorporateBrandHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ColorFiltered(
-                colorFilter: _logoLift,
-                child: _brandLogoImage(height: 28),
-              ),
-              const Gap(6),
-              const Text(
-                'Microvise ERP CRM',
+              // Logo parlaklık filtresi yalnızca koyu ray için; açık menüde
+              // logo olduğu gibi gösterilir.
+              AppTheme.isDark
+                  ? ColorFiltered(
+                      colorFilter: _logoLift,
+                      child: _brandLogoImage(height: 28),
+                    )
+                  : _brandLogoImage(height: 28),
+              const Gap(5),
+              // Logo zaten "microvise" markasını taşıyor; altında markayı
+              // tekrar etmek yerine sade bir ürün etiketi gösterilir.
+              Text(
+                'ERP · CRM',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
+                  color: _CorporateNav.muted,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
                 ),
               ),
             ],
@@ -602,12 +651,12 @@ class _CorporateSearchField extends StatelessWidget {
     return TextField(
       controller: controller,
       onChanged: onChanged,
-      style: const TextStyle(color: _CorporateNav.text, fontSize: 13),
+      style: TextStyle(color: _CorporateNav.text, fontSize: 13),
       cursorColor: _CorporateNav.accent,
       decoration: InputDecoration(
         isDense: true,
         hintText: 'Ara…',
-        hintStyle: const TextStyle(color: _CorporateNav.faint, fontSize: 13),
+        hintStyle: TextStyle(color: _CorporateNav.faint, fontSize: 13),
         filled: true,
         fillColor: _CorporateNav.field,
         contentPadding: const EdgeInsets.symmetric(
@@ -618,7 +667,7 @@ class _CorporateSearchField extends StatelessWidget {
           minWidth: 34,
           minHeight: 32,
         ),
-        prefixIcon: const Icon(
+        prefixIcon: Icon(
           AppPhosphorIcons.magnifyingGlass,
           size: 16,
           color: _CorporateNav.muted,
@@ -628,7 +677,7 @@ class _CorporateSearchField extends StatelessWidget {
                 tooltip: 'Temizle',
                 onPressed: onClear,
                 visualDensity: VisualDensity.compact,
-                icon: const Icon(
+                icon: Icon(
                   AppPhosphorIcons.x,
                   size: 14,
                   color: _CorporateNav.muted,
@@ -637,15 +686,15 @@ class _CorporateSearchField extends StatelessWidget {
             : null,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _CorporateNav.line),
+          borderSide: BorderSide(color: _CorporateNav.line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _CorporateNav.accent),
+          borderSide: BorderSide(color: _CorporateNav.accent),
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _CorporateNav.line),
+          borderSide: BorderSide(color: _CorporateNav.line),
         ),
       ),
     );
@@ -663,7 +712,7 @@ class _CorporateSectionLabel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           color: _CorporateNav.faint,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.7,
@@ -701,11 +750,10 @@ class _CorporateNavRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? Colors.white : _CorporateNav.muted;
+    final color = active ? _CorporateNav.activeText : _CorporateNav.muted;
     return _CorporateHoverScope(
       builder: (context, hovered) {
-        final showPin =
-            onTogglePin != null && (hovered || pinAlwaysVisible);
+        final showPin = onTogglePin != null && (hovered || pinAlwaysVisible);
         return InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
@@ -767,7 +815,7 @@ class _CorporateNavRow extends StatelessWidget {
                           pinned ? Icons.push_pin : Icons.push_pin_outlined,
                           size: 13,
                           color: pinned
-                              ? const Color(0xFF93C5FD)
+                              ? _CorporateNav.accent
                               : _CorporateNav.faint,
                         ),
                       ),
@@ -863,7 +911,7 @@ class _CorporateAccountFooter extends StatelessWidget {
                   name.isEmpty ? 'Hesap' : name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _CorporateNav.text,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
@@ -871,10 +919,7 @@ class _CorporateAccountFooter extends StatelessWidget {
                 ),
                 Text(
                   role,
-                  style: const TextStyle(
-                    color: _CorporateNav.faint,
-                    fontSize: 11,
-                  ),
+                  style: TextStyle(color: _CorporateNav.faint, fontSize: 11),
                 ),
               ],
             ),
@@ -883,7 +928,7 @@ class _CorporateAccountFooter extends StatelessWidget {
             tooltip: 'Çıkış Yap',
             onPressed: onSignOut,
             visualDensity: VisualDensity.compact,
-            icon: const Icon(
+            icon: Icon(
               AppPhosphorIcons.signOut,
               size: 16,
               color: _CorporateNav.muted,
@@ -1234,10 +1279,7 @@ List<_FormsNavSubItem> _eInvoiceNavSubItems(Set<String> allowedPages) {
       const _FormsNavSubItem(label: 'Satış Faturası', path: '/e-fatura/satis'),
     );
     items.add(
-      const _FormsNavSubItem(
-        label: 'Açık Faturalar',
-        path: '/e-fatura/acik',
-      ),
+      const _FormsNavSubItem(label: 'Açık Faturalar', path: '/e-fatura/acik'),
     );
     items.add(
       const _FormsNavSubItem(label: 'Teklif', path: '/e-fatura/teklif'),
@@ -1687,42 +1729,8 @@ class _TopBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              height: 34,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: AppTheme.surface.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                border: Border.all(
-                  color: AppTheme.border.withValues(alpha: 0.4),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    AppPhosphorIcons.monitor,
-                    size: 16,
-                    color: AppTheme.textSoft,
-                  ),
-                  const Gap(8),
-                  Text(
-                    'Web Panel',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textSoft,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const Spacer(),
             const _ThemeModeControl(),
-            const Gap(6),
-            IconButton(
-              tooltip: 'Bildirimler',
-              onPressed: () {},
-              icon: Icon(AppPhosphorIcons.bell, color: AppTheme.text),
-            ),
             const Gap(6),
             _ProfileButton(),
           ],
@@ -2016,7 +2024,6 @@ class _BottomItem extends StatelessWidget {
     );
   }
 }
-
 
 String _accountInitial(String name) {
   final trimmed = name.trim();
