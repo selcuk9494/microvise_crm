@@ -1086,6 +1086,166 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
     }
   }
 
+  /// Seçili başvuruları banka (Capital) kullanıcısının girmiş gibi gösterir.
+  Future<void> _markAsBankRequestedBulk(
+    List<ApplicationFormRecord> records,
+  ) async {
+    final profile = ref.read(currentUserProfileProvider).value;
+    if (profile?.role != 'admin') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu işlemi yalnızca admin yapabilir.')),
+      );
+      return;
+    }
+    final targets = records
+        .where((record) => record.isActive && !record.isBankSubmission)
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bankaya aktarılacak uygun kayıt yok (zaten banka veya pasif).'),
+        ),
+      );
+      return;
+    }
+
+    final apiClient = ref.read(apiClientProvider);
+    if (apiClient == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('API bağlantısı yok.')),
+      );
+      return;
+    }
+
+    List<Map<String, dynamic>> bankUsers = const [];
+    try {
+      final response = await apiClient.getJson(
+        '/data',
+        queryParameters: {'resource': 'personnel_users'},
+      );
+      bankUsers = ((response['items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .where(_isBankLikeUserRow)
+          .toList(growable: false);
+      bankUsers.sort((a, b) {
+        final aCapital = _isCapitalBankUserRow(a) ? 0 : 1;
+        final bCapital = _isCapitalBankUserRow(b) ? 0 : 1;
+        if (aCapital != bCapital) return aCapital - bCapital;
+        return (a['full_name']?.toString() ?? '')
+            .compareTo(b['full_name']?.toString() ?? '');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Banka kullanıcıları alınamadı: $e')),
+      );
+      return;
+    }
+    if (bankUsers.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tanımlı banka kullanıcısı bulunamadı.')),
+      );
+      return;
+    }
+
+    var selectedBankUserId = bankUsers.first['id']?.toString();
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: const Text('Banka talep etti'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${targets.length} başvuru, seçilen banka kullanıcısının '
+                  'girdiği gibi görünecek (Capital Bank listesinde).',
+                ),
+                const Gap(12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedBankUserId,
+                  decoration: const InputDecoration(
+                    labelText: 'Banka kullanıcısı',
+                  ),
+                  items: [
+                    for (final user in bankUsers)
+                      DropdownMenuItem(
+                        value: user['id']?.toString(),
+                        child: Text(
+                          [
+                            user['full_name']?.toString() ?? 'Banka',
+                            if ((user['email']?.toString() ?? '').isNotEmpty)
+                              '(${user['email']})',
+                          ].join(' '),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (v) => setLocal(() => selectedBankUserId = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Banka talep etti'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    final bankUserId = (selectedBankUserId ?? '').trim();
+    if (bankUserId.isEmpty) return;
+
+    try {
+      for (final record in targets) {
+        await apiClient.postJson(
+          '/mutate',
+          body: {
+            'op': 'updateWhere',
+            'table': 'application_forms',
+            'filters': [
+              {'col': 'id', 'op': 'eq', 'value': record.id},
+            ],
+            'values': {
+              'created_by': bankUserId,
+              'bank_approval_status': 'pending',
+              'bank_approved_at': null,
+              'bank_approved_by': null,
+            },
+          },
+        );
+      }
+      if (!mounted) return;
+      setState(() => _selectedRecordIds.removeAll(targets.map((r) => r.id)));
+      _refreshApplicationsSoon();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${targets.length} başvuru banka talebi olarak işaretlendi.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Banka talebi işaretlenemedi: $e')),
+      );
+    }
+  }
+
   Future<void> _deletePassiveRecordsBulk(
     List<ApplicationFormRecord> records,
   ) async {
@@ -3155,6 +3315,19 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                             ),
                           ),
                         if (isAdmin &&
+                            selectedRecords.any(
+                              (record) =>
+                                  record.isActive && !record.isBankSubmission,
+                            ))
+                          FilledButton.tonalIcon(
+                            onPressed: () =>
+                                _markAsBankRequestedBulk(selectedRecords),
+                            icon: const Icon(LucideIcons.landmark, size: 18),
+                            label: Text(
+                              'Banka talep etti (${selectedRecords.where((record) => record.isActive && !record.isBankSubmission).length})',
+                            ),
+                          ),
+                        if (isAdmin &&
                             canDeletePermanently &&
                             selectedPassiveRecords.isNotEmpty)
                           FilledButton.icon(
@@ -3401,6 +3574,26 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                               onTap: () {
                                                 Navigator.of(context).pop();
                                                 _setRecordsPassiveBulk(
+                                                  selectedRecords,
+                                                );
+                                              },
+                                            ),
+                                          if (isAdmin &&
+                                              selectedRecords.any(
+                                                (record) =>
+                                                    record.isActive &&
+                                                    !record.isBankSubmission,
+                                              ))
+                                            ListTile(
+                                              leading: const Icon(
+                                                LucideIcons.landmark,
+                                              ),
+                                              title: Text(
+                                                'Banka talep etti (${selectedRecords.where((record) => record.isActive && !record.isBankSubmission).length})',
+                                              ),
+                                              onTap: () {
+                                                Navigator.of(context).pop();
+                                                _markAsBankRequestedBulk(
                                                   selectedRecords,
                                                 );
                                               },
@@ -10374,6 +10567,28 @@ Future<void> _persistCustomerWorkAddress({
 
   ref.invalidate(customerLocationsProvider(id));
   ref.invalidate(applicationFormCustomersProvider);
+}
+
+bool _isBankLikeUserRow(Map<String, dynamic> user) {
+  final role = (user['role']?.toString() ?? '').trim().toLowerCase();
+  if (role == 'bank') return true;
+  if (role != 'personel') return false;
+  final pages = ((user['page_permissions'] as List?) ?? const [])
+      .map((e) => e.toString())
+      .toSet();
+  if (pages.length != 1 || !pages.contains(kPageForms)) return false;
+  final actions = ((user['action_permissions'] as List?) ?? const [])
+      .map((e) => e.toString())
+      .toSet();
+  if (actions.isEmpty) return true;
+  return actions.contains(kActionBankAdmin) ||
+      actions.contains(kActionBankAuthorized);
+}
+
+bool _isCapitalBankUserRow(Map<String, dynamic> user) {
+  final email = (user['email']?.toString() ?? '').toLowerCase();
+  final name = (user['full_name']?.toString() ?? '').toLowerCase();
+  return email.contains('capital') || name.contains('capital');
 }
 
 String _sortKey(String value) {
