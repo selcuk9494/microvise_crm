@@ -2016,6 +2016,7 @@ class _OpenCustomerGroup {
     required this.invoices,
     this.listNote,
     this.listNoteColor,
+    this.invoiceTags = const {},
     this.listSort = 0,
     required this.latestInvoiceAt,
   });
@@ -2025,8 +2026,19 @@ class _OpenCustomerGroup {
   final List<Invoice> invoices;
   final String? listNote;
   final String? listNoteColor;
+  /// Fatura-level etiketler (örn. CAPİTAL) — açık listede de görünür.
+  final Map<String, String> invoiceTags;
   final int listSort;
   final DateTime latestInvoiceAt;
+
+  Map<String, String> get allTags {
+    final tags = <String, String>{...invoiceTags};
+    final note = (listNote ?? '').trim();
+    if (note.isNotEmpty) {
+      tags.putIfAbsent(note, () => listNoteColor ?? 'orange');
+    }
+    return tags;
+  }
 
   Map<String, double> get remainingByCurrency {
     final totals = <String, double>{};
@@ -2239,6 +2251,70 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         .join(' · ');
   }
 
+  List<_ListNoteSuggestion> _collectListNoteSuggestions(List<Invoice> items) {
+    return _collectInvoiceListNoteSuggestions(items);
+  }
+
+  List<Widget> _openGroupTagChips(
+    _OpenCustomerGroup group, {
+    required bool compact,
+  }) {
+    final tags = group.allTags;
+    if (tags.isEmpty) {
+      return [
+        _InvoiceListNoteChip(
+          note: null,
+          colorKey: 'orange',
+          compact: compact,
+          onTap: _bulkProcessing ? null : () => _editCustomerListNote(group),
+        ),
+      ];
+    }
+    final names = tags.keys.toList()
+      ..sort((a, b) {
+        final aCapital = _isCapitalListNote(a) ? 0 : 1;
+        final bCapital = _isCapitalListNote(b) ? 0 : 1;
+        if (aCapital != bCapital) return aCapital - bCapital;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
+    return [
+      for (final note in names)
+        Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: _InvoiceListNoteChip(
+            note: note,
+            colorKey: tags[note],
+            compact: compact,
+            onTap: _bulkProcessing
+                ? null
+                : () {
+                    // Cari etiketi düzenle; fatura etiketi satır menüsünden.
+                    if ((group.listNote ?? '').trim().toLowerCase() ==
+                        note.toLowerCase()) {
+                      _editCustomerListNote(group);
+                    } else {
+                      final invoice = group.invoices.firstWhere(
+                        (item) =>
+                            (item.listNote ?? '').trim().toLowerCase() ==
+                            note.toLowerCase(),
+                        orElse: () => group.invoices.first,
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '"$note" fatura etiketi. Düzenlemek için '
+                            '${invoice.invoiceNumberDisplay} satır menüsünden '
+                            'Hatırlatıcı not’u açın.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+          ),
+        ),
+    ];
+  }
+
   List<_OpenCustomerGroup> _groupOpenCustomers(List<Invoice> items) {
     final grouped = <String, List<Invoice>>{};
     for (final invoice in items) {
@@ -2263,6 +2339,17 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             final customerColors = invoices
                 .map((item) => (item.customerListNoteColor ?? '').trim())
                 .where((item) => item.isNotEmpty);
+            final invoiceTags = <String, String>{};
+            for (final invoice in invoices) {
+              final note = (invoice.listNote ?? '').trim();
+              if (note.isEmpty) continue;
+              invoiceTags.putIfAbsent(
+                note,
+                () => (invoice.listNoteColor ?? '').trim().isEmpty
+                    ? 'orange'
+                    : invoice.listNoteColor!.trim(),
+              );
+            }
             var listSort = 0;
             var latestInvoiceAt = invoices.first.invoiceDate;
             for (final invoice in invoices) {
@@ -2281,6 +2368,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
               listNoteColor: customerColors.isEmpty
                   ? null
                   : customerColors.first,
+              invoiceTags: invoiceTags,
               listSort: listSort,
               latestInvoiceAt: latestInvoiceAt,
             );
@@ -2332,9 +2420,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       context,
       title: 'Cari etiketi',
       subtitle:
-          'Carinin üzerine yazılır; açık fatura listesinde ismin yanında durur. Maliye’ye gitmez. Örn. “Muhtarın arkadaşı”.',
+          'Carinin üzerine yazılır; açık fatura listesinde ismin yanında durur. Maliye’ye gitmez. Örn. “CAPİTAL”.',
       initialNote: group.listNote,
       initialColor: group.listNoteColor,
+      suggestions: _collectListNoteSuggestions(_lastInvoices),
     );
     if (result == null || !mounted) return;
     final nextNote = (result['note'] ?? '').trim();
@@ -2343,6 +2432,9 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         : ((result['color'] ?? 'orange').trim().isEmpty
               ? 'orange'
               : result['color']!.trim());
+    if (nextNote.isNotEmpty) {
+      _listNoteSuggestionCache[nextNote] = nextColor;
+    }
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
     setState(() => _bulkProcessing = true);
@@ -2625,12 +2717,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
           ),
         ),
         const Gap(6),
-        _InvoiceListNoteChip(
-          note: group.listNote,
-          colorKey: group.listNoteColor,
-          compact: compact,
-          onTap: _bulkProcessing ? null : () => _editCustomerListNote(group),
-        ),
+        ..._openGroupTagChips(group, compact: compact),
       ],
     );
 
@@ -2877,14 +2964,21 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     required AsyncValue<List<Customer>> customersAsync,
   }) {
     final allGroups = _orderedOpenGroups(_groupOpenCustomers(items));
-    final uniqueLabels = <String, String>{};
+    final uniqueLabels = <String, String>{
+      for (final preset in _kKnownInvoiceTags) preset.note: preset.color,
+    };
     for (final group in allGroups) {
-      final note = (group.listNote ?? '').trim();
-      if (note.isEmpty) continue;
-      uniqueLabels.putIfAbsent(note, () => group.listNoteColor ?? 'orange');
+      group.allTags.forEach((note, color) {
+        uniqueLabels.putIfAbsent(note, () => color);
+      });
     }
     final labelNames = uniqueLabels.keys.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      ..sort((a, b) {
+        final aCapital = _isCapitalListNote(a) ? 0 : 1;
+        final bCapital = _isCapitalListNote(b) ? 0 : 1;
+        if (aCapital != bCapital) return aCapital - bCapital;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
     var groups = allGroups;
     if (_customerQuery.trim().isNotEmpty) {
       groups = groups
@@ -2892,6 +2986,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
             final haystack = [
               group.customerName,
               group.listNote ?? '',
+              ...group.invoiceTags.keys,
               ...group.invoices.map(
                 (invoice) =>
                     '${invoice.invoiceNumberDisplay} ${invoice.listNote ?? ''}',
@@ -2904,9 +2999,10 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
     if (_labelFilter != null) {
       groups = groups
           .where((group) {
-            final note = (group.listNote ?? '').trim();
-            if (_labelFilter!.isEmpty) return note.isEmpty;
-            return note.toLowerCase() == _labelFilter!.toLowerCase();
+            final tags = group.allTags;
+            if (_labelFilter!.isEmpty) return tags.isEmpty;
+            final target = _labelFilter!.toLowerCase();
+            return tags.keys.any((note) => note.toLowerCase() == target);
           })
           .toList(growable: false);
     }
@@ -3321,6 +3417,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
 
     if (invoicesAsync.hasValue) {
       _lastInvoices = invoicesAsync.value ?? const [];
+      _rememberInvoiceListNotes(_lastInvoices);
     }
     if (invoicesAsync.isLoading && _lastInvoices.isEmpty) {
       return _invoicePage(
@@ -3337,19 +3434,50 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         ),
       );
     }
-    final items = invoicesAsync.hasValue
+    final rawItems = invoicesAsync.hasValue
         ? (invoicesAsync.value ?? const <Invoice>[])
         : _lastInvoices;
     final loadingFilteredItems =
         invoicesAsync.isLoading && _lastInvoices.isNotEmpty;
     if (widget.groupedByCustomer) {
       return _buildOpenCustomersPage(
-        items: items,
+        items: rawItems,
         loadingFilteredItems: loadingFilteredItems,
         eInvoiceSettings: eInvoiceSettings,
         customersAsync: customersAsync,
       );
     }
+
+    final uniqueLabels = <String, String>{
+      for (final preset in _kKnownInvoiceTags) preset.note: preset.color,
+    };
+    for (final invoice in rawItems) {
+      final note = (invoice.listNote ?? '').trim();
+      if (note.isNotEmpty) {
+        uniqueLabels.putIfAbsent(
+          note,
+          () => (invoice.listNoteColor ?? '').trim().isEmpty
+              ? 'orange'
+              : invoice.listNoteColor!.trim(),
+        );
+      }
+    }
+    final labelNames = uniqueLabels.keys.toList()
+      ..sort((a, b) {
+        final aCapital = _isCapitalListNote(a) ? 0 : 1;
+        final bCapital = _isCapitalListNote(b) ? 0 : 1;
+        if (aCapital != bCapital) return aCapital - bCapital;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
+    final items = _labelFilter == null
+        ? rawItems
+        : rawItems
+              .where((invoice) {
+                final note = (invoice.listNote ?? '').trim();
+                if (_labelFilter!.isEmpty) return note.isEmpty;
+                return note.toLowerCase() == _labelFilter!.toLowerCase();
+              })
+              .toList(growable: false);
 
     final itemIds = items.map((invoice) => invoice.id).toSet();
     _selectedInvoiceIds.removeWhere((id) => !itemIds.contains(id));
@@ -3725,6 +3853,54 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                 ),
                               ],
                             ),
+                            if (labelNames.isNotEmpty) ...[
+                              const Gap(6),
+                              SizedBox(
+                                height: 34,
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  children: [
+                                    ChoiceChip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: const Text('Tümü'),
+                                      selected: _labelFilter == null,
+                                      onSelected: (_) => setState(
+                                        () => _labelFilter = null,
+                                      ),
+                                    ),
+                                    const Gap(6),
+                                    ChoiceChip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: const Text('Etiketsiz'),
+                                      selected: _labelFilter == '',
+                                      onSelected: (selected) => setState(
+                                        () =>
+                                            _labelFilter = selected ? '' : null,
+                                      ),
+                                    ),
+                                    for (final note in labelNames) ...[
+                                      const Gap(6),
+                                      ChoiceChip(
+                                        visualDensity: VisualDensity.compact,
+                                        avatar: CircleAvatar(
+                                          backgroundColor:
+                                              _invoiceListNoteColor(
+                                            uniqueLabels[note],
+                                          ),
+                                        ),
+                                        label: Text(note),
+                                        selected: _labelFilter?.toLowerCase() ==
+                                            note.toLowerCase(),
+                                        onSelected: (selected) => setState(
+                                          () => _labelFilter =
+                                              selected ? note : null,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
                             const Gap(6),
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
@@ -3974,7 +4150,58 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                       }
                       return Theme(
                         data: _bulkActionsTheme(context),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (labelNames.isNotEmpty) ...[
+                              SizedBox(
+                                height: 34,
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  children: [
+                                    ChoiceChip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: const Text('Tümü'),
+                                      selected: _labelFilter == null,
+                                      onSelected: (_) => setState(
+                                        () => _labelFilter = null,
+                                      ),
+                                    ),
+                                    const Gap(6),
+                                    ChoiceChip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: const Text('Etiketsiz'),
+                                      selected: _labelFilter == '',
+                                      onSelected: (selected) => setState(
+                                        () =>
+                                            _labelFilter = selected ? '' : null,
+                                      ),
+                                    ),
+                                    for (final note in labelNames) ...[
+                                      const Gap(6),
+                                      ChoiceChip(
+                                        visualDensity: VisualDensity.compact,
+                                        avatar: CircleAvatar(
+                                          backgroundColor:
+                                              _invoiceListNoteColor(
+                                            uniqueLabels[note],
+                                          ),
+                                        ),
+                                        label: Text(note),
+                                        selected: _labelFilter?.toLowerCase() ==
+                                            note.toLowerCase(),
+                                        onSelected: (selected) => setState(
+                                          () => _labelFilter =
+                                              selected ? note : null,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const Gap(6),
+                            ],
+                            Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Checkbox(
@@ -4339,6 +4566,8 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                 ],
                               ),
                             ),
+                          ],
+                        ),
                           ],
                         ),
                       );
@@ -7193,8 +7422,76 @@ const _kInvoiceListNoteColors = <String, Color>{
   'teal': Color(0xFF0D9488),
 };
 
+class _ListNoteSuggestion {
+  const _ListNoteSuggestion({required this.note, required this.color});
+  final String note;
+  final String color;
+}
+
+const _kKnownInvoiceTags = <_ListNoteSuggestion>[
+  _ListNoteSuggestion(note: 'CAPİTAL', color: 'orange'),
+];
+
+/// Oturum boyunca görülen etiketler — seçim listesinde çıkar.
+final Map<String, String> _listNoteSuggestionCache = {
+  for (final tag in _kKnownInvoiceTags) tag.note: tag.color,
+};
+
 Color _invoiceListNoteColor(String? key) {
   return _kInvoiceListNoteColors[key] ?? _kInvoiceListNoteColors['orange']!;
+}
+
+void _rememberInvoiceListNotes(Iterable<Invoice> items) {
+  for (final invoice in items) {
+    final note = (invoice.listNote ?? '').trim();
+    if (note.isNotEmpty) {
+      _listNoteSuggestionCache.putIfAbsent(
+        note,
+        () => (invoice.listNoteColor ?? '').trim().isEmpty
+            ? 'orange'
+            : invoice.listNoteColor!.trim(),
+      );
+    }
+    final customerNote = (invoice.customerListNote ?? '').trim();
+    if (customerNote.isNotEmpty) {
+      _listNoteSuggestionCache.putIfAbsent(
+        customerNote,
+        () => (invoice.customerListNoteColor ?? '').trim().isEmpty
+            ? 'orange'
+            : invoice.customerListNoteColor!.trim(),
+      );
+    }
+  }
+}
+
+List<_ListNoteSuggestion> _collectInvoiceListNoteSuggestions([
+  List<Invoice> items = const [],
+]) {
+  _rememberInvoiceListNotes(items);
+  final map = <String, String>{
+    for (final tag in _kKnownInvoiceTags) tag.note: tag.color,
+    ..._listNoteSuggestionCache,
+  };
+  final notes = map.keys.toList()
+    ..sort((a, b) {
+      final aCapital = _isCapitalListNote(a) ? 0 : 1;
+      final bCapital = _isCapitalListNote(b) ? 0 : 1;
+      if (aCapital != bCapital) return aCapital - bCapital;
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
+  return [
+    for (final note in notes)
+      _ListNoteSuggestion(note: note, color: map[note] ?? 'orange'),
+  ];
+}
+
+bool _isCapitalListNote(String value) {
+  final compact = value
+      .trim()
+      .toLowerCase()
+      .replaceAll('ı', 'i')
+      .replaceAll('i\u0307', 'i');
+  return compact == 'capital';
 }
 
 Future<Map<String, String?>?> _showListNoteEditor(
@@ -7203,22 +7500,26 @@ Future<Map<String, String?>?> _showListNoteEditor(
   required String subtitle,
   String? initialNote,
   String? initialColor,
+  List<_ListNoteSuggestion>? suggestions,
 }) async {
   final controller = TextEditingController(text: (initialNote ?? '').trim());
   var colorKey = (initialColor ?? '').trim();
   if (!_kInvoiceListNoteColors.containsKey(colorKey)) {
     colorKey = 'orange';
   }
+  final suggestionList =
+      suggestions ?? _collectInvoiceListNoteSuggestions();
   try {
     return await showDialog<Map<String, String?>>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setLocal) {
+            final current = controller.text.trim();
             return AlertDialog(
               title: Text(title),
               content: SizedBox(
-                width: 380,
+                width: 420,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -7234,11 +7535,12 @@ Future<Map<String, String?>?> _showListNoteEditor(
                       controller: controller,
                       autofocus: true,
                       maxLength: 80,
-                      textCapitalization: TextCapitalization.sentences,
+                      textCapitalization: TextCapitalization.characters,
                       decoration: const InputDecoration(
                         labelText: 'Etiket',
-                        hintText: 'Muhtarın arkadaşı',
+                        hintText: 'CAPİTAL',
                       ),
+                      onChanged: (_) => setLocal(() {}),
                       onSubmitted: (_) {
                         Navigator.pop(context, {
                           'note': controller.text.trim(),
@@ -7246,6 +7548,46 @@ Future<Map<String, String?>?> _showListNoteEditor(
                         });
                       },
                     ),
+                    if (suggestionList.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Kayıtlı etiketler',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final suggestion in suggestionList)
+                            ChoiceChip(
+                              visualDensity: VisualDensity.compact,
+                              avatar: CircleAvatar(
+                                backgroundColor: _invoiceListNoteColor(
+                                  suggestion.color,
+                                ),
+                              ),
+                              label: Text(suggestion.note),
+                              selected:
+                                  current.toLowerCase() ==
+                                  suggestion.note.toLowerCase(),
+                              onSelected: (_) {
+                                setLocal(() {
+                                  controller.text = suggestion.note;
+                                  controller.selection =
+                                      TextSelection.collapsed(
+                                    offset: suggestion.note.length,
+                                  );
+                                  colorKey = suggestion.color;
+                                });
+                              },
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     const SizedBox(height: 4),
                     Wrap(
                       spacing: 8,
@@ -8836,9 +9178,10 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       context,
       title: 'Hatırlatıcı not',
       subtitle:
-          'Bu faturanın listesinde görünür. Cari kaydından bağımsızdır; Maliye’ye gitmez. Örn. “Muhtarın arkadaşı”.',
+          'Bu faturanın listesinde ve açık faturalarda görünür. Maliye’ye gitmez. Örn. “CAPİTAL”.',
       initialNote: invoice.listNote,
       initialColor: invoice.listNoteColor,
+      suggestions: _collectInvoiceListNoteSuggestions(),
     );
     if (result == null || !mounted) return;
 
@@ -8848,6 +9191,9 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
         : ((result['color'] ?? 'orange').trim().isEmpty
               ? 'orange'
               : result['color']!.trim());
+    if (nextNote.isNotEmpty) {
+      _listNoteSuggestionCache[nextNote] = nextColor;
+    }
     final apiClient = ref.read(apiClientProvider);
     if (apiClient == null) return;
     setState(() => _busy = true);
