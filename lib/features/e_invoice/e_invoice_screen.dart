@@ -7691,8 +7691,8 @@ class _InvoiceListNoteChip extends StatelessWidget {
       );
     }
     final fg = Color.alphaBlend(
-      color.withValues(alpha: AppTheme.isDark ? 0.55 : 0.72),
-      AppTheme.textSoft,
+      color.withValues(alpha: AppTheme.isDark ? 0.82 : 0.88),
+      AppTheme.isDark ? AppTheme.text : AppTheme.textSoft,
     );
     return Tooltip(
       message: text,
@@ -7706,12 +7706,12 @@ class _InvoiceListNoteChip extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: AppTheme.isDark
-                  ? AppTheme.surfaceSoft
+                  ? const Color(0xFF243044)
                   : AppTheme.surfaceMuted,
               borderRadius: BorderRadius.circular(AppTheme.radiusXs),
               border: Border.all(
                 color: AppTheme.border.withValues(
-                  alpha: AppTheme.isDark ? 0.72 : 0.9,
+                  alpha: AppTheme.isDark ? 0.95 : 0.9,
                 ),
               ),
             ),
@@ -7720,7 +7720,7 @@ class _InvoiceListNoteChip extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(width: 3, color: color.withValues(alpha: 0.85)),
+                  Container(width: 3, color: color),
                   Padding(
                     padding: EdgeInsets.symmetric(
                       horizontal: compact ? 6 : 7,
@@ -7731,7 +7731,7 @@ class _InvoiceListNoteChip extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: compact ? 10 : 11,
+                        fontSize: compact ? 10.5 : 11,
                         height: 1.2,
                         fontWeight: FontWeight.w600,
                         color: fg,
@@ -9982,21 +9982,8 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     required int index,
     required bool selected,
   }) {
-    if (selected) return AppDenseList.rowFill(index, selected: true);
-    final base = AppDenseList.rowFill(index);
-    if (invoice.invoiceType != 'sales' || !invoice.isActive) return base;
-    final tint = invoice.isSentToCustomer
-        ? AppTheme.success
-        : invoice.isPaidAwaitingCustomerSent
-            ? AppTheme.blue
-            : AppTheme.warning;
-    return Color.alphaBlend(
-      AppTheme.softTint(
-        tint,
-        alpha: invoice.isPaidAwaitingCustomerSent ? 0.22 : 0.18,
-      ),
-      base,
-    );
+    // Durum rengi satırı boyamaz — okunabilirlik için sadece rozette kalır.
+    return AppDenseList.rowFill(index, selected: selected);
   }
 
   Widget? _customerSentBadge(Invoice invoice) {
@@ -10126,6 +10113,11 @@ class _InvoiceIconAction extends StatelessWidget {
     final colors = _toneColors(context, tone);
     final size = dense ? AppInvoiceTableCols.action : 44.0;
     final iconSize = dense ? AppInvoiceTableCols.actionIcon : 24.0;
+    // Dense satırda renkli ikon kuyuları okunmayı bozar — monokrom glyph.
+    final fg = dense ? AppTheme.textSoft : colors.foreground;
+    final disabledFg = dense
+        ? AppTheme.textMuted
+        : colors.foreground.withValues(alpha: 0.72);
     return Tooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 250),
@@ -10135,9 +10127,9 @@ class _InvoiceIconAction extends StatelessWidget {
         constraints: BoxConstraints.tightFor(width: size, height: size),
         style: IconButton.styleFrom(
           backgroundColor: dense ? Colors.transparent : colors.background,
-          foregroundColor: colors.foreground,
+          foregroundColor: fg,
           disabledBackgroundColor: dense ? Colors.transparent : colors.background,
-          disabledForegroundColor: colors.foreground.withValues(alpha: 0.72),
+          disabledForegroundColor: disabledFg,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(dense ? 6 : 13),
             side: BorderSide.none,

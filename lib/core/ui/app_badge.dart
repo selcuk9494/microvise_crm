@@ -23,22 +23,23 @@ class AppBadge extends StatelessWidget {
       AppBadgeTone.neutral => AppTheme.textMuted,
       AppBadgeTone.primary => AppTheme.primary,
     };
-    // Option C: identical slate chip; meaning only via left rail + quiet text.
+    // Option C + yüksek kontrast: ortak slate yüzey, anlam sol rayda;
+    // yazı textSoft üzerine boyanır ki koyu zeminde okunur kalsın.
     final fg = Color.alphaBlend(
-      color.withValues(alpha: AppTheme.isDark ? 0.55 : 0.72),
-      AppTheme.textSoft,
+      color.withValues(alpha: AppTheme.isDark ? 0.82 : 0.88),
+      AppTheme.isDark ? AppTheme.text : AppTheme.textSoft,
     );
 
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppTheme.isDark
-            ? AppTheme.surfaceSoft
+            ? const Color(0xFF243044)
             : AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(AppTheme.radiusXs),
         border: Border.all(
           color: AppTheme.border.withValues(
-            alpha: AppTheme.isDark ? 0.72 : 0.9,
+            alpha: AppTheme.isDark ? 0.95 : 0.9,
           ),
         ),
       ),
@@ -47,7 +48,7 @@ class AppBadge extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(width: 3, color: color.withValues(alpha: 0.85)),
+            Container(width: 3, color: color),
             Padding(
               padding: dense
                   ? const EdgeInsets.fromLTRB(6, 2, 6, 2)
@@ -57,11 +58,11 @@ class AppBadge extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
                   color: fg,
-                  fontSize: dense ? 10.5 : 11,
+                  fontSize: dense ? 11 : 11.5,
                   height: 1.15,
-                  letterSpacing: 0.05,
+                  letterSpacing: 0.02,
                 ),
               ),
             ),
