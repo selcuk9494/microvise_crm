@@ -39,22 +39,15 @@ class AppDenseList {
 /// Fixed invoice-table columns — only the customer cell expands.
 /// Prevents middle-column "kayma" when row content widths differ.
 class AppInvoiceTableCols {
-  static const double check = 28;
-  static const double date = 76;
-  static const double type = 40;
-  /// Tek durum rozeti + ⋯; kalanı tooltip’te.
-  static const double status = 132;
-  static const double amount = 112;
-  /// Gönder / PDF / düzenle / ⋯ — sıkı ikon şeridi.
-  static const double actions = 148;
+  static const double check = 32;
+  static const double date = 82;
+  static const double type = 44;
+  // Status holds invoice + e-invoice + SAP badges side-by-side.
+  static const double status = 360;
+  static const double amount = 100;
+  // Dense rows use six consistent icon actions; meaning is exposed by tooltip.
+  static const double actions = 232;
   static const double leadingGap = 6;
-
-  /// ERP yoğun satır yüksekliği (daha fazla fatura görünür).
-  static const double rowHeight = 30;
-  static const double rowV = 1;
-  static const double action = 28;
-  static const double actionIcon = 15;
-  static const double headerH = 32;
 
   static double get fixedTotal =>
       check + date + type + status + amount + actions;

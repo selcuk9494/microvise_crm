@@ -23,51 +23,39 @@ class AppBadge extends StatelessWidget {
       AppBadgeTone.neutral => AppTheme.textMuted,
       AppBadgeTone.primary => AppTheme.primary,
     };
-    // Option C + yüksek kontrast: ortak slate yüzey, anlam sol rayda;
-    // yazı textSoft üzerine boyanır ki koyu zeminde okunur kalsın.
-    final fg = Color.alphaBlend(
-      color.withValues(alpha: AppTheme.isDark ? 0.82 : 0.88),
-      AppTheme.isDark ? AppTheme.text : AppTheme.textSoft,
-    );
+    final fg = AppTheme.softFg(color);
 
     return Container(
-      clipBehavior: Clip.antiAlias,
+      padding: dense
+          ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
+          : const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       decoration: BoxDecoration(
-        color: AppTheme.isDark
-            ? const Color(0xFF243044)
-            : AppTheme.surfaceMuted,
+        color: AppTheme.softTint(color, alpha: 0.08),
         borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-        border: Border.all(
-          color: AppTheme.border.withValues(
-            alpha: AppTheme.isDark ? 0.95 : 0.9,
-          ),
-        ),
+        border: Border.all(color: AppTheme.softBorder(color, alpha: 0.14)),
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 3, color: color),
-            Padding(
-              padding: dense
-                  ? const EdgeInsets.fromLTRB(6, 2, 6, 2)
-                  : const EdgeInsets.fromLTRB(7, 3, 7, 3),
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: fg,
-                  fontSize: dense ? 11 : 11.5,
-                  height: 1.15,
-                  letterSpacing: 0.02,
-                ),
-              ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: dense ? 5 : 6,
+            height: dense ? 5 : 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          SizedBox(width: dense ? 5 : 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: fg,
+              fontSize: dense ? 10.5 : 11,
+              height: 1.15,
+              letterSpacing: 0.05,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
