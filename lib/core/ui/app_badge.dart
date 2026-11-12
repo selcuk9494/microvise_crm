@@ -23,39 +23,50 @@ class AppBadge extends StatelessWidget {
       AppBadgeTone.neutral => AppTheme.textMuted,
       AppBadgeTone.primary => AppTheme.primary,
     };
-    final fg = AppTheme.softFg(color);
+    // Option C: identical slate chip; meaning only via left rail + quiet text.
+    final fg = Color.alphaBlend(
+      color.withValues(alpha: AppTheme.isDark ? 0.55 : 0.72),
+      AppTheme.textSoft,
+    );
 
     return Container(
-      padding: dense
-          ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
-          : const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppTheme.softTint(color, alpha: 0.08),
+        color: AppTheme.isDark
+            ? AppTheme.surfaceSoft
+            : AppTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(AppTheme.radiusXs),
-        border: Border.all(color: AppTheme.softBorder(color, alpha: 0.14)),
+        border: Border.all(
+          color: AppTheme.border.withValues(
+            alpha: AppTheme.isDark ? 0.72 : 0.9,
+          ),
+        ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: dense ? 5 : 6,
-            height: dense ? 5 : 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          SizedBox(width: dense ? 5 : 6),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w500,
-              color: fg,
-              fontSize: dense ? 10.5 : 11,
-              height: 1.15,
-              letterSpacing: 0.05,
+      child: IntrinsicHeight(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 3, color: color.withValues(alpha: 0.85)),
+            Padding(
+              padding: dense
+                  ? const EdgeInsets.fromLTRB(6, 2, 6, 2)
+                  : const EdgeInsets.fromLTRB(7, 3, 7, 3),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: fg,
+                  fontSize: dense ? 10.5 : 11,
+                  height: 1.15,
+                  letterSpacing: 0.05,
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
