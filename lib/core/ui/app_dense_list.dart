@@ -42,8 +42,8 @@ class AppInvoiceTableCols {
   static const double check = 28;
   static const double date = 76;
   static const double type = 40;
-  /// Max 2 durum rozeti; kalanı tooltip’te.
-  static const double status = 168;
+  /// Tek durum rozeti + ⋯; kalanı tooltip’te.
+  static const double status = 132;
   static const double amount = 112;
   /// Gönder / PDF / düzenle / ⋯ — sıkı ikon şeridi.
   static const double actions = 148;

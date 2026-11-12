@@ -3153,13 +3153,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                     for (final note in labelNames) ...[
                       const Gap(6),
                       ChoiceChip(
-                        visualDensity: VisualDensity.compact,
-                        avatar: CircleAvatar(
-                          backgroundColor: _invoiceListNoteColor(
-                            uniqueLabels[note],
-                          ),
-                        ),
-                        label: Text(note),
+                        visualDensity: VisualDensity.compact,                        label: Text(note),
                         selected: _labelFilter?.toLowerCase() ==
                             note.toLowerCase(),
                         onSelected: (selected) => setState(
@@ -3615,7 +3609,11 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
 
     final isPhone = MediaQuery.sizeOf(context).width < 700;
     final extras = <Widget>[
-      AppBadge(label: 'Satış: $sales', tone: AppBadgeTone.primary, dense: true),
+      AppBadge(
+        label: 'Satış: $sales',
+        tone: AppBadgeTone.neutral,
+        dense: true,
+      ),
       AppBadge(
         label: 'Alış: $purchases',
         tone: AppBadgeTone.neutral,
@@ -3625,9 +3623,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         label: 'Açık: $open',
         tooltip: 'Açık faturalar. Tahsil edilen satış, müşteriye iletilene kadar burada kalır.',
         selected: _filter.status == 'open',
-        tone: _filter.status == 'open' || open > 0
-            ? AppBadgeTone.warning
-            : AppBadgeTone.primary,
+        tone: AppBadgeTone.neutral,
         onTap: () {
           if (_filter.status == 'open') return;
           _applyFilter(_filter.copyWith(status: 'open'));
@@ -3637,9 +3633,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         label: _filter.status == 'partial' ? 'Kısmi: $partial' : 'Kısmi',
         tooltip: 'Sadece kısmi ödenmiş faturalar',
         selected: _filter.status == 'partial',
-        tone: _filter.status == 'partial' || partial > 0
-            ? AppBadgeTone.warning
-            : AppBadgeTone.neutral,
+        tone: AppBadgeTone.neutral,
         onTap: () {
           if (_filter.status == 'partial') return;
           _applyFilter(_filter.copyWith(status: 'partial'));
@@ -3649,9 +3643,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         label: 'İletildi: $sentToCustomer',
         tooltip: 'Müşteriye mail veya WhatsApp ile iletilen satış faturaları',
         selected: _filter.customerSent == 'sent',
-        tone: sentToCustomer > 0 || _filter.customerSent == 'sent'
-            ? AppBadgeTone.success
-            : AppBadgeTone.neutral,
+        tone: AppBadgeTone.neutral,
         onTap: () {
           if (_filter.customerSent == 'sent') {
             _applyFilter(_filter.copyWith(clearCustomerSent: true));
@@ -3664,9 +3656,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
         label: 'İletilmedi: $unsentToCustomer',
         tooltip: 'Müşteriye henüz iletilmeyen satış faturaları',
         selected: _filter.customerSent == 'unsent',
-        tone: unsentToCustomer > 0 || _filter.customerSent == 'unsent'
-            ? AppBadgeTone.warning
-            : AppBadgeTone.neutral,
+        tone: AppBadgeTone.neutral,
         onTap: () {
           if (_filter.customerSent == 'unsent') {
             _applyFilter(_filter.copyWith(clearCustomerSent: true));
@@ -3677,12 +3667,12 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
       ),
       AppBadge(
         label: 'TL: ${widget.moneyTry.format(tryTotal)}',
-        tone: AppBadgeTone.primary,
+        tone: AppBadgeTone.neutral,
         dense: true,
       ),
       AppBadge(
         label: 'USD: ${usdMoney.format(usdTotal)}',
-        tone: AppBadgeTone.primary,
+        tone: AppBadgeTone.neutral,
         dense: true,
       ),
       _EnvPill(settings: eInvoiceSettings),
@@ -3881,14 +3871,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     for (final note in labelNames) ...[
                                       const Gap(6),
                                       ChoiceChip(
-                                        visualDensity: VisualDensity.compact,
-                                        avatar: CircleAvatar(
-                                          backgroundColor:
-                                              _invoiceListNoteColor(
-                                            uniqueLabels[note],
-                                          ),
-                                        ),
-                                        label: Text(note),
+                                        visualDensity: VisualDensity.compact,                                        label: Text(note),
                                         selected: _labelFilter?.toLowerCase() ==
                                             note.toLowerCase(),
                                         onSelected: (selected) => setState(
@@ -4180,14 +4163,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                                     for (final note in labelNames) ...[
                                       const Gap(6),
                                       ChoiceChip(
-                                        visualDensity: VisualDensity.compact,
-                                        avatar: CircleAvatar(
-                                          backgroundColor:
-                                              _invoiceListNoteColor(
-                                            uniqueLabels[note],
-                                          ),
-                                        ),
-                                        label: Text(note),
+                                        visualDensity: VisualDensity.compact,                                        label: Text(note),
                                         selected: _labelFilter?.toLowerCase() ==
                                             note.toLowerCase(),
                                         onSelected: (selected) => setState(
@@ -8373,23 +8349,15 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
       );
     }
 
-    final statusBadges = <Widget>[
-      AppBadge(
-        dense: true,
-        label: invoice.isActive
-            ? _invoicePaymentStatusLabel(invoice)
-            : 'Pasif',
-        tone: invoice.isActive
-            ? _invoicePaymentStatusTone(invoice)
-            : AppBadgeTone.neutral,
-      ),
-      AppBadge(
-        dense: true,
-        label: _eInvoiceStatusLabel(invoice),
-        tone: _eInvoiceStatusTone(invoice),
-      ),
-    ];
+    // Tek rozet: satır sakin kalsın; diğer durumlar tooltip’te.
+    final primaryStatusLabel = invoice.isActive
+        ? _invoicePaymentStatusLabel(invoice)
+        : 'Pasif';
+    final primaryStatusTone = invoice.isActive
+        ? _invoicePaymentStatusTone(invoice)
+        : AppBadgeTone.neutral;
     final extraStatus = <String>[
+      _eInvoiceStatusLabel(invoice),
       if (_customerSentBadge(invoice) != null)
         invoice.isSentToCustomer ? 'İletildi' : 'İletilmedi',
       if (invoice.isPaymentLinkAwaiting) 'Link · ödeme bekliyor',
@@ -8501,31 +8469,26 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
               ),
               SizedBox(
                 width: AppInvoiceTableCols.status,
-                child: Builder(
-                  builder: (context) {
-                    final statusRow = Row(
-                      children: [
-                        for (var i = 0; i < statusBadges.length; i++) ...[
-                          if (i > 0) const Gap(4),
-                          Flexible(child: statusBadges[i]),
-                        ],
-                        if (extraStatus.isNotEmpty) ...[
-                          const Gap(2),
-                          Icon(
-                            Icons.more_horiz,
-                            size: 14,
-                            color: AppTheme.textMuted,
-                          ),
-                        ],
-                      ],
-                    );
-                    if (extraStatus.isEmpty) return statusRow;
-                    return Tooltip(
-                      message: extraStatus.join(' · '),
-                      waitDuration: const Duration(milliseconds: 250),
-                      child: statusRow,
-                    );
-                  },
+                child: Tooltip(
+                  message: extraStatus.join(' · '),
+                  waitDuration: const Duration(milliseconds: 250),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: AppBadge(
+                          dense: true,
+                          label: primaryStatusLabel,
+                          tone: primaryStatusTone,
+                        ),
+                      ),
+                      const Gap(2),
+                      Icon(
+                        Icons.more_horiz,
+                        size: 14,
+                        color: AppTheme.textMuted,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               SizedBox(
@@ -8574,12 +8537,6 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
     bool canSend,
     bool showSendAction,
   ) {
-    final syncError =
-        invoice.akinsoftSyncStatusEffective == 'error' &&
-        (invoice.akinsoftSyncError?.trim().isNotEmpty ?? false);
-    final statusTone = invoice.isActive
-        ? _eInvoiceStatusTone(invoice)
-        : AppBadgeTone.neutral;
     final statusLabel = invoice.isActive
         ? _eInvoiceStatusLabel(invoice)
         : 'Pasif';
@@ -8729,45 +8686,28 @@ class _EInvoiceRowState extends ConsumerState<_EInvoiceRow> {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      AppBadge(
-                        dense: true,
-                        label: invoice.isActive
-                            ? _invoicePaymentStatusLabel(invoice)
-                            : 'Pasif',
-                        tone: invoice.isActive
-                            ? _invoicePaymentStatusTone(invoice)
-                            : AppBadgeTone.neutral,
-                      ),
-                      if (_customerSentBadge(invoice) case final sentBadge?)
-                        sentBadge,
-                      if (invoice.isPaymentLinkAwaiting)
-                        const AppBadge(
+                      Tooltip(
+                        message: [
+                          statusLabel,
+                          if (_customerSentBadge(invoice) != null)
+                            invoice.isSentToCustomer
+                                ? 'İletildi'
+                                : 'İletilmedi',
+                          if (invoice.isPaymentLinkAwaiting)
+                            'Link · ödeme bekliyor',
+                          if (invoice.isPaidViaPos) 'Sanal POS',
+                        ].join(' · '),
+                        waitDuration: const Duration(milliseconds: 250),
+                        child: AppBadge(
                           dense: true,
-                          label: 'Link gönderildi · ödeme bekliyor',
-                          tone: AppBadgeTone.warning,
+                          label: invoice.isActive
+                              ? _invoicePaymentStatusLabel(invoice)
+                              : 'Pasif',
+                          tone: invoice.isActive
+                              ? _invoicePaymentStatusTone(invoice)
+                              : AppBadgeTone.neutral,
                         ),
-                      if (invoice.isPaidViaPos)
-                        AppBadge(
-                          dense: true,
-                          label: invoice.lastPaymentAt != null
-                              ? 'Sanal POS · ${DateFormat('d MMM', 'tr_TR').format(invoice.lastPaymentAt!)}'
-                              : 'Sanal POS',
-                          tone: AppBadgeTone.success,
-                        ),
-                      AppBadge(
-                        dense: true,
-                        label: statusLabel,
-                        tone: statusTone,
                       ),
-                      if (kAkinsoftBridgeEnabled && syncError)
-                        Tooltip(
-                          message: invoice.akinsoftSyncError!.trim(),
-                          child: AppBadge(
-                            dense: true,
-                            label: 'Uyarı',
-                            tone: AppBadgeTone.warning,
-                          ),
-                        ),
                     ],
                   ),
                 ),
