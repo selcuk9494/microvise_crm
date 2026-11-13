@@ -1156,7 +1156,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
-          title: const Text('Banka talep etti'),
+          title: const Text('Capital’e Al'),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -1164,14 +1164,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${targets.length} başvuru, seçilen banka kullanıcısının '
-                  'girdiği gibi görünecek (Capital Bank listesinde).',
+                  '${targets.length} başvuru Capital Bank listesine taşınır; '
+                  'seçilen banka kullanıcısının girmiş gibi görünür.',
                 ),
                 const Gap(12),
                 DropdownButtonFormField<String>(
                   initialValue: selectedBankUserId,
                   decoration: const InputDecoration(
-                    labelText: 'Banka kullanıcısı',
+                    labelText: 'Capital / banka kullanıcısı',
                   ),
                   items: [
                     for (final user in bankUsers)
@@ -1199,7 +1199,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Banka talep etti'),
+              child: const Text('Capital’e Al'),
             ),
           ],
         ),
@@ -1234,14 +1234,14 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${targets.length} başvuru banka talebi olarak işaretlendi.',
+            '${targets.length} başvuru Capital’e alındı.',
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Banka talebi işaretlenemedi: $e')),
+        SnackBar(content: Text('Capital’e alınamadı: $e')),
       );
     }
   }
@@ -3324,7 +3324,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                 _markAsBankRequestedBulk(selectedRecords),
                             icon: const Icon(LucideIcons.landmark, size: 18),
                             label: Text(
-                              'Banka talep etti (${selectedRecords.where((record) => record.isActive && !record.isBankSubmission).length})',
+                              'Capital’e Al (${selectedRecords.where((record) => record.isActive && !record.isBankSubmission).length})',
                             ),
                           ),
                         if (isAdmin &&
@@ -3589,7 +3589,7 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                                                 LucideIcons.landmark,
                                               ),
                                               title: Text(
-                                                'Banka talep etti (${selectedRecords.where((record) => record.isActive && !record.isBankSubmission).length})',
+                                                'Capital’e Al (${selectedRecords.where((record) => record.isActive && !record.isBankSubmission).length})',
                                               ),
                                               onTap: () {
                                                 Navigator.of(context).pop();
@@ -3773,8 +3773,11 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                   onPrintKdv4a: () =>
                       _print(r, kind: ApplicationPrintKind.kdv4a),
                   onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
+                  canMarkAsBankRequested: isAdmin,
                   onApprove: () => _approveRecord(r),
                   onBankApprove: () => _bankApproveRecord(r),
+                  onMarkAsBankRequested: () =>
+                      _markAsBankRequestedBulk([r]),
                   onUnapprove: () => _unapproveRecord(r),
                   onEdit: () => _openEditDialog(r),
                   onDuplicate: () => _openDuplicateDialog(r),
@@ -3856,8 +3859,10 @@ class _ApplicationFormScreenState extends ConsumerState<ApplicationFormScreen> {
                 onViewLogs: () => _openRecordLogs(r),
                 onPrintKdv4a: () => _print(r, kind: ApplicationPrintKind.kdv4a),
                 onCreateWorkOrder: () => _openCreateWorkOrdersDialog([r]),
+                canMarkAsBankRequested: isAdmin,
                 onApprove: () => _approveRecord(r),
                 onBankApprove: () => _bankApproveRecord(r),
+                onMarkAsBankRequested: () => _markAsBankRequestedBulk([r]),
                 onUnapprove: () => _unapproveRecord(r),
                 onEdit: () => _openEditDialog(r),
                 onDuplicate: () => _openDuplicateDialog(r),
@@ -7987,6 +7992,7 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.canPrintKdv4a,
     required this.canCreateWorkOrder,
     required this.isBankViewer,
+    required this.canMarkAsBankRequested,
     required this.selected,
     required this.onSelectionChanged,
     required this.onPrintKdv,
@@ -8002,6 +8008,7 @@ class _ApplicationRecordCard extends StatelessWidget {
     required this.onCreateWorkOrder,
     required this.onApprove,
     required this.onBankApprove,
+    required this.onMarkAsBankRequested,
     required this.onUnapprove,
     required this.onEdit,
     required this.onDuplicate,
@@ -8017,6 +8024,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final bool canPrintKdv4a;
   final bool canCreateWorkOrder;
   final bool isBankViewer;
+  final bool canMarkAsBankRequested;
   final bool selected;
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onPrintKdv;
@@ -8032,6 +8040,7 @@ class _ApplicationRecordCard extends StatelessWidget {
   final VoidCallback onCreateWorkOrder;
   final VoidCallback onApprove;
   final VoidCallback onBankApprove;
+  final VoidCallback onMarkAsBankRequested;
   final VoidCallback onUnapprove;
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
@@ -8175,6 +8184,13 @@ class _ApplicationRecordCard extends StatelessWidget {
           value: 'bank_approve',
           child: Text('Bankayı Onayla'),
         ),
+      if (canMarkAsBankRequested &&
+          record.isActive &&
+          !record.isBankSubmission)
+        const PopupMenuItem(
+          value: 'mark_bank_requested',
+          child: Text('Capital’e Al'),
+        ),
       if (canApprove && record.isPendingApproval)
         const PopupMenuItem(value: 'approve', child: Text('Onayla')),
       if (canApprove && record.isApproved)
@@ -8242,6 +8258,9 @@ class _ApplicationRecordCard extends StatelessWidget {
           break;
         case 'bank_approve':
           onBankApprove();
+          break;
+        case 'mark_bank_requested':
+          onMarkAsBankRequested();
           break;
         case 'approve':
           onApprove();
